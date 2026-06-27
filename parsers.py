@@ -16,11 +16,11 @@ class PlainTextParser(DocumentParser):
                 line_count = len(text.splitlines())
                 extension = os.path.splitext(file_path)[1]
                 return {
-                    text: text,
-                    character_count: character_count,
-                    word_count: word_count,
-                    line_count: line_count,
-                    extension: extension
+                    "text": text,
+                    "character_count": character_count,
+                    "word_count": word_count,
+                    "line_count": line_count,
+                    "extension": extension
                 }
         except Exception as e:
             print(f'Error parsing file {file_path}: {e}')
