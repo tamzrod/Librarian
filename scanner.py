@@ -1,6 +1,7 @@
 import os
 import hashlib
 from datetime import datetime
+import json
 
 def get_file_metadata(file_path):
     try:
@@ -60,6 +61,8 @@ if __name__ == '__main__':
         sys.exit(1)
     
     directory_to_scan = sys.argv[1]
-    scan_directory(directory_to_scan)
+    scan_results = scan_directory(directory_to_scan)
+    with open('scan_results.json', 'w') as f:
+        json.dump(scan_results, f)
 
 
