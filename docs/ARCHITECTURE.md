@@ -1,110 +1,125 @@
 # ARCHITECTURE.md
 
+## Architectural Layers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        AGENT LAYER                          │
+│              (AI Agent Reasoning over Evidence)              │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                    EVIDENCE BUILDER                          │
+│         (Assembles evidence packages for queries)            │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                   EXTRACTORS LAYER                          │
+│     (Entity, Event, Location, Relationship Extraction)       │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                   PostgreSQL CATALOG                        │
+│            (Entities, Events, Locations, Documents)         │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                   INDEXING LAYER                            │
+│            (Scanner, Chunkers, Indexer, Retriever)          │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                      PARSERS LAYER                          │
+│              (Domain-specific artifact parsers)              │
+└─────────────────────────────────────────────────────────────┘
+                              ↑
+┌─────────────────────────────────────────────────────────────┐
+│                     FILESYSTEM                              │
+│              (Source of truth - never modified)             │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## Core Abstractions
 
-Librarian operates on five fundamental abstractions:
+Librarian operates on these fundamental abstractions:
 
 | Abstraction | Description | Example |
 |-------------|-------------|---------|
-| **Document** | A unit of indexed content with text and metadata | A file, email, or record |
-| **Entity** | A named thing discovered in documents | Person, company, location, concept |
-| **Relationship** | A connection between entities | "works for", "located in", "mentions" |
-| **Event** | A timestamped occurrence | Meeting, purchase, update |
-| **Timeline** | A sequence of events ordered by time | Project history, travel log |
-| **Collection** | A group of related documents | Project folder, email thread |
+| **Artifact** | A file in its native format | JPEG, JSON, Python file |
+| **Document** | An indexed artifact with extracted metadata | Parsed file content |
+| **Entity** | A named thing discovered in artifacts | Person, company, location |
+| **Event** | A timestamped occurrence | Meeting, purchase, capture |
+| **Location** | A geographic point or named place | City, GPS coordinates |
+| **Evidence** | Assembled facts for a query | Entity list, timeline |
 
-## Ingestion Pipeline
+## Directory Structure
 
 ```
-Filesystem
-    ↓
-Scanner
-    ↓
-Parser Registry
-    ↓
-Parser (domain-specific plugin)
-    ↓
-Chunker
-    ↓
-Indexer
-    ↓
-Persistence
-    ↓
-Retriever
-    ↓
-Reasoning Layer
+core/               # Core logic: librarian, query_planner, evidence_builder, timeline_builder
+parsers/            # Artifact parsers: json, yaml, csv, image, etc.
+extractors/         # Evidence extractors: entity, event, location
+indexing/           # Indexing pipeline: scanner, chunker, indexer, retriever
+storage/            # PostgreSQL backend for catalog persistence
+registry/           # Parser registration system
+graph/              # Dependency analysis (optional for code artifacts)
+models/             # Data models and abstractions
+tests/              # Test suite
+samples/            # Sample artifacts for testing
+docs/               # Documentation
 ```
 
-### Pipeline Stages
+## Supported Artifact Types
 
-1. **Scanner**: Discovers files in the filesystem
-2. **Parser Registry**: Routes files to appropriate parser based on extension
-3. **Parser**: Extracts structured data from file content (domain-specific)
-4. **Chunker**: Splits content into manageable segments
-5. **Indexer**: Creates searchable index with metadata
-6. **Persistence**: Saves index for future retrieval
-7. **Retriever**: Searches index for relevant documents
-8. **Reasoning Layer**: Assembles context for LLM consumption
+| Category | Types | Extracted Evidence |
+|----------|-------|-------------------|
+| Images | JPEG, PNG | GPS, timestamps, camera info, EXIF |
+| Structured | JSON, YAML, TOML, CSV | Schema, values, relationships |
+| Code | Python | Imports, classes, functions |
+| Config | INI, XML | Key-value pairs, structure |
+| Text | Plain text, Markdown | Entities via regex |
+| Future | PDF, DOC, audio, video, CAD | TBD |
 
-## Domain-Specific Parsers
+## Query Pipeline
 
-Parsers are plugins designed for specific knowledge domains:
-
-### Software
-```python
-{
-    "imports": ["module_a", "module_b"],
-    "classes": ["MyClass"],
-    "functions": ["my_function"]
-}
+```
+User Question
+      ↓
+Query Planner (regex-based intent detection)
+      ↓
+Evidence Builder (assembles evidence from catalog)
+      ↓
+Evidence Package → Agent
+      ↓
+Agent Reasoning → Answer
 ```
 
-### Business
-```python
-{
-    "customers": ["ABC Corp"],
-    "invoices": ["INV-001"],
-    "meetings": ["Q4 Planning"]
-}
-```
-
-### Personal Memory
-```python
-{
-    "GPS history": ["Home", "Office"],
-    "calendar events": ["Doctor appointment"],
-    "photos": ["beach_sunset.jpg"],
-    "receipts": ["grocery_store"],
-    "emails": ["contract signed"]
-}
-```
-
-### Stories
-```python
-{
-    "characters": ["Alice", "Bob"],
-    "locations": ["Wonderland", "Rabbit Hole"],
-    "events": ["Tea party"]
-}
-```
-
-### Research
-```python
-{
-    "citations": ["Smith et al. 2023"],
-    "authors": ["Dr. Jane Smith"],
-    "topics": ["machine learning", "neural networks"]
-}
-```
+The purpose is NOT to answer questions directly. The purpose is to assemble evidence for an agent to reason over.
 
 ## Component Responsibilities
 
-- **Scanner**: Detects files, computes hashes, tracks modifications
-- **Parser Registry**: Routes files to appropriate domain-specific parser
-- **Parsers**: Extract structured domain knowledge from unstructured content
-- **Chunker**: Splits content for manageable processing
-- **Indexer**: Creates searchable index preserving entities and relationships
-- **Persistence**: Saves/loads index to/from storage
-- **Retriever**: Searches index using keywords, entities, or relationships
-- **Reasoning Layer**: Assembles context packages for LLM reasoning
+| Component | Directory | Responsibility |
+|-----------|-----------|----------------|
+| **Scanner** | `indexing/` | Discovers files, computes hashes, tracks modifications |
+| **Parser Registry** | `registry/` | Routes files to appropriate parser |
+| **Parsers** | `parsers/` | Extract structured data from artifacts |
+| **Indexer** | `indexing/` | Creates searchable index with metadata |
+| **Retriever** | `indexing/` | Searches index for relevant documents |
+| **Persistence** | `indexing/` | Saves/loads index to/from JSON |
+| **Entity Extractor** | `extractors/` | Extracts named entities |
+| **Event Extractor** | `extractors/` | Extracts timestamped events |
+| **Location Extractor** | `extractors/` | Extracts locations and GPS |
+| **Query Planner** | `core/` | Detects query intent using regex |
+| **Evidence Builder** | `core/` | Assembles evidence packages |
+| **Timeline Builder** | `core/` | Builds chronological timelines |
+| **PostgreSQL Backend** | `storage/` | Persists catalog to database |
+
+## Future Directions
+
+- PDF and DOC parser support
+- Audio/video transcription and metadata extraction
+- CAD drawing metadata extraction
+- Email thread parsing
+- Spreadsheet data extraction
+- Database schema extraction
+- Telemetry data parsing
 

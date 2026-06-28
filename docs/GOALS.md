@@ -2,37 +2,52 @@
 
 ## Project Goals
 
-Librarian aims to transform scattered knowledge into organized, queryable intelligence.
+Librarian is an evidence retrieval and context reconstruction engine operating on bounded collections.
 
 ### Primary Objectives
 
-1. **Context Indexing**: Index any document format into structured, searchable knowledge
-2. **Domain Flexibility**: Support multiple knowledge domains through pluggable parsers
-3. **Relationship Discovery**: Map connections between entities across documents
-4. **Memory Reconstruction**: Rebuild context from fragmented information
-5. **Efficient Retrieval**: Answer complex questions by assembling relevant context
+1. **Evidence Retrieval**: Assemble evidence packages from indexed artifacts
+2. **Context Reconstruction**: Rebuild context from fragmented, distributed information
+3. **Knowledge Cataloging**: Preserve artifacts in native format while building catalog
+4. **Agentic Support**: Enable AI agents to reason over bounded collections
+5. **Multimodal Ingestion**: Support future audio, video, CAD, and other formats
 
 ### Success Criteria
 
-- [ ] Ingest documents from any domain
-- [ ] Extract entities and relationships automatically
-- [ ] Answer questions requiring multi-hop reasoning
-- [ ] Preserve filesystem as source of truth
-- [ ] Enable reindexing from scratch at any time
+- [x] Ingest artifacts from bounded collections
+- [x] Extract entities automatically
+- [x] Extract events with timestamps
+- [x] Extract locations and GPS coordinates
+- [x] Preserve filesystem as source of truth
+- [x] Enable reindexing from scratch
+- [x] Query planning with intent detection
+- [x] Evidence assembly for agentic reasoning
+- [ ] PDF and DOC parsing
+- [ ] Audio/video transcription
+- [ ] CAD metadata extraction
+- [ ] Email thread parsing
 
 ### Current Capabilities
 
-- ✅ Multi-format parsing (CSV, INI, JSON, TOML, XML, YAML, Python)
+- ✅ Multi-format parsing (CSV, INI, JSON, TOML, XML, YAML, Python, Image)
 - ✅ Document chunking
 - ✅ Metadata extraction (hash, size, modified time)
 - ✅ Keyword search
-- ✅ Dependency graph building
-- ✅ Hotspot detection
+- ✅ Entity extraction
+- ✅ Event extraction with timestamps
+- ✅ Location extraction (named + GPS coordinates)
+- ✅ Image EXIF/GPS extraction
+- ✅ Query planning (regex-based intent detection)
+- ✅ Evidence building for agentic reasoning
+- ✅ Timeline reconstruction
+- ✅ PostgreSQL catalog persistence
 
 ### Planned Capabilities
 
-- [ ] Entity extraction beyond software
-- [ ] Relationship mapping
-- [ ] Timeline reconstruction
-- [ ] LLM reasoning integration
-- [ ] Assistant integration
+- [ ] PDF and DOC parser support
+- [ ] Audio/video transcription and metadata
+- [ ] CAD drawing metadata extraction
+- [ ] Email thread parsing
+- [ ] Spreadsheet data extraction
+- [ ] Database schema extraction
+- [ ] Telemetry data parsing
