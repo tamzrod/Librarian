@@ -1,22 +1,60 @@
 # Librarian
 
-Librarian is a filesystem-first RAG indexing backend for knowledge repositories.
+Librarian is a **context indexing engine**, **knowledge ingestion system**, **memory reconstruction system**, and **relationship discovery system** for personal and organizational knowledge.
 
-As long as Librarian can access the folders, Librarian can access the books.
+## What Librarian Is
 
-The filesystem remains the source of truth.
+- **Context Indexing Engine**: Transforms unstructured files into organized, searchable knowledge
+- **Knowledge Ingestion System**: Ingests documents across multiple formats and domains
+- **Memory Reconstruction System**: Rebuilds context from fragmented, distributed information
+- **Relationship Discovery System**: Uncovers connections between entities across documents
 
-Librarian owns only metadata, indexes, embeddings, and retrieval context while leaving original files untouched.
+## What Librarian Is Not
 
-Librarian is designed to support multiple document formats, multiple embedding providers, multiple vector databases, and multiple LLM providers through interchangeable interfaces.
+- A code analysis tool
+- A source code indexer
+- A static analysis platform
+- A software-only RAG system
 
-Its responsibility is simple:
+Librarian supports any domain: software, business, personal memory, stories, research, or any other knowledge domain.
 
-* discover knowledge
-* organize knowledge
-* track changes to knowledge
-* retrieve knowledge efficiently
+## The Vision
 
-The library may live anywhere.
+Traditional RAG:
+```
+Question → Chunk Retrieval → LLM
+```
 
-Librarian only cares that it can reach the shelves.
+Librarian:
+```
+Question → Entity Discovery → Relationship Assembly → Context Package → LLM Reasoning
+```
+
+Librarian moves beyond simple chunk retrieval to understand **what** exists (entities) and **how things relate** (relationships), enabling deeper reasoning over distributed knowledge.
+
+## Core Principles
+
+1. **Filesystem is the source of truth** - Original files are never modified
+2. **Parsers are domain-specific plugins** - Each domain has its own extraction logic
+3. **Derived data is disposable** - Reindexing is always possible
+4. **The catalog remains organized** - Even when the filesystem is not
+
+## Example User Questions
+
+- "Give me the profile of client ABC."
+- "Where was I on December 23 last year?"
+- "Show all meetings related to Project Orion."
+- "Which documents mention inverter failures?"
+- "Summarize everything we know about customer XYZ."
+
+## Quick Start
+
+```python
+from librarian import Librarian
+
+lib = Librarian()
+lib.ingest('/path/to/knowledge/base')
+results = lib.search("inverter failures")
+```
+
+The library may live anywhere. Librarian only cares that it can reach the shelves.
