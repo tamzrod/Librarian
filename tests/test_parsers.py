@@ -1,9 +1,9 @@
-from csv_parser import CsvParser
-from ini_parser import IniParser
-from json_parser import JsonParser
-from toml_parser import TomlParser
-from xml_parser import XmlParser
-from yaml_parser import YamlParser
+from parsers.csv_parser import CsvParser
+from parsers.ini_parser import IniParser
+from parsers.json_parser import JsonParser
+from parsers.toml_parser import TomlParser
+from parsers.xml_parser import XmlParser
+from parsers.yaml_parser import YamlParser
 
 
 SAMPLE_DIR = "samples/structured"
