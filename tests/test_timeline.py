@@ -1,5 +1,5 @@
 import json
-from timeline_builder import build_timeline
+from core.timeline_builder import build_timeline
 
 # Create a sample index with documents that have timestamps
 sample_index = [

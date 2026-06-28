@@ -1,4 +1,4 @@
-from librarian import Librarian
+from core.librarian import Librarian
 
 
 def test_librarian():
@@ -9,8 +9,8 @@ def test_librarian():
     parser_results = lib.search('parser')
     yaml_results = lib.search('yaml')
     
-    scanner_deps = lib.get_dependencies('scanner.py')
-    librarian_deps = lib.get_dependencies('librarian.py')
+    scanner_deps = lib.get_dependencies('indexing/scanner.py')
+    librarian_deps = lib.get_dependencies('core/librarian.py')
     
     print("Search results for 'json':", len(json_results))
     print("Search results for 'parser':", len(parser_results))

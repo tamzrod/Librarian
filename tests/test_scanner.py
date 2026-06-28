@@ -1,6 +1,6 @@
 import os
-from scanner import parse_file
-from register_parsers import registry
+from indexing.scanner import parse_file
+from registry.register_parsers import registry
 
 
 def test_scanner():

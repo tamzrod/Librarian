@@ -1,5 +1,5 @@
-from event_extractor import extract_events
-from location_extractor import extract_locations
+from extractors.event_extractor import extract_events
+from extractors.location_extractor import extract_locations
 
 
 def build_timeline(index):

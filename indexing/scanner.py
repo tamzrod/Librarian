@@ -2,7 +2,7 @@ import os
 import hashlib
 from datetime import datetime
 import json
-from register_parsers import registry
+from registry.register_parsers import registry
 
 def parse_file(file_path):
     extension = os.path.splitext(file_path)[1].lower()
