@@ -1,19 +1,21 @@
-import yaml
+import csv
 
 
-class YamlParser:
+class CsvParser:
     def parse(self, file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 original_text = file.read()
 
-            structured_data = yaml.safe_load(original_text)
+            with open(file_path, "r", encoding="utf-8") as file:
+                reader = csv.reader(file)
+                structured_data = list(reader)
 
             return {
                 "text": original_text,
                 "structured_data": structured_data,
                 "character_count": len(original_text),
-                "extension": ".yaml"
+                "extension": ".csv"
             }
 
         except Exception as e:

@@ -1,19 +1,23 @@
-import yaml
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 
-class YamlParser:
+class TomlParser:
     def parse(self, file_path):
         try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                original_text = file.read()
+            with open(file_path, "rb") as file:
+                original_text = file.read().decode("utf-8")
 
-            structured_data = yaml.safe_load(original_text)
+            with open(file_path, "rb") as file:
+                structured_data = tomllib.load(file)
 
             return {
                 "text": original_text,
                 "structured_data": structured_data,
                 "character_count": len(original_text),
-                "extension": ".yaml"
+                "extension": ".toml"
             }
 
         except Exception as e:
