@@ -16,5 +16,8 @@ def index_document(document):
         'chunks': chunks,
         'chunk_count': chunk_count,
         'word_count': word_count,
-        'has_structured_data': has_structured_data
+        'has_structured_data': has_structured_data,
+        'sha256_hash': document.get('sha256_hash'),
+        'modified_time': document.get('modified_time'),
+        'file_size': document.get('file_size')
     }

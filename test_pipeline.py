@@ -6,16 +6,19 @@ from persistence import save_index, load_index
 from retriever import search_documents
 
 
+SAMPLE_DIR = "samples/structured"
+
+
 def test_pipeline():
-    sample_files = [f for f in os.listdir('.') if f.startswith('sample.') and os.path.isfile(f)]
+    sample_files = [os.path.join(SAMPLE_DIR, f) for f in os.listdir(SAMPLE_DIR) if f.startswith('sample.') and os.path.isfile(os.path.join(SAMPLE_DIR, f))]
     
     # 1. Scan sample files
     scanned_files = len(sample_files)
     
     # 2. Parse files and 3. Chunk parsed text
     indexed_docs = []
-    for filename in sample_files:
-        result = parse_file(filename)
+    for filepath in sample_files:
+        result = parse_file(filepath)
         if result:
             chunks = chunk_text(result.get('text', ''))
             result['chunks'] = chunks
@@ -27,10 +30,10 @@ def test_pipeline():
     indexed_files = len(indexed_docs)
     
     # 5. Save index
-    save_index(indexed_docs, 'test_index.json')
+    save_index(indexed_docs, 'samples/test_index.json')
     
     # 6. Reload index
-    reloaded_index = load_index('test_index.json')
+    reloaded_index = load_index('samples/test_index.json')
     
     # 7. Search for json, xml, yaml
     json_results = search_documents(reloaded_index, 'json')

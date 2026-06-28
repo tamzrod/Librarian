@@ -6,6 +6,9 @@ from xml_parser import XmlParser
 from yaml_parser import YamlParser
 
 
+SAMPLE_DIR = "samples/structured"
+
+
 def test_parser(parser, sample_file):
     result = parser.parse(sample_file)
     if result:
@@ -17,9 +20,9 @@ def test_parser(parser, sample_file):
 
 
 if __name__ == "__main__":
-    test_parser(CsvParser(), "sample.csv")
-    test_parser(IniParser(), "sample.ini")
-    test_parser(JsonParser(), "sample.json")
-    test_parser(TomlParser(), "sample.toml")
-    test_parser(XmlParser(), "sample.xml")
-    test_parser(YamlParser(), "sample.yaml")
+    test_parser(CsvParser(), f"{SAMPLE_DIR}/sample.csv")
+    test_parser(IniParser(), f"{SAMPLE_DIR}/sample.ini")
+    test_parser(JsonParser(), f"{SAMPLE_DIR}/sample.json")
+    test_parser(TomlParser(), f"{SAMPLE_DIR}/sample.toml")
+    test_parser(XmlParser(), f"{SAMPLE_DIR}/sample.xml")
+    test_parser(YamlParser(), f"{SAMPLE_DIR}/sample.yaml")
