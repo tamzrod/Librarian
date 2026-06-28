@@ -1,0 +1,12 @@
+[project]
+name = "Librarian"
+version = "1.0.0"
+description = "A file parsing library"
+
+[dependencies]
+pyyaml = "0.1.0"
+toml = "0.10.0"
+
+[authors]
+main = "Alice Smith"
+contributors = ["Bob Jones", "Carol White"]

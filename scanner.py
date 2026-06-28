@@ -2,6 +2,14 @@ import os
 import hashlib
 from datetime import datetime
 import json
+from register_parsers import registry
+
+def parse_file(file_path):
+    extension = os.path.splitext(file_path)[1].lower()
+    parser = registry.get_parser(extension)
+    if parser is None:
+        return None
+    return parser.parse(file_path)
 
 def get_file_metadata(file_path):
     try:
