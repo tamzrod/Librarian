@@ -1,5 +1,19 @@
 import json
 
+
+def save_index(index, filename):
+    with open(filename, 'w') as f:
+        json.dump(index, f)
+
+
+def load_index(filename):
+    try:
+        with open(filename, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
 def save_snapshot(scan_results, filename):
     try:
         with open(filename, 'w') as f:
