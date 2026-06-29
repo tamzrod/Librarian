@@ -63,6 +63,35 @@ Librarian can ingest and extract evidence from:
 | Code | Python, and extensible to others |
 | Future | Audio, video, CAD, emails, spreadsheets, databases, telemetry |
 
+## Setup
+
+### Python Dependencies
+
+Librarian requires Python 3.11+ and the following packages:
+
+```
+pip install -r requirements.txt
+```
+
+**Core dependencies:**
+- `fastapi>=0.100.0` - Web framework
+- `uvicorn[standard]>=0.23.0` - ASGI server
+- `pydantic>=2.0.0` - Data validation
+- `psycopg>=3.1.0` - PostgreSQL driver
+- `requests>=2.31.0` - HTTP client
+- `Pillow>=10.0.0` - Image processing
+- `PyYAML>=6.0` - YAML parsing
+- `python-dateutil>=2.8.0` - Date utilities
+
+### Docker Deployment
+
+See [deploy/README.md](deploy/README.md) for detailed Docker deployment instructions.
+
+```bash
+cd deploy/docker/linux
+docker compose up -d
+```
+
 ## Quick Start
 
 ```python
