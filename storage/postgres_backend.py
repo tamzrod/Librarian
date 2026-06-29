@@ -258,6 +258,52 @@ class PostgresBackend(StorageBackend):
                 self._record_migration('003_document_lifecycle')
                 logger.info("Migration 003 completed: document lifecycle columns added")
             
+            # Migration 004: Add document_jobs table for job queue
+            if '004_document_jobs' not in self._get_applied_migrations():
+                logger.info("Running migration: creating document_jobs table")
+                
+                # Check if table exists
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'document_jobs'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        CREATE TABLE document_jobs (
+                            id SERIAL PRIMARY KEY,
+                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+                            job_type VARCHAR(100) NOT NULL,
+                            priority INTEGER DEFAULT 0,
+                            status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            started_at TIMESTAMP,
+                            completed_at TIMESTAMP,
+                            worker_id VARCHAR(100),
+                            error_message TEXT
+                        )
+                    """)
+                    
+                    # Create indexes
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_document 
+                        ON document_jobs(document_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_status 
+                        ON document_jobs(status)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_type 
+                        ON document_jobs(job_type)
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Migration 004 completed: document_jobs table created")
+                else:
+                    logger.info("Migration 004 skipped: document_jobs table already exists")
+                
+                self._record_migration('004_document_jobs')
+            
             cur.close()
             conn.close()
             return True
@@ -498,6 +544,243 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting document status counts: {e}")
             return {}
+    
+    # =========================================================================
+    # Job Queue Methods (Phase 2)
+    # =========================================================================
+    
+    def create_job(self, document_id: int, job_type: str, priority: int = 0) -> int:
+        """Create a new job for a document.
+        
+        Args:
+            document_id: ID of the document to process
+            job_type: Type of job (compute_sha256, extract_text, extract_entities, etc.)
+            priority: Job priority (higher = more important)
+            
+        Returns:
+            Job ID if created, None on failure
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
+                VALUES (%s, %s, %s, 'QUEUED', %s)
+                RETURNING id
+                """,
+                (document_id, job_type, priority, created_at)
+            )
+            job_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            logger.info(f"Created job {job_id}: {job_type} for document {document_id}")
+            return job_id
+        except Exception as e:
+            logger.error(f"Error creating job: {e}")
+            return None
+    
+    def create_jobs_for_document(self, document_id: int, job_types: list = None) -> list:
+        """Create multiple jobs for a document.
+        
+        Args:
+            document_id: ID of the document
+            job_types: List of job types to create. If None, creates default set.
+            
+        Returns:
+            List of created job IDs
+        """
+        if job_types is None:
+            job_types = ['extract_text', 'extract_entities', 'extract_events', 'extract_locations']
+        
+        job_ids = []
+        for job_type in job_types:
+            job_id = self.create_job(document_id, job_type)
+            if job_id:
+                job_ids.append(job_id)
+        return job_ids
+    
+    def claim_job(self, worker_id: str) -> dict:
+        """Claim a queued job for processing.
+        
+        Uses SELECT FOR UPDATE to atomically claim the oldest queued job.
+        
+        Args:
+            worker_id: ID of the worker claiming the job
+            
+        Returns:
+            Job dict with all fields, or None if no jobs available
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            started_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            # Claim the oldest queued job
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = 'IN_PROGRESS', worker_id = %s, started_at = %s
+                WHERE id = (
+                    SELECT id FROM document_jobs
+                    WHERE status = 'QUEUED'
+                    ORDER BY priority DESC, created_at ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, document_id, job_type, priority, status, worker_id, created_at, started_at
+                """,
+                (worker_id, started_at)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            
+            if row:
+                job = {
+                    'id': row[0],
+                    'document_id': row[1],
+                    'job_type': row[2],
+                    'priority': row[3],
+                    'status': row[4],
+                    'worker_id': row[5],
+                    'created_at': row[6],
+                    'started_at': row[7]
+                }
+                cur.close()
+                conn.close()
+                logger.info(f"Worker {worker_id} claimed job {job['id']}: {job['job_type']}")
+                return job
+            
+            cur.close()
+            conn.close()
+            return None
+        except Exception as e:
+            logger.error(f"Error claiming job: {e}")
+            return None
+    
+    def complete_job(self, job_id: int, error_message: str = None) -> bool:
+        """Mark a job as completed.
+        
+        Args:
+            job_id: ID of the job to complete
+            error_message: Error message if failed, None if succeeded
+            
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            completed_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            status = 'FAILED' if error_message else 'COMPLETED'
+            
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = %s, completed_at = %s, error_message = %s
+                WHERE id = %s
+                """,
+                (status, completed_at, error_message, job_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            logger.info(f"Job {job_id} marked as {status}")
+            return True
+        except Exception as e:
+            logger.error(f"Error completing job: {e}")
+            return False
+    
+    def get_job_status_counts(self) -> dict:
+        """Get count of jobs grouped by status.
+        
+        Returns:
+            Dict mapping status -> count
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT status, COUNT(*) as count 
+                FROM document_jobs 
+                GROUP BY status 
+                ORDER BY status
+                """
+            )
+            results = {row[0]: row[1] for row in cur.fetchall()}
+            cur.close()
+            conn.close()
+            return results
+        except Exception as e:
+            logger.error(f"Error getting job status counts: {e}")
+            return {}
+    
+    def get_document_jobs(self, document_id: int) -> list:
+        """Get all jobs for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            List of job dicts
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, document_id, job_type, priority, status, 
+                       created_at, started_at, completed_at, worker_id, error_message
+                FROM document_jobs
+                WHERE document_id = %s
+                ORDER BY created_at DESC
+                """,
+                (document_id,)
+            )
+            jobs = []
+            for row in cur.fetchall():
+                jobs.append({
+                    'id': row[0],
+                    'document_id': row[1],
+                    'job_type': row[2],
+                    'priority': row[3],
+                    'status': row[4],
+                    'created_at': row[5],
+                    'started_at': row[6],
+                    'completed_at': row[7],
+                    'worker_id': row[8],
+                    'error_message': row[9]
+                })
+            cur.close()
+            conn.close()
+            return jobs
+        except Exception as e:
+            logger.error(f"Error getting document jobs: {e}")
+            return []
+    
+    def get_queued_jobs_count(self) -> int:
+        """Get count of queued jobs waiting to be processed.
+        
+        Returns:
+            Number of queued jobs
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM document_jobs WHERE status = 'QUEUED'"
+            )
+            count = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return count
+        except Exception as e:
+            logger.error(f"Error getting queued jobs count: {e}")
+            return 0
     
     def save_entities(self, document_id, entities):
         """Save entities to the database.

@@ -249,6 +249,113 @@ async def get_document_status_counts():
     }
 
 
+@app.get("/api/v1/jobs/status")
+async def get_job_status_counts():
+    """
+    Get count of jobs grouped by status.
+    
+    Job Status States:
+    - QUEUED: Job created, waiting for worker
+    - IN_PROGRESS: Worker has claimed the job
+    - COMPLETED: Job finished successfully
+    - FAILED: Job failed after all retries
+    - CANCELLED: Job cancelled by user
+    """
+    state = get_app_state()
+    
+    try:
+        if state.backend and hasattr(state.backend, 'get_job_status_counts'):
+            status_counts = state.backend.get_job_status_counts()
+        else:
+            status_counts = {}
+    except Exception:
+        status_counts = {}
+    
+    return {
+        "status_counts": status_counts,
+        "total": sum(status_counts.values()),
+        "queued": status_counts.get('QUEUED', 0),
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+@app.get("/api/v1/jobs")
+async def get_jobs(
+    state = Depends(get_app_state),
+    document_id: Optional[int] = Query(None, description="Filter by document ID"),
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    job_type: Optional[str] = Query(None, description="Filter by job type"),
+    limit: int = Query(50, ge=1, le=100, description="Max results")
+):
+    """
+    Get jobs with optional filtering.
+    
+    If document_id is provided, returns jobs for that document.
+    Otherwise, returns recent jobs across all documents.
+    """
+    try:
+        if document_id and state.backend and hasattr(state.backend, 'get_document_jobs'):
+            jobs = state.backend.get_document_jobs(document_id)
+        else:
+            # Get jobs from search or default to empty list
+            jobs = []
+    except Exception:
+        jobs = []
+    
+    # Apply filters
+    if status:
+        jobs = [j for j in jobs if j.get('status') == status]
+    if job_type:
+        jobs = [j for j in jobs if j.get('job_type') == job_type]
+    
+    # Apply limit
+    jobs = jobs[:limit]
+    
+    return {
+        "data": jobs,
+        "filters": {
+            "document_id": document_id,
+            "status": status,
+            "job_type": job_type
+        },
+        "pagination": {
+            "total": len(jobs),
+            "limit": limit,
+            "returned": len(jobs)
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+@app.post("/api/v1/documents/{document_id}/jobs")
+async def create_document_jobs(
+    document_id: int,
+    job_types: Optional[list] = Body(None, description="List of job types to create"),
+    state = Depends(get_app_state)
+):
+    """
+    Create jobs for a document.
+    
+    Job types (if not specified, creates default set):
+    - extract_text: Extract text content
+    - extract_entities: Identify entities in text
+    - extract_events: Extract date/time references
+    - extract_locations: Extract location references
+    """
+    try:
+        if state.backend and hasattr(state.backend, 'create_jobs_for_document'):
+            job_ids = state.backend.create_jobs_for_document(document_id, job_types)
+            return {
+                "created": len(job_ids),
+                "job_ids": job_ids,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        else:
+            return {"error": "Job queue not available"}, 503
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 @app.get("/api/v1/timeline")
 async def get_timeline(
     backend: StorageBackend = Depends(get_storage_backend),
