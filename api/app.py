@@ -217,6 +217,38 @@ async def get_stats(
     }
 
 
+@app.get("/api/v1/documents/status")
+async def get_document_status_counts():
+    """
+    Get count of documents grouped by processing status.
+    
+    Document Lifecycle States:
+    - DISCOVERED: File detected, metadata not yet indexed
+    - METADATA_INDEXED: Metadata extracted, content not yet processed
+    - CONTENT_EXTRACTED: Text content extracted (future phase)
+    - ENTITY_EXTRACTED: Entities identified (future phase)
+    - RELATIONSHIPS_BUILT: Relationships mapped (future phase)
+    - EMBEDDED: Vector embeddings generated (future phase)
+    - COMPLETE: All processing stages complete
+    - FAILED: Processing failed after max retries
+    """
+    state = get_app_state()
+    
+    try:
+        if state.backend and hasattr(state.backend, 'get_document_status_counts'):
+            status_counts = state.backend.get_document_status_counts()
+        else:
+            status_counts = {}
+    except Exception:
+        status_counts = {}
+    
+    return {
+        "status_counts": status_counts,
+        "total": sum(status_counts.values()),
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
 @app.get("/api/v1/timeline")
 async def get_timeline(
     backend: StorageBackend = Depends(get_storage_backend),
