@@ -9,16 +9,19 @@ except ImportError:
     StorageBackend = None
 
 
-def get_storage_backend() -> Generator[StorageBackend, None, None]:
+def get_storage_backend() -> Generator:
     """
     Dependency that provides the storage backend.
     
-    For Phase 1, returns a mock backend.
-    In production, this would connect to PostgreSQL.
+    Returns the actual backend from app_state when available,
+    falling back to MockBackend if not initialized or if DATABASE_URL is not set.
     """
-    # For Phase 1, return a simple mock backend
-    # This will be replaced with actual backend in later phases
-    yield MockBackend()
+    from api.app_state import get_app_state
+    state = get_app_state()
+    if state.backend is not None:
+        yield state.backend
+    else:
+        yield MockBackend()
 
 
 class MockBackend:

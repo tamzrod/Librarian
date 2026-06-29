@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_storage_backend, MockBackend
+from storage.backend import StorageBackend
 
 
 router = APIRouter(prefix="/questions", tags=["questions"])
@@ -80,7 +81,7 @@ def generate_question_id() -> str:
 )
 async def ask_question(
     request: QuestionRequest,
-    backend: MockBackend = Depends(get_storage_backend)
+    backend: StorageBackend = Depends(get_storage_backend)
 ) -> QuestionResponse:
     """
     Ask a question about the library.
