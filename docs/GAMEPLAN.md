@@ -42,7 +42,35 @@
 - [ ] Telemetry data handling
 - [ ] Assistant/Agent integration
 
-### Parser Domains (Implemented + Planned)
+**Phase 7: Plugin Ecosystem** 📋 PLANNED
+- [ ] Plugin framework with standard interfaces
+- [ ] CAD parser (DWG, DXF, STEP)
+- [ ] Outlook PST parser
+- [ ] WhatsApp parser
+- [ ] Drone telemetry parser
+- [ ] Vehicle telemetry parser
+- [ ] Plugin marketplace
+
+### Plugin Contract
+
+Plugins produce **evidence**, not answers. The evidence pipeline:
+
+```
+Artifact
+    ↓
+Parser
+    ↓
+Evidence
+
+Evidence Types:
+├── Documents     (indexed files with content)
+├── Entities      (named things: people, orgs, devices)
+├── Events        (timestamped occurrences)
+├── Locations     (geographic points or named places)
+├── Relationships (connections between entities)
+```
+
+Plugins do not answer questions. They extract structured evidence from artifacts. The evidence is assembled and presented to an AI agent for reasoning.
 
 | Domain | Entities | Evidence Types | Status |
 |--------|----------|----------------|--------|

@@ -1,0 +1,9 @@
+# Librarian GUI Requirements
+# GUI communicates exclusively via REST API - no direct imports from core, storage, parsers, or extractors
+
+# Try PySide6 first (preferred), fallback to tkinter (built-in)
+PySide6>=6.5.0
+# If PySide6 is not available, the application will use tkinter automatically
+
+# HTTP client
+requests>=2.31.0

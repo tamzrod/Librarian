@@ -51,3 +51,33 @@ Librarian is an evidence retrieval and context reconstruction engine operating o
 - [ ] Spreadsheet data extraction
 - [ ] Database schema extraction
 - [ ] Telemetry data parsing
+
+### Community Objectives
+
+#### Community Ingestion Plugins
+
+Enable community contributions for specialized artifact types:
+
+- Plugin framework with standard interfaces
+- Versioned plugin API for stability
+- Sandboxed execution for security
+- Plugin registry for discovery
+
+#### Third-Party Parser Ecosystem
+
+Support specialized parsers for domain-specific artifacts:
+
+- CAD drawings (DWG, DXF, STEP)
+- Email archives (PST, MBOX)
+- Messaging data (WhatsApp, Signal)
+- Telemetry data (drone logs, vehicle data)
+- Enterprise formats (SAP, Salesforce exports)
+
+#### Plugin Marketplace
+
+Facilitate discovery and distribution of community parsers:
+
+- Curated plugin directory
+- Version compatibility checks
+- Community ratings and reviews
+- One-click installation
