@@ -26,8 +26,8 @@ services:
 
   librarian-api:
     build:
-      context: ../..
-      dockerfile: deploy/docker/windows/Dockerfile
+      context: ../../..
+      dockerfile: Dockerfile
     container_name: librarian-api
     restart: unless-stopped
     environment:

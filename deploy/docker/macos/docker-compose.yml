@@ -26,7 +26,7 @@ services:
 
   librarian-api:
     build:
-      context: ../..
+      context: ../../..
       dockerfile: Dockerfile
     container_name: librarian-api
     restart: unless-stopped
