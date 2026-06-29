@@ -198,34 +198,39 @@ class PostgresBackend(StorageBackend):
             return False
 
     def save_document(self, document):
-        """Save a document to the database."""
+        """Save a document to the database.
+        
+        Canonical schema columns: path, extension, sha256, file_size, 
+        character_count, parser, modified_time, indexed_at
+        """
         conn = self._get_connection()
         cur = conn.cursor()
         
-        # Extract name from path if not provided
         path = document.get('path', '')
-        name = document.get('name') or os.path.basename(path) if path else ''
+        
+        # Map legacy input keys to canonical schema columns
+        # hash → sha256, size_bytes → file_size
+        sha256 = document.get('sha256') or document.get('hash')
+        file_size = document.get('file_size') or document.get('size_bytes')
+        character_count = document.get('character_count')
+        modified_time = document.get('modified_time')
+        parser = document.get('parser')
+        extension = document.get('extension')
         
         cur.execute(
             """
-            INSERT INTO documents (path, name, extension, size_bytes, hash, parser)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (path) DO UPDATE SET
-                name = EXCLUDED.name,
                 extension = EXCLUDED.extension,
-                size_bytes = EXCLUDED.size_bytes,
-                hash = EXCLUDED.hash,
-                parser = EXCLUDED.parser
+                sha256 = EXCLUDED.sha256,
+                file_size = EXCLUDED.file_size,
+                character_count = EXCLUDED.character_count,
+                parser = EXCLUDED.parser,
+                modified_time = EXCLUDED.modified_time
             RETURNING id
             """,
-            (
-                path,
-                name,
-                document.get('extension'),
-                document.get('size_bytes') or document.get('file_size'),
-                document.get('sha256') or document.get('hash'),
-                document.get('parser')
-            )
+            (path, extension, sha256, file_size, character_count, parser, modified_time)
         )
         document_id = cur.fetchone()[0]
         conn.commit()
@@ -234,25 +239,35 @@ class PostgresBackend(StorageBackend):
         return document_id
 
     def save_entities(self, document_id, entities):
+        """Save entities to the database.
+        
+        Canonical schema columns: value, type, normalized_value
+        Supports legacy 'name' key mapped to 'value'.
+        """
         conn = self._get_connection()
         cur = conn.cursor()
         for entity in entities:
+            # Map legacy 'name' to canonical 'value'
+            value = entity.get('value') or entity.get('name')
+            entity_type = entity.get('type')
+            normalized_value = entity.get('normalized_value')
+            
             cur.execute(
                 """
-                INSERT INTO entities (name, type, normalized_value)
+                INSERT INTO entities (value, type, normalized_value)
                 VALUES (%s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
-                (entity.get('name') or entity.get('value'), entity.get('type'), entity.get('normalized_value'))
+                (value, entity_type, normalized_value)
             )
             result = cur.fetchone()
             if result:
                 entity_id = result[0]
             else:
                 cur.execute(
-                    "SELECT id FROM entities WHERE name = %s AND type = %s",
-                    (entity.get('name') or entity.get('value'), entity.get('type'))
+                    "SELECT id FROM entities WHERE value = %s AND type = %s",
+                    (value, entity_type)
                 )
                 entity_id = cur.fetchone()[0]
             
@@ -342,7 +357,11 @@ class PostgresBackend(StorageBackend):
         raise NotImplementedError()
 
     def search_documents(self, query=None, entity=None, date=None, month=None, location=None):
-        """Search documents with optional filters."""
+        """Search documents with optional filters.
+        
+        Canonical schema columns: path, extension, sha256, file_size, 
+        character_count, parser, modified_time, indexed_at
+        """
         conn = self._get_connection()
         cur = conn.cursor()
         
@@ -351,8 +370,8 @@ class PostgresBackend(StorageBackend):
         
         # Query text search
         if query:
-            conditions.append("(d.path ILIKE %s OR d.name ILIKE %s OR d.extension ILIKE %s)")
-            params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
+            conditions.append("(d.path ILIKE %s OR d.extension ILIKE %s)")
+            params.extend([f"%{query}%", f"%{query}%"])
         
         # Entity filter - join with document_entities
         if entity:
@@ -386,8 +405,10 @@ class PostgresBackend(StorageBackend):
             """)
             params.append(f"%{location}%")
         
-        # Build query
-        sql = "SELECT d.id, d.path, d.name, d.extension, d.size_bytes, d.indexed_at FROM documents d"
+        # Build query - use canonical column names
+        sql = """SELECT d.id, d.path, d.extension, d.sha256, d.file_size, 
+                        d.character_count, d.parser, d.modified_time, d.indexed_at 
+                 FROM documents d"""
         
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
@@ -402,10 +423,13 @@ class PostgresBackend(StorageBackend):
             results.append({
                 'id': row[0],
                 'path': row[1],
-                'name': row[2],
-                'extension': row[3],
-                'size_bytes': row[4],
-                'indexed_at': row[5]
+                'extension': row[2],
+                'sha256': row[3],
+                'file_size': row[4],
+                'character_count': row[5],
+                'parser': row[6],
+                'modified_time': row[7],
+                'indexed_at': row[8]
             })
         
         cur.close()
@@ -413,7 +437,10 @@ class PostgresBackend(StorageBackend):
         return results
 
     def search_entities(self, entity_type=None, value=None):
-        """Search entities with optional filters."""
+        """Search entities with optional filters.
+        
+        Canonical schema columns: value, type, normalized_value
+        """
         conn = self._get_connection()
         cur = conn.cursor()
         
@@ -425,11 +452,11 @@ class PostgresBackend(StorageBackend):
             params.append(entity_type)
         
         if value:
-            conditions.append("e.name ILIKE %s")
+            conditions.append("e.value ILIKE %s")
             params.append(f"%{value}%")
         
         sql = """
-            SELECT e.id, e.type, e.name, e.normalized_value, 
+            SELECT e.id, e.type, e.value, e.normalized_value, 
                    COUNT(DISTINCT de.document_id) as doc_count
             FROM entities e
             LEFT JOIN document_entities de ON e.id = de.entity_id
@@ -438,8 +465,8 @@ class PostgresBackend(StorageBackend):
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         
-        sql += " GROUP BY e.id, e.type, e.name, e.normalized_value"
-        sql += " ORDER BY doc_count DESC, e.name LIMIT 100"
+        sql += " GROUP BY e.id, e.type, e.value, e.normalized_value"
+        sql += " ORDER BY doc_count DESC, e.value LIMIT 100"
         
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -449,7 +476,7 @@ class PostgresBackend(StorageBackend):
             results.append({
                 'id': row[0],
                 'type': row[1],
-                'name': row[2],
+                'value': row[2],
                 'normalized_value': row[3],
                 'document_count': row[4]
             })
