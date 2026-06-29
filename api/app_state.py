@@ -30,6 +30,10 @@ class AppState:
         self._initial_scan_complete: bool = False
         self._initial_scan_thread: Optional[threading.Thread] = None
         self._last_scan: Optional[datetime] = None
+        # Persistence status tracking
+        self._persistence_errors: list = []
+        self._persistence_available: bool = False
+        self._schema_ready: bool = False
     
     @property
     def watcher_active(self) -> bool:
@@ -45,6 +49,44 @@ class AppState:
             return len(self.backend.search_documents())
         except Exception:
             return 0
+    
+    @property
+    def database_connected(self) -> bool:
+        """Check if database connection is established."""
+        return self.backend is not None and hasattr(self.backend, '_get_connection')
+    
+    @property
+    def persistence_healthy(self) -> bool:
+        """Check if persistence layer is fully operational."""
+        return self._persistence_available and self._schema_ready
+    
+    @property
+    def overall_status(self) -> str:
+        """Get overall system status."""
+        if self.persistence_healthy:
+            return "healthy"
+        elif self._persistence_errors:
+            return "degraded"
+        else:
+            return "starting"
+    
+    def record_persistence_error(self, error: str, operation: str = "unknown"):
+        """Record a persistence error for observability."""
+        error_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "operation": operation,
+            "error": str(error)
+        }
+        self._persistence_errors.append(error_entry)
+        # Keep only last 100 errors to prevent memory issues
+        if len(self._persistence_errors) > 100:
+            self._persistence_errors = self._persistence_errors[-100:]
+        logger.error(f"PERSISTENCE ERROR [{operation}]: {error}")
+    
+    def clear_persistence_errors(self):
+        """Clear recorded persistence errors after successful recovery."""
+        self._persistence_errors = []
+        logger.info("Persistence errors cleared after successful recovery")
     
     def initialize_backend(self) -> bool:
         """Initialize the PostgreSQL backend."""
@@ -65,23 +107,43 @@ class AppState:
                     )
                     # Test connection
                     self.backend._get_connection().close()
+                    self._persistence_available = True
                     logger.info(f"PostgreSQL backend initialized (host={host})")
+                    
+                    # Ensure schema exists
+                    if self.backend.ensure_schema():
+                        self._schema_ready = True
+                        logger.info("Database schema verified and ready")
+                    else:
+                        self._schema_ready = False
+                        self.record_persistence_error(
+                            "Schema initialization failed - tables may not exist",
+                            "ensure_schema"
+                        )
+                        logger.error("Database schema could not be verified. Persistence may be degraded.")
+                    
                     return True
                 else:
                     logger.warning(f"Could not parse DATABASE_URL: {database_url}")
                     from api.dependencies import MockBackend
                     self.backend = MockBackend()
+                    self._persistence_available = False
+                    self._schema_ready = False
                     return True
             else:
                 logger.warning("DATABASE_URL not set, using mock backend")
                 from api.dependencies import MockBackend
                 self.backend = MockBackend()
+                self._persistence_available = False
+                self._schema_ready = False
                 return True
         except Exception as e:
-            logger.warning(f"Failed to initialize PostgreSQL backend: {e}")
-            logger.info("Falling back to mock backend for Phase 1")
+            logger.error(f"Failed to initialize PostgreSQL backend: {e}")
+            self.record_persistence_error(str(e), "initialize_backend")
             from api.dependencies import MockBackend
             self.backend = MockBackend()
+            self._persistence_available = False
+            self._schema_ready = False
             return True
     
     def initialize_ingestion(self):
@@ -138,6 +200,8 @@ class AppState:
                     
                     # Index documents into backend
                     if self.backend and hasattr(self.backend, 'save_document'):
+                        saved_count = 0
+                        failed_count = 0
                         for doc in self.librarian.index:
                             try:
                                 self.backend.save_document({
@@ -149,13 +213,23 @@ class AppState:
                                     'character_count': doc.get('character_count'),
                                     'parser': doc.get('parser')
                                 })
+                                saved_count += 1
                             except Exception as e:
-                                logger.debug(f"Error saving document {doc.get('path')}: {e}")
+                                failed_count += 1
+                                self.record_persistence_error(
+                                    f"Failed to save document {doc.get('path')}: {e}",
+                                    "save_document"
+                                )
+                        if failed_count > 0:
+                            logger.error(f"Initial scan: saved {saved_count} documents, {failed_count} failed to persist")
+                        else:
+                            logger.info(f"Initial scan: all {saved_count} documents persisted successfully")
                 else:
                     logger.warning(f"Library path does not exist for initial scan: {library_path}")
                     
             except Exception as e:
                 logger.error(f"Error during initial scan: {e}")
+                self.record_persistence_error(str(e), "initial_scan")
             finally:
                 self._initial_scan_complete = True
         

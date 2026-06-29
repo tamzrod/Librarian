@@ -1,6 +1,9 @@
 import os
+import logging
 import psycopg
 from .backend import StorageBackend
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresBackend(StorageBackend):
@@ -12,6 +15,7 @@ class PostgresBackend(StorageBackend):
         self.user = user
         self.password = password
         self._connection = None
+        self._schema_verified = False
 
     def _get_connection(self):
         return psycopg.connect(
@@ -21,6 +25,177 @@ class PostgresBackend(StorageBackend):
             user=self.user,
             password=self.password
         )
+
+    def _check_tables_exist(self) -> bool:
+        """Check if core tables exist in the database."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'documents'
+                )
+            """)
+            exists = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return exists
+        except Exception as e:
+            logger.error(f"Error checking table existence: {e}")
+            return False
+    
+    def _ensure_migrations_table(self) -> bool:
+        """Ensure the schema_migrations tracking table exists."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    id SERIAL PRIMARY KEY,
+                    migration_name VARCHAR(255) NOT NULL UNIQUE,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error creating migrations table: {e}")
+            return False
+    
+    def _get_applied_migrations(self) -> set:
+        """Get set of already applied migration names."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT migration_name FROM schema_migrations")
+            migrations = {row[0] for row in cur.fetchall()}
+            cur.close()
+            conn.close()
+            return migrations
+        except Exception as e:
+            logger.warning(f"Could not get applied migrations: {e}")
+            return set()
+    
+    def _record_migration(self, migration_name: str) -> bool:
+        """Record that a migration has been applied."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO schema_migrations (migration_name) VALUES (%s) ON CONFLICT DO NOTHING",
+                (migration_name,)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error recording migration: {e}")
+            return False
+
+    def _get_schema_path(self) -> str:
+        """Get the path to the schema.sql file."""
+        # Try multiple locations for the schema file
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), 'migrations', 'schema.sql'),
+            '/app/storage/migrations/schema.sql',
+            os.path.join(os.getcwd(), 'storage', 'migrations', 'schema.sql'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        return possible_paths[0]  # Return first option for error message
+
+    def ensure_schema(self) -> bool:
+        """
+        Ensure database schema exists, creating it if necessary.
+        
+        Uses migration tracking to prevent duplicate execution and
+        support future schema upgrades.
+        
+        Returns:
+            True if schema is ready, False on failure
+        """
+        if self._schema_verified:
+            return True
+        
+        try:
+            # First, ensure migrations table exists
+            self._ensure_migrations_table()
+            
+            # Check for existing initial migration
+            applied = self._get_applied_migrations()
+            
+            # Check if tables already exist
+            if self._check_tables_exist():
+                # Tables exist - check if we have migration record
+                if '001_initial' not in applied:
+                    # Tables exist but no migration record - record it
+                    self._record_migration('001_initial')
+                logger.info("Database schema already exists")
+                self._schema_verified = True
+                return True
+            
+            # Schema doesn't exist, create it
+            logger.warning("Database schema not found, creating...")
+            
+            schema_path = self._get_schema_path()
+            if not os.path.exists(schema_path):
+                logger.error(f"Schema file not found at: {schema_path}")
+                return False
+            
+            # Read and execute schema
+            with open(schema_path, 'r') as f:
+                schema_sql = f.read()
+            
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Execute each statement separately
+            statements = []
+            current_stmt = []
+            for line in schema_sql.split('\n'):
+                stripped = line.strip()
+                # Skip comments and empty lines
+                if not stripped or stripped.startswith('--'):
+                    continue
+                current_stmt.append(line)
+                if stripped.endswith(';'):
+                    statements.append('\n'.join(current_stmt))
+                    current_stmt = []
+            
+            # Execute each statement
+            for stmt in statements:
+                stmt = stmt.strip()
+                if stmt:
+                    try:
+                        cur.execute(stmt)
+                    except Exception as e:
+                        # Log but continue - some statements might fail on re-run
+                        logger.debug(f"Statement execution note: {e}")
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            # Verify schema was created
+            if self._check_tables_exist():
+                logger.info("Database schema created successfully")
+                # Record the migration
+                self._record_migration('001_initial')
+                self._schema_verified = True
+                return True
+            else:
+                logger.error("Schema creation failed - tables still don't exist")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error ensuring schema: {e}")
+            return False
 
     def save_document(self, document):
         """Save a document to the database."""

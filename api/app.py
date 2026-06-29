@@ -17,6 +17,7 @@ import uuid
 
 from api.routes import questions, collections
 from api.dependencies import get_storage_backend, MockBackend
+from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
 
 
@@ -102,21 +103,46 @@ async def get_status():
     Get API status with library statistics.
     
     Returns counts for documents, entities, events, locations,
-    as well as watcher status and last scan time.
+    as well as watcher status, last scan time, and database health.
     """
     state = get_app_state()
     
+    # Determine database status
+    db_connected = state.database_connected
+    db_schema_ready = state._schema_ready
+    db_persistence_available = state._persistence_available
+    
+    # Get document counts, tracking any errors
     try:
         doc_count = len(state.backend.search_documents()) if state.backend else 0
         entity_count = len(state.backend.search_entities()) if state.backend else 0
         event_count = len(state.backend.search_events()) if state.backend else 0
         location_count = len(state.backend.search_locations()) if state.backend else 0
-    except Exception:
+        db_error = None
+    except Exception as e:
         doc_count = entity_count = event_count = location_count = 0
+        db_error = str(e)
+        state.record_persistence_error(db_error, "status_query")
+    
+    # Determine overall status
+    if db_persistence_available and db_schema_ready and not db_error:
+        overall_status = "healthy"
+    elif db_persistence_available and not db_error:
+        overall_status = "degraded"  # Connected but schema issues
+    elif db_persistence_available and db_error:
+        overall_status = "degraded"  # Connected but query failed
+    else:
+        overall_status = "degraded"  # Persistence unavailable
     
     return {
-        "status": "healthy",
+        "status": overall_status,
         "library_root": state.library_root,
+        "database": {
+            "connected": db_connected,
+            "schema_ready": db_schema_ready,
+            "persistence_available": db_persistence_available,
+            "error": db_error
+        },
         "documents": {
             "total": doc_count,
             "indexed": doc_count
@@ -133,13 +159,14 @@ async def get_status():
         "watcher_active": state.watcher_active,
         "initial_scan_complete": state._initial_scan_complete,
         "last_scan": state._last_scan.isoformat() + "Z" if state._last_scan else None,
+        "persistence_errors": state._persistence_errors[-5:] if state._persistence_errors else [],
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
 
 @app.get("/api/v1/stats")
 async def get_stats(
-    backend: MockBackend = Depends(get_storage_backend)
+    backend: StorageBackend = Depends(get_storage_backend)
 ):
     """
     Get library statistics.
@@ -159,6 +186,11 @@ async def get_stats(
     
     return {
         "library_root": state.library_root,
+        "database": {
+            "connected": state.database_connected,
+            "schema_ready": state._schema_ready,
+            "persistence_available": state._persistence_available
+        },
         "documents": {
             "total": doc_count,
             "indexed": doc_count
@@ -187,7 +219,7 @@ async def get_stats(
 
 @app.get("/api/v1/timeline")
 async def get_timeline(
-    backend: MockBackend = Depends(get_storage_backend),
+    backend: StorageBackend = Depends(get_storage_backend),
     start: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     entity: Optional[str] = Query(None, description="Filter by entity"),
