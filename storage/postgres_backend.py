@@ -304,6 +304,51 @@ class PostgresBackend(StorageBackend):
                 
                 self._record_migration('004_document_jobs')
             
+            # Migration 005: Add evidence_lineage table for provenance tracking
+            if '005_evidence_lineage' not in self._get_applied_migrations():
+                logger.info("Running migration: creating evidence_lineage table")
+                
+                # Check if table exists
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'evidence_lineage'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        CREATE TABLE evidence_lineage (
+                            id SERIAL PRIMARY KEY,
+                            entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+                            artifact_path TEXT,
+                            plugin_name VARCHAR(100),
+                            confidence DOUBLE PRECISION DEFAULT 1.0,
+                            processing_time_ms INTEGER,
+                            version VARCHAR(50),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Create indexes
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_entity 
+                        ON evidence_lineage(entity_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_document 
+                        ON evidence_lineage(document_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_plugin 
+                        ON evidence_lineage(plugin_name)
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Migration 005 completed: evidence_lineage table created")
+                else:
+                    logger.info("Migration 005 skipped: evidence_lineage table already exists")
+                
+                self._record_migration('005_evidence_lineage')
+            
             cur.close()
             conn.close()
             return True
@@ -781,6 +826,178 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting queued jobs count: {e}")
             return 0
+    
+    # =========================================================================
+    # Evidence Lineage Methods (Phase 5)
+    # =========================================================================
+    
+    def record_evidence(self, entity_id: int, document_id: int, 
+                        artifact_path: str = None, plugin_name: str = None,
+                        confidence: float = 1.0, processing_time_ms: int = None,
+                        version: str = None) -> int:
+        """Record evidence lineage for an extracted entity.
+        
+        Tracks: entity → derived_from → document → derived_from → artifact
+        
+        Args:
+            entity_id: ID of the entity
+            document_id: ID of the source document
+            artifact_path: Original file path
+            plugin_name: Name of the extractor plugin
+            confidence: Extraction confidence (0.0-1.0)
+            processing_time_ms: Time taken to extract
+            version: Plugin version for reproducibility
+            
+        Returns:
+            Evidence record ID
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO evidence_lineage 
+                (entity_id, document_id, artifact_path, plugin_name, confidence, processing_time_ms, version, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (entity_id, document_id, artifact_path, plugin_name, confidence, processing_time_ms, version, created_at)
+            )
+            evidence_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            return evidence_id
+        except Exception as e:
+            logger.error(f"Error recording evidence: {e}")
+            return None
+    
+    def record_evidence_batch(self, document_id: int, artifact_path: str,
+                               plugin_name: str, entities: list,
+                               processing_time_ms: int = None,
+                               version: str = None) -> int:
+        """Record evidence for multiple entities extracted from a document.
+        
+        Args:
+            document_id: ID of the source document
+            artifact_path: Original file path
+            plugin_name: Name of the extractor plugin
+            entities: List of entity dicts with 'id' field
+            processing_time_ms: Time taken to extract
+            version: Plugin version
+            
+        Returns:
+            Number of evidence records created
+        """
+        count = 0
+        for entity in entities:
+            entity_id = entity.get('id')
+            if entity_id:
+                evidence_id = self.record_evidence(
+                    entity_id=entity_id,
+                    document_id=document_id,
+                    artifact_path=artifact_path,
+                    plugin_name=plugin_name,
+                    confidence=entity.get('confidence', 1.0),
+                    processing_time_ms=processing_time_ms,
+                    version=version
+                )
+                if evidence_id:
+                    count += 1
+        return count
+    
+    def get_entity_evidence(self, entity_id: int) -> list:
+        """Get all evidence records for an entity.
+        
+        Args:
+            entity_id: ID of the entity
+            
+        Returns:
+            List of evidence records with document and artifact info
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT e.id, e.entity_id, e.document_id, d.path as document_path,
+                       e.artifact_path, e.plugin_name, e.confidence, 
+                       e.processing_time_ms, e.version, e.created_at
+                FROM evidence_lineage e
+                JOIN documents d ON e.document_id = d.id
+                WHERE e.entity_id = %s
+                ORDER BY e.created_at DESC
+                """,
+                (entity_id,)
+            )
+            evidence = []
+            for row in cur.fetchall():
+                evidence.append({
+                    'id': row[0],
+                    'entity_id': row[1],
+                    'document_id': row[2],
+                    'document_path': row[3],
+                    'artifact_path': row[4],
+                    'plugin_name': row[5],
+                    'confidence': row[6],
+                    'processing_time_ms': row[7],
+                    'version': row[8],
+                    'created_at': row[9]
+                })
+            cur.close()
+            conn.close()
+            return evidence
+        except Exception as e:
+            logger.error(f"Error getting entity evidence: {e}")
+            return []
+    
+    def get_document_evidence(self, document_id: int) -> list:
+        """Get all evidence records for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            List of evidence records with entity info
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT e.id, e.entity_id, en.value as entity_value, en.type as entity_type,
+                       e.document_id, e.artifact_path, e.plugin_name, e.confidence,
+                       e.processing_time_ms, e.version, e.created_at
+                FROM evidence_lineage e
+                JOIN entities en ON e.entity_id = en.id
+                WHERE e.document_id = %s
+                ORDER BY e.created_at DESC
+                """,
+                (document_id,)
+            )
+            evidence = []
+            for row in cur.fetchall():
+                evidence.append({
+                    'id': row[0],
+                    'entity_id': row[1],
+                    'entity_value': row[2],
+                    'entity_type': row[3],
+                    'document_id': row[4],
+                    'artifact_path': row[5],
+                    'plugin_name': row[6],
+                    'confidence': row[7],
+                    'processing_time_ms': row[8],
+                    'version': row[9],
+                    'created_at': row[10]
+                })
+            cur.close()
+            conn.close()
+            return evidence
+        except Exception as e:
+            logger.error(f"Error getting document evidence: {e}")
+            return []
     
     def save_entities(self, document_id, entities):
         """Save entities to the database.

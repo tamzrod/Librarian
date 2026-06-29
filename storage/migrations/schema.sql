@@ -66,6 +66,28 @@ CREATE TABLE IF NOT EXISTS document_jobs (
 -- FAILED: Job failed after all retries
 -- CANCELLED: Job cancelled by user
 
+-- Evidence lineage table (Phase 5: provenance tracking)
+-- Tracks: entity → derived_from → document → derived_from → artifact
+CREATE TABLE IF NOT EXISTS evidence_lineage (
+    id SERIAL PRIMARY KEY,
+    entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    artifact_path TEXT,
+    plugin_name VARCHAR(100),
+    confidence DOUBLE PRECISION DEFAULT 1.0,
+    processing_time_ms INTEGER,
+    version VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Evidence lineage constants:
+-- entity_id → derived_from → document_id
+-- document_id → derived_from → artifact_path
+-- plugin_name: Source plugin (e.g., 'entity_extractor', 'event_extractor')
+-- confidence: Extraction confidence (0.0-1.0)
+-- processing_time_ms: Time taken to extract
+-- version: Plugin version for reproducibility
+
 -- Entities table
 CREATE TABLE IF NOT EXISTS entities (
     id SERIAL PRIMARY KEY,
@@ -136,6 +158,11 @@ CREATE INDEX IF NOT EXISTS idx_document_jobs_document ON document_jobs(document_
 CREATE INDEX IF NOT EXISTS idx_document_jobs_status ON document_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_document_jobs_type ON document_jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_document_jobs_priority ON document_jobs(priority);
+
+-- Evidence lineage indexes
+CREATE INDEX IF NOT EXISTS idx_evidence_entity ON evidence_lineage(entity_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_document ON evidence_lineage(document_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_plugin ON evidence_lineage(plugin_name);
 
 -- Entities indexes
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
