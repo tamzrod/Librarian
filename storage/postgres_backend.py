@@ -110,6 +110,51 @@ class PostgresBackend(StorageBackend):
                 return path
         return possible_paths[0]  # Return first option for error message
 
+    def _check_unique_constraint_exists(self) -> bool:
+        """Check if the unique constraint on documents.path exists."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_type = 'UNIQUE'
+                AND table_name = 'documents'
+                AND constraint_name LIKE '%path%'
+            """)
+            exists = cur.fetchone() is not None
+            cur.close()
+            conn.close()
+            return exists
+        except Exception as e:
+            logger.debug(f"Error checking unique constraint: {e}")
+            return False
+    
+    def _run_schema_migrations(self) -> bool:
+        """Run additional schema migrations for existing databases."""
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Migration 002: Add unique index on documents.path for UPSERT support
+            # This handles existing databases that don't have the UNIQUE constraint
+            if '002_documents_path_unique' not in self._get_applied_migrations():
+                if not self._check_unique_constraint_exists():
+                    logger.info("Running migration: adding unique index on documents.path")
+                    cur.execute("""
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_path_unique 
+                        ON documents(path)
+                    """)
+                    conn.commit()
+                self._record_migration('002_documents_path_unique')
+                logger.info("Migration 002 completed: documents.path unique index added")
+            
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error running schema migrations: {e}")
+            return False
+
     def ensure_schema(self) -> bool:
         """
         Ensure database schema exists, creating it if necessary.
@@ -132,7 +177,10 @@ class PostgresBackend(StorageBackend):
             
             # Check if tables already exist
             if self._check_tables_exist():
-                # Tables exist - check if we have migration record
+                # Tables exist - run any pending migrations
+                self._run_schema_migrations()
+                
+                # Check if we have migration record
                 if '001_initial' not in applied:
                     # Tables exist but no migration record - record it
                     self._record_migration('001_initial')
@@ -181,6 +229,9 @@ class PostgresBackend(StorageBackend):
             conn.commit()
             cur.close()
             conn.close()
+            
+            # Run any additional migrations after initial schema creation
+            self._run_schema_migrations()
             
             # Verify schema was created
             if self._check_tables_exist():
