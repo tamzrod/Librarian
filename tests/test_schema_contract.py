@@ -372,5 +372,117 @@ class TestLegacyCompatibility:
                 "save_entities should handle legacy 'name' → 'value' mapping"
 
 
+class TestTimestampConversion:
+    """Test that timestamp conversion is implemented for persistence layer."""
+    
+    def test_timestamp_conversion_function_exists(self):
+        """PostgresBackend must have _to_postgres_timestamp function."""
+        content = read_backend_file()
+        assert '_to_postgres_timestamp' in content, \
+            "PostgresBackend must have _to_postgres_timestamp function"
+    
+    def test_save_document_uses_timestamp_conversion(self):
+        """save_document must use _to_postgres_timestamp for modified_time."""
+        content = read_backend_file()
+        match = re.search(r'def save_document\(self.*?\n(.*?)(?=\n    def |\nclass |\Z)', 
+                          content, re.DOTALL)
+        
+        assert match, "save_document method not found"
+        method_body = match.group(1)
+        
+        # Should convert modified_time
+        assert '_to_postgres_timestamp' in method_body, \
+            "save_document must use _to_postgres_timestamp for modified_time"
+    
+    def test_save_events_uses_timestamp_conversion(self):
+        """save_events must use _to_postgres_timestamp for timestamp field."""
+        content = read_backend_file()
+        match = re.search(r'def save_events\(self.*?\n(.*?)(?=\n    def |\nclass |\Z)', 
+                          content, re.DOTALL)
+        
+        if match:
+            method_body = match.group(1)
+            # Should convert timestamp
+            assert '_to_postgres_timestamp' in method_body, \
+                "save_events must use _to_postgres_timestamp for timestamp field"
+    
+    def test_timestamp_conversion_handles_epoch_float(self):
+        """_to_postgres_timestamp must handle Unix epoch floats."""
+        content = read_backend_file()
+        
+        # Check that the function handles floats
+        assert 'fromtimestamp' in content, \
+            "_to_postgres_timestamp should use datetime.fromtimestamp for epoch floats"
+    
+    def test_timestamp_conversion_handles_datetime(self):
+        """_to_postgres_timestamp must handle datetime objects."""
+        content = read_backend_file()
+        
+        # Check that the function handles datetime objects
+        assert 'isinstance(value, datetime)' in content or 'isinstance' in content, \
+            "_to_postgres_timestamp should check isinstance(value, datetime)"
+    
+    def test_timestamp_conversion_handles_none(self):
+        """_to_postgres_timestamp must handle None input."""
+        content = read_backend_file()
+        
+        # Should return None for None input
+        assert 'if value is None' in content or 'value is None' in content, \
+            "_to_postgres_timestamp should handle None input"
+
+
+class TestTimestampContract:
+    """Test timestamp representation across the codebase."""
+    
+    def test_modified_time_is_timestamp_in_schema(self):
+        """documents.modified_time must be TIMESTAMP in schema."""
+        schema_path = os.path.join(os.path.dirname(__file__), 
+                                   '..', 'storage', 'migrations', 'schema.sql')
+        with open(schema_path, 'r') as f:
+            content = f.read()
+        
+        # Find documents table and check modified_time column type
+        match = re.search(r'CREATE\s+TABLE\s+.*?documents\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+                          content, re.IGNORECASE | re.DOTALL)
+        assert match, "documents table definition not found"
+        
+        table_def = match.group(1)
+        # modified_time should be TIMESTAMP
+        assert 'modified_time' in table_def.lower(), \
+            "documents table must have modified_time column"
+    
+    def test_events_timestamp_is_timestamp_in_schema(self):
+        """events.timestamp must be TIMESTAMP in schema."""
+        schema_path = os.path.join(os.path.dirname(__file__), 
+                                   '..', 'storage', 'migrations', 'schema.sql')
+        with open(schema_path, 'r') as f:
+            content = f.read()
+        
+        # Find events table
+        match = re.search(r'CREATE\s+TABLE\s+.*?events\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+                          content, re.IGNORECASE | re.DOTALL)
+        assert match, "events table definition not found"
+        
+        table_def = match.group(1)
+        assert 'timestamp' in table_def.lower(), \
+            "events table must have timestamp column"
+    
+    def test_indexed_at_is_timestamp_in_schema(self):
+        """documents.indexed_at must be TIMESTAMP in schema."""
+        schema_path = os.path.join(os.path.dirname(__file__), 
+                                   '..', 'storage', 'migrations', 'schema.sql')
+        with open(schema_path, 'r') as f:
+            content = f.read()
+        
+        # Find documents table and check indexed_at column
+        match = re.search(r'CREATE\s+TABLE\s+.*?documents\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+                          content, re.IGNORECASE | re.DOTALL)
+        assert match, "documents table definition not found"
+        
+        table_def = match.group(1)
+        assert 'indexed_at' in table_def.lower(), \
+            "documents table must have indexed_at column"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
