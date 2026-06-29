@@ -1,9 +1,9 @@
 import os
-from indexing.scanner import parse_file
-from indexing.chunker import chunk_text
-from indexing.indexer import index_document
-from indexing.persistence import save_index, load_index
-from indexing.retriever import search_documents
+from ingestion.scanner import parse_file
+from ingestion.chunker import chunk_text
+from ingestion.indexer import index_document
+from ingestion.persistence import save_index, load_index
+from ingestion.retriever import search_documents
 
 
 SAMPLE_DIR = "samples/structured"
