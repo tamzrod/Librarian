@@ -52,22 +52,26 @@ class AppState:
             database_url = os.environ.get("DATABASE_URL")
             if database_url:
                 # Parse DATABASE_URL: postgresql://user:pass@host:port/dbname
-                parts = database_url.replace("postgresql://", "").split("@")
-                user_pass = parts[0].split(":")
-                host_db = parts[1].split("/")
-                host_port = host_db[0].split(":")
-                
-                self.backend = PostgresBackend(
-                    host=host_port[0],
-                    port=int(host_port[1]) if len(host_port) > 1 else 5432,
-                    dbname=host_db[1],
-                    user=user_pass[0],
-                    password=user_pass[1]
-                )
-                # Test connection
-                self.backend._get_connection().close()
-                logger.info("PostgreSQL backend initialized")
-                return True
+                import re
+                match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', database_url)
+                if match:
+                    user, password, host, port, dbname = match.groups()
+                    self.backend = PostgresBackend(
+                        host=host,
+                        port=int(port),
+                        dbname=dbname,
+                        user=user,
+                        password=password
+                    )
+                    # Test connection
+                    self.backend._get_connection().close()
+                    logger.info(f"PostgreSQL backend initialized (host={host})")
+                    return True
+                else:
+                    logger.warning(f"Could not parse DATABASE_URL: {database_url}")
+                    from api.dependencies import MockBackend
+                    self.backend = MockBackend()
+                    return True
             else:
                 logger.warning("DATABASE_URL not set, using mock backend")
                 from api.dependencies import MockBackend
