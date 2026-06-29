@@ -1,0 +1,25 @@
+# Librarian API Requirements
+# Evidence retrieval engine for bounded file collections
+
+# Web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# Data validation
+pydantic>=2.0.0
+
+# Database
+psycopg>=3.1.0
+psycopg-binary>=3.1.0
+
+# HTTP client
+requests>=2.31.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Configuration
+PyYAML>=6.0
+
+# Date/time utilities
+python-dateutil>=2.8.0
