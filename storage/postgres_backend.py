@@ -258,6 +258,97 @@ class PostgresBackend(StorageBackend):
                 self._record_migration('003_document_lifecycle')
                 logger.info("Migration 003 completed: document lifecycle columns added")
             
+            # Migration 004: Add document_jobs table for job queue
+            if '004_document_jobs' not in self._get_applied_migrations():
+                logger.info("Running migration: creating document_jobs table")
+                
+                # Check if table exists
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'document_jobs'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        CREATE TABLE document_jobs (
+                            id SERIAL PRIMARY KEY,
+                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+                            job_type VARCHAR(100) NOT NULL,
+                            priority INTEGER DEFAULT 0,
+                            status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            started_at TIMESTAMP,
+                            completed_at TIMESTAMP,
+                            worker_id VARCHAR(100),
+                            error_message TEXT
+                        )
+                    """)
+                    
+                    # Create indexes
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_document 
+                        ON document_jobs(document_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_status 
+                        ON document_jobs(status)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_type 
+                        ON document_jobs(job_type)
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Migration 004 completed: document_jobs table created")
+                else:
+                    logger.info("Migration 004 skipped: document_jobs table already exists")
+                
+                self._record_migration('004_document_jobs')
+            
+            # Migration 005: Add evidence_lineage table for provenance tracking
+            if '005_evidence_lineage' not in self._get_applied_migrations():
+                logger.info("Running migration: creating evidence_lineage table")
+                
+                # Check if table exists
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'evidence_lineage'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        CREATE TABLE evidence_lineage (
+                            id SERIAL PRIMARY KEY,
+                            entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+                            artifact_path TEXT,
+                            plugin_name VARCHAR(100),
+                            confidence DOUBLE PRECISION DEFAULT 1.0,
+                            processing_time_ms INTEGER,
+                            version VARCHAR(50),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Create indexes
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_entity 
+                        ON evidence_lineage(entity_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_document 
+                        ON evidence_lineage(document_id)
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_evidence_plugin 
+                        ON evidence_lineage(plugin_name)
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Migration 005 completed: evidence_lineage table created")
+                else:
+                    logger.info("Migration 005 skipped: evidence_lineage table already exists")
+                
+                self._record_migration('005_evidence_lineage')
+            
             cur.close()
             conn.close()
             return True
@@ -498,6 +589,415 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting document status counts: {e}")
             return {}
+    
+    # =========================================================================
+    # Job Queue Methods (Phase 2)
+    # =========================================================================
+    
+    def create_job(self, document_id: int, job_type: str, priority: int = 0) -> int:
+        """Create a new job for a document.
+        
+        Args:
+            document_id: ID of the document to process
+            job_type: Type of job (compute_sha256, extract_text, extract_entities, etc.)
+            priority: Job priority (higher = more important)
+            
+        Returns:
+            Job ID if created, None on failure
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
+                VALUES (%s, %s, %s, 'QUEUED', %s)
+                RETURNING id
+                """,
+                (document_id, job_type, priority, created_at)
+            )
+            job_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            logger.info(f"Created job {job_id}: {job_type} for document {document_id}")
+            return job_id
+        except Exception as e:
+            logger.error(f"Error creating job: {e}")
+            return None
+    
+    def create_jobs_for_document(self, document_id: int, job_types: list = None) -> list:
+        """Create multiple jobs for a document.
+        
+        Args:
+            document_id: ID of the document
+            job_types: List of job types to create. If None, creates default set.
+            
+        Returns:
+            List of created job IDs
+        """
+        if job_types is None:
+            job_types = ['extract_text', 'extract_entities', 'extract_events', 'extract_locations']
+        
+        job_ids = []
+        for job_type in job_types:
+            job_id = self.create_job(document_id, job_type)
+            if job_id:
+                job_ids.append(job_id)
+        return job_ids
+    
+    def claim_job(self, worker_id: str) -> dict:
+        """Claim a queued job for processing.
+        
+        Uses SELECT FOR UPDATE to atomically claim the oldest queued job.
+        
+        Args:
+            worker_id: ID of the worker claiming the job
+            
+        Returns:
+            Job dict with all fields, or None if no jobs available
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            started_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            # Claim the oldest queued job
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = 'IN_PROGRESS', worker_id = %s, started_at = %s
+                WHERE id = (
+                    SELECT id FROM document_jobs
+                    WHERE status = 'QUEUED'
+                    ORDER BY priority DESC, created_at ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, document_id, job_type, priority, status, worker_id, created_at, started_at
+                """,
+                (worker_id, started_at)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            
+            if row:
+                job = {
+                    'id': row[0],
+                    'document_id': row[1],
+                    'job_type': row[2],
+                    'priority': row[3],
+                    'status': row[4],
+                    'worker_id': row[5],
+                    'created_at': row[6],
+                    'started_at': row[7]
+                }
+                cur.close()
+                conn.close()
+                logger.info(f"Worker {worker_id} claimed job {job['id']}: {job['job_type']}")
+                return job
+            
+            cur.close()
+            conn.close()
+            return None
+        except Exception as e:
+            logger.error(f"Error claiming job: {e}")
+            return None
+    
+    def complete_job(self, job_id: int, error_message: str = None) -> bool:
+        """Mark a job as completed.
+        
+        Args:
+            job_id: ID of the job to complete
+            error_message: Error message if failed, None if succeeded
+            
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            completed_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            status = 'FAILED' if error_message else 'COMPLETED'
+            
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = %s, completed_at = %s, error_message = %s
+                WHERE id = %s
+                """,
+                (status, completed_at, error_message, job_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            logger.info(f"Job {job_id} marked as {status}")
+            return True
+        except Exception as e:
+            logger.error(f"Error completing job: {e}")
+            return False
+    
+    def get_job_status_counts(self) -> dict:
+        """Get count of jobs grouped by status.
+        
+        Returns:
+            Dict mapping status -> count
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT status, COUNT(*) as count 
+                FROM document_jobs 
+                GROUP BY status 
+                ORDER BY status
+                """
+            )
+            results = {row[0]: row[1] for row in cur.fetchall()}
+            cur.close()
+            conn.close()
+            return results
+        except Exception as e:
+            logger.error(f"Error getting job status counts: {e}")
+            return {}
+    
+    def get_document_jobs(self, document_id: int) -> list:
+        """Get all jobs for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            List of job dicts
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, document_id, job_type, priority, status, 
+                       created_at, started_at, completed_at, worker_id, error_message
+                FROM document_jobs
+                WHERE document_id = %s
+                ORDER BY created_at DESC
+                """,
+                (document_id,)
+            )
+            jobs = []
+            for row in cur.fetchall():
+                jobs.append({
+                    'id': row[0],
+                    'document_id': row[1],
+                    'job_type': row[2],
+                    'priority': row[3],
+                    'status': row[4],
+                    'created_at': row[5],
+                    'started_at': row[6],
+                    'completed_at': row[7],
+                    'worker_id': row[8],
+                    'error_message': row[9]
+                })
+            cur.close()
+            conn.close()
+            return jobs
+        except Exception as e:
+            logger.error(f"Error getting document jobs: {e}")
+            return []
+    
+    def get_queued_jobs_count(self) -> int:
+        """Get count of queued jobs waiting to be processed.
+        
+        Returns:
+            Number of queued jobs
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM document_jobs WHERE status = 'QUEUED'"
+            )
+            count = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return count
+        except Exception as e:
+            logger.error(f"Error getting queued jobs count: {e}")
+            return 0
+    
+    # =========================================================================
+    # Evidence Lineage Methods (Phase 5)
+    # =========================================================================
+    
+    def record_evidence(self, entity_id: int, document_id: int, 
+                        artifact_path: str = None, plugin_name: str = None,
+                        confidence: float = 1.0, processing_time_ms: int = None,
+                        version: str = None) -> int:
+        """Record evidence lineage for an extracted entity.
+        
+        Tracks: entity → derived_from → document → derived_from → artifact
+        
+        Args:
+            entity_id: ID of the entity
+            document_id: ID of the source document
+            artifact_path: Original file path
+            plugin_name: Name of the extractor plugin
+            confidence: Extraction confidence (0.0-1.0)
+            processing_time_ms: Time taken to extract
+            version: Plugin version for reproducibility
+            
+        Returns:
+            Evidence record ID
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO evidence_lineage 
+                (entity_id, document_id, artifact_path, plugin_name, confidence, processing_time_ms, version, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (entity_id, document_id, artifact_path, plugin_name, confidence, processing_time_ms, version, created_at)
+            )
+            evidence_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            return evidence_id
+        except Exception as e:
+            logger.error(f"Error recording evidence: {e}")
+            return None
+    
+    def record_evidence_batch(self, document_id: int, artifact_path: str,
+                               plugin_name: str, entities: list,
+                               processing_time_ms: int = None,
+                               version: str = None) -> int:
+        """Record evidence for multiple entities extracted from a document.
+        
+        Args:
+            document_id: ID of the source document
+            artifact_path: Original file path
+            plugin_name: Name of the extractor plugin
+            entities: List of entity dicts with 'id' field
+            processing_time_ms: Time taken to extract
+            version: Plugin version
+            
+        Returns:
+            Number of evidence records created
+        """
+        count = 0
+        for entity in entities:
+            entity_id = entity.get('id')
+            if entity_id:
+                evidence_id = self.record_evidence(
+                    entity_id=entity_id,
+                    document_id=document_id,
+                    artifact_path=artifact_path,
+                    plugin_name=plugin_name,
+                    confidence=entity.get('confidence', 1.0),
+                    processing_time_ms=processing_time_ms,
+                    version=version
+                )
+                if evidence_id:
+                    count += 1
+        return count
+    
+    def get_entity_evidence(self, entity_id: int) -> list:
+        """Get all evidence records for an entity.
+        
+        Args:
+            entity_id: ID of the entity
+            
+        Returns:
+            List of evidence records with document and artifact info
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT e.id, e.entity_id, e.document_id, d.path as document_path,
+                       e.artifact_path, e.plugin_name, e.confidence, 
+                       e.processing_time_ms, e.version, e.created_at
+                FROM evidence_lineage e
+                JOIN documents d ON e.document_id = d.id
+                WHERE e.entity_id = %s
+                ORDER BY e.created_at DESC
+                """,
+                (entity_id,)
+            )
+            evidence = []
+            for row in cur.fetchall():
+                evidence.append({
+                    'id': row[0],
+                    'entity_id': row[1],
+                    'document_id': row[2],
+                    'document_path': row[3],
+                    'artifact_path': row[4],
+                    'plugin_name': row[5],
+                    'confidence': row[6],
+                    'processing_time_ms': row[7],
+                    'version': row[8],
+                    'created_at': row[9]
+                })
+            cur.close()
+            conn.close()
+            return evidence
+        except Exception as e:
+            logger.error(f"Error getting entity evidence: {e}")
+            return []
+    
+    def get_document_evidence(self, document_id: int) -> list:
+        """Get all evidence records for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            List of evidence records with entity info
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT e.id, e.entity_id, en.value as entity_value, en.type as entity_type,
+                       e.document_id, e.artifact_path, e.plugin_name, e.confidence,
+                       e.processing_time_ms, e.version, e.created_at
+                FROM evidence_lineage e
+                JOIN entities en ON e.entity_id = en.id
+                WHERE e.document_id = %s
+                ORDER BY e.created_at DESC
+                """,
+                (document_id,)
+            )
+            evidence = []
+            for row in cur.fetchall():
+                evidence.append({
+                    'id': row[0],
+                    'entity_id': row[1],
+                    'entity_value': row[2],
+                    'entity_type': row[3],
+                    'document_id': row[4],
+                    'artifact_path': row[5],
+                    'plugin_name': row[6],
+                    'confidence': row[7],
+                    'processing_time_ms': row[8],
+                    'version': row[9],
+                    'created_at': row[10]
+                })
+            cur.close()
+            conn.close()
+            return evidence
+        except Exception as e:
+            logger.error(f"Error getting document evidence: {e}")
+            return []
     
     def save_entities(self, document_id, entities):
         """Save entities to the database.

@@ -35,6 +35,59 @@ CREATE TABLE IF NOT EXISTS documents (
 -- COMPLETE: All processing stages complete
 -- FAILED: Processing failed after max retries
 
+-- Document jobs table (Phase 2: job queue)
+CREATE TABLE IF NOT EXISTS document_jobs (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    job_type VARCHAR(100) NOT NULL,
+    priority INTEGER DEFAULT 0,
+    status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    worker_id VARCHAR(100),
+    error_message TEXT
+);
+
+-- Job type constants (for reference):
+-- compute_sha256: Compute file hash
+-- extract_text: Extract text content
+-- extract_entities: Identify entities in text
+-- extract_events: Extract date/time references
+-- extract_locations: Extract location references
+-- generate_embeddings: Create vector embeddings
+-- ocr: Optical character recognition
+-- plugin_processing: Custom plugin processing
+
+-- Job status constants (for reference):
+-- QUEUED: Job created, waiting for worker
+-- IN_PROGRESS: Worker has claimed the job
+-- COMPLETED: Job finished successfully
+-- FAILED: Job failed after all retries
+-- CANCELLED: Job cancelled by user
+
+-- Evidence lineage table (Phase 5: provenance tracking)
+-- Tracks: entity → derived_from → document → derived_from → artifact
+CREATE TABLE IF NOT EXISTS evidence_lineage (
+    id SERIAL PRIMARY KEY,
+    entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    artifact_path TEXT,
+    plugin_name VARCHAR(100),
+    confidence DOUBLE PRECISION DEFAULT 1.0,
+    processing_time_ms INTEGER,
+    version VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Evidence lineage constants:
+-- entity_id → derived_from → document_id
+-- document_id → derived_from → artifact_path
+-- plugin_name: Source plugin (e.g., 'entity_extractor', 'event_extractor')
+-- confidence: Extraction confidence (0.0-1.0)
+-- processing_time_ms: Time taken to extract
+-- version: Plugin version for reproducibility
+
 -- Entities table
 CREATE TABLE IF NOT EXISTS entities (
     id SERIAL PRIMARY KEY,
@@ -99,6 +152,17 @@ CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
 CREATE INDEX IF NOT EXISTS idx_documents_extension ON documents(extension);
 CREATE INDEX IF NOT EXISTS idx_documents_modified_time ON documents(modified_time);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+
+-- Document jobs indexes
+CREATE INDEX IF NOT EXISTS idx_document_jobs_document ON document_jobs(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_jobs_status ON document_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_document_jobs_type ON document_jobs(job_type);
+CREATE INDEX IF NOT EXISTS idx_document_jobs_priority ON document_jobs(priority);
+
+-- Evidence lineage indexes
+CREATE INDEX IF NOT EXISTS idx_evidence_entity ON evidence_lineage(entity_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_document ON evidence_lineage(document_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_plugin ON evidence_lineage(plugin_name);
 
 -- Entities indexes
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
