@@ -568,52 +568,104 @@ def create_operations_view(parent, api_client) -> 'QWidget':
             except Exception as e:
                 self.status_label.setText(f"Detail error: {str(e)}")
         
+        def _format_bytes(self, bytes_value: int) -> str:
+            """Format bytes to human-readable string."""
+            if bytes_value is None or bytes_value == 0:
+                return "-"
+            
+            units = ['B', 'KB', 'MB', 'GB', 'TB']
+            unit_idx = 0
+            value = float(bytes_value)
+            
+            while value >= 1024 and unit_idx < len(units) - 1:
+                value /= 1024
+                unit_idx += 1
+            
+            if unit_idx == 0:
+                return f"{int(value)} {units[unit_idx]}"
+            return f"{value:.1f} {units[unit_idx]}"
+
+        def _format_duration(self, seconds: float) -> str:
+            """Format seconds to human-readable duration."""
+            if seconds is None or seconds == 0:
+                return "-"
+            
+            if seconds < 60:
+                return f"{int(seconds)}s"
+            
+            minutes = int(seconds // 60)
+            remaining_seconds = int(seconds % 60)
+            
+            if minutes < 60:
+                if remaining_seconds == 0:
+                    return f"{minutes}m"
+                return f"{minutes}m {remaining_seconds}s"
+            
+            hours = minutes // 60
+            remaining_minutes = minutes % 60
+            
+            if remaining_minutes == 0:
+                return f"{hours}h"
+            return f"{hours}h {remaining_minutes}m"
+
         def _update_overview(self, data: dict):
             """Update the overview display."""
             self.status_label.setText("Connected")
             self.status_label.setStyleSheet("color: green;")
             
-            # Update each field
+            # Field mapping: GUI label key -> API response key
+            # API field names are canonical (include units)
             field_map = {
-                'files': 'value_files',
-                'documents': 'value_documents',
-                'directories': 'value_directories',
-                'watched_paths': 'value_watched_paths',
-                'storage_used': 'value_storage_used',
-                'entities': 'value_entities',
-                'relationships': 'value_relationships',
-                'events': 'value_events',
-                'locations': 'value_locations',
-                'embeddings': 'value_embeddings',
-                'queued_jobs': 'value_queued_jobs',
-                'running_jobs': 'value_running_jobs',
-                'completed_jobs': 'value_completed_jobs',
-                'failed_jobs': 'value_failed_jobs',
-                'workers': 'value_workers',
-                'oldest_job_age': 'value_oldest_job_age',
-                'database_status': 'value_database_status',
-                'watcher_status': 'value_watcher_status',
-                'job_processor_status': 'value_job_processor_status',
-                'api_status': 'value_api_status',
+                'files': ('files', None),
+                'documents': ('documents', None),
+                'directories': ('directories', None),
+                'watched_paths': ('watched_paths', None),
+                'storage_used': ('storage_used_bytes', 'bytes'),
+                'entities': ('entities', None),
+                'relationships': ('relationships', None),
+                'events': ('events', None),
+                'locations': ('locations', None),
+                'embeddings': ('embeddings', None),
+                'queued_jobs': ('queued_jobs', None),
+                'running_jobs': ('running_jobs', None),
+                'completed_jobs': ('completed_jobs', None),
+                'failed_jobs': ('failed_jobs', None),
+                'workers': ('workers', None),
+                'oldest_job_age': ('oldest_job_age_seconds', 'duration'),
+                'database_status': ('database_status', 'status'),
+                'watcher_status': ('watcher_status', 'status'),
+                'job_processor_status': ('job_processor_status', 'status'),
+                'api_status': ('api_status', 'status'),
             }
             
-            for field_key, obj_name in field_map.items():
-                value = data.get(field_key)
+            for label_key, (api_key, format_type) in field_map.items():
+                value = data.get(api_key)
+                obj_name = f'value_{label_key}'
+                
                 if value is None:
                     value = "-"
+                    display_text = "-"
+                elif format_type == 'bytes':
+                    display_text = self._format_bytes(value)
+                elif format_type == 'duration':
+                    display_text = self._format_duration(value)
+                elif format_type == 'status':
+                    display_text = str(value)
                 elif isinstance(value, float):
-                    value = f"{value:.1f}s"
+                    display_text = f"{value:.1f}"
                 elif isinstance(value, int):
-                    value = f"{value:,}"
+                    display_text = f"{value:,}"
+                else:
+                    display_text = str(value)
                 
                 label = self.findChild(QLabel, obj_name)
                 if label:
-                    label.setText(str(value))
+                    label.setText(display_text)
                     # Color status fields
-                    if field_key.endswith('_status'):
-                        if value == "CONNECTED" or value == "RUNNING" or value == "ACTIVE" or value == "HEALTHY":
+                    if format_type == 'status':
+                        if value in ("CONNECTED", "RUNNING", "ACTIVE", "HEALTHY"):
                             label.setStyleSheet("font-weight: bold; color: green;")
-                        elif value == "DISCONNECTED" or value == "STOPPED":
+                        elif value in ("DISCONNECTED", "STOPPED"):
                             label.setStyleSheet("font-weight: bold; color: red;")
                         else:
                             label.setStyleSheet("font-weight: bold; color: orange;")
