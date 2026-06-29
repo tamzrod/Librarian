@@ -170,6 +170,28 @@ CREATE TABLE IF NOT EXISTS document_locations (
     PRIMARY KEY (document_id, location_id)
 );
 
+-- Document embeddings table (Phase 4: vector embeddings)
+CREATE TABLE IF NOT EXISTS document_embeddings (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    embedding TEXT NOT NULL,  -- JSON serialized vector
+    model VARCHAR(100),       -- Embedding model name (e.g., 'text-embedding-ada-002')
+    dimensions INTEGER,       -- Vector dimension count
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Plugin types table (Phase 4: plugin registry)
+CREATE TABLE IF NOT EXISTS plugin_types (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    job_type VARCHAR(100) NOT NULL,
+    description TEXT,
+    version VARCHAR(50),
+    enabled BOOLEAN DEFAULT TRUE,
+    config JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -222,3 +244,10 @@ CREATE INDEX IF NOT EXISTS idx_document_events_doc ON document_events(document_i
 CREATE INDEX IF NOT EXISTS idx_document_events_evt ON document_events(event_id);
 CREATE INDEX IF NOT EXISTS idx_document_locations_doc ON document_locations(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_locations_loc ON document_locations(location_id);
+
+-- Document embeddings indexes
+CREATE INDEX IF NOT EXISTS idx_document_embeddings_doc ON document_embeddings(document_id);
+
+-- Plugin types indexes
+CREATE INDEX IF NOT EXISTS idx_plugin_types_job ON plugin_types(job_type);
+CREATE INDEX IF NOT EXISTS idx_plugin_types_enabled ON plugin_types(enabled) WHERE enabled = TRUE;

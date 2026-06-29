@@ -241,17 +241,24 @@ def run_worker(backend, worker_id: str = None):
     Run a worker with the given backend.
     
     This is a convenience function that creates and runs a worker
-    with common handlers registered.
+    with all job handlers registered.
     """
     from .content_extractor import ContentExtractor
+    from .entity_extractor import EntityExtractor
+    from .event_extractor import EventExtractor
+    from .location_extractor import LocationExtractor
+    from .embedding_generator import EmbeddingGenerator
     
     worker = Worker(backend, worker_id=worker_id)
     
-    # Register default handlers
-    extractor = ContentExtractor(backend)
-    worker.register_handler('extract_text', extractor.extract_text)
+    # Register all handlers
+    worker.register_handler('extract_text', ContentExtractor(backend).extract_text)
+    worker.register_handler('extract_entities', EntityExtractor(backend).extract_entities)
+    worker.register_handler('extract_events', EventExtractor(backend).extract_events)
+    worker.register_handler('extract_locations', LocationExtractor(backend).extract_locations)
+    worker.register_handler('generate_embeddings', EmbeddingGenerator(backend).generate_embeddings)
     
-    logger.info("Starting worker with extract_text handler")
+    logger.info("Starting worker with all extraction handlers")
     worker.start()
 
 

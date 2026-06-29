@@ -1634,6 +1634,315 @@ class PostgresBackend(StorageBackend):
         cur.close()
         conn.close()
 
+    # =========================================================================
+    # Phase 4: Individual entity/event/location methods
+    # =========================================================================
+
+    def save_entity(self, entity_type: str, value: str, normalized_value: str = None) -> int:
+        """Save a single entity and return its ID (Phase 4).
+        
+        Args:
+            entity_type: Type of entity (PERSON, ORGANIZATION, etc.)
+            value: The entity value
+            normalized_value: Normalized form of the value
+            
+        Returns:
+            Entity ID
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                INSERT INTO entities (type, value, normalized_value)
+                VALUES (%s, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (entity_type, value, normalized_value or value.lower())
+            )
+            result = cur.fetchone()
+            if result:
+                entity_id = result[0]
+            else:
+                cur.execute(
+                    "SELECT id FROM entities WHERE value = %s AND type = %s",
+                    (value, entity_type)
+                )
+                row = cur.fetchone()
+                entity_id = row[0] if row else None
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            return entity_id
+        except Exception as e:
+            logger.error(f"Error saving entity: {e}")
+            return None
+
+    def add_entity_to_document(self, document_id: int, entity_id: int, occurrences: int = 1) -> bool:
+        """Link an entity to a document (Phase 4).
+        
+        Args:
+            document_id: Document ID
+            entity_id: Entity ID
+            occurrences: Number of occurrences
+            
+        Returns:
+            True if linked successfully
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                INSERT INTO document_entities (document_id, entity_id, occurrences)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (document_id, entity_id) DO UPDATE SET occurrences = document_entities.occurrences + 1
+                """,
+                (document_id, entity_id, occurrences)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error linking entity to document: {e}")
+            return False
+
+    def save_event(self, timestamp, event_type: str, description: str) -> int:
+        """Save a single event and return its ID (Phase 4).
+        
+        Args:
+            timestamp: Event timestamp
+            event_type: Type of event
+            description: Event description
+            
+        Returns:
+            Event ID
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            ts = _to_postgres_timestamp(timestamp) if timestamp else None
+            
+            cur.execute(
+                """
+                INSERT INTO events (timestamp, event_type, description)
+                VALUES (%s, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (ts, event_type, description)
+            )
+            result = cur.fetchone()
+            if result:
+                event_id = result[0]
+            else:
+                cur.execute(
+                    "SELECT id FROM events WHERE timestamp = %s AND event_type = %s AND description = %s",
+                    (ts, event_type, description)
+                )
+                row = cur.fetchone()
+                event_id = row[0] if row else None
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            return event_id
+        except Exception as e:
+            logger.error(f"Error saving event: {e}")
+            return None
+
+    def add_event_to_document(self, document_id: int, event_id: int) -> bool:
+        """Link an event to a document (Phase 4).
+        
+        Args:
+            document_id: Document ID
+            event_id: Event ID
+            
+        Returns:
+            True if linked successfully
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                INSERT INTO document_events (document_id, event_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (document_id, event_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error linking event to document: {e}")
+            return False
+
+    def save_location(self, name: str, location_type: str = 'GENERAL',
+                     address: str = None, city: str = None, state: str = None,
+                     country: str = None, postal_code: str = None,
+                     coordinates: tuple = None) -> int:
+        """Save a single location and return its ID (Phase 4).
+        
+        Args:
+            name: Location name
+            location_type: Type of location
+            address: Street address
+            city: City
+            state: State/Province
+            country: Country
+            postal_code: Postal/ZIP code
+            coordinates: (latitude, longitude) tuple
+            
+        Returns:
+            Location ID
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            lat = coordinates[0] if coordinates else None
+            lng = coordinates[1] if coordinates else None
+            
+            cur.execute(
+                """
+                INSERT INTO locations (name, latitude, longitude)
+                VALUES (%s, %s, %s)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                (name, lat, lng)
+            )
+            result = cur.fetchone()
+            if result:
+                location_id = result[0]
+            else:
+                cur.execute(
+                    "SELECT id FROM locations WHERE name = %s",
+                    (name,)
+                )
+                row = cur.fetchone()
+                location_id = row[0] if row else None
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            return location_id
+        except Exception as e:
+            logger.error(f"Error saving location: {e}")
+            return None
+
+    def add_location_to_document(self, document_id: int, location_id: int) -> bool:
+        """Link a location to a document (Phase 4).
+        
+        Args:
+            document_id: Document ID
+            location_id: Location ID
+            
+        Returns:
+            True if linked successfully
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                INSERT INTO document_locations (document_id, location_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (document_id, location_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error linking location to document: {e}")
+            return False
+
+    def save_embedding(self, document_id: int, vector: list, model: str = 'unknown') -> bool:
+        """Save embedding vector for a document (Phase 4).
+        
+        Args:
+            document_id: Document ID
+            vector: Embedding vector as list of floats
+            model: Embedding model name
+            
+        Returns:
+            True if saved successfully
+        """
+        try:
+            import json
+            
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Convert list to JSON string for storage
+            vector_json = json.dumps(vector)
+            
+            cur.execute(
+                """
+                INSERT INTO document_embeddings (document_id, embedding, model)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (document_id) DO UPDATE SET
+                    embedding = EXCLUDED.embedding,
+                    model = EXCLUDED.model
+                """,
+                (document_id, vector_json, model)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Saved embedding for document {document_id} ({len(vector)} dimensions)")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving embedding: {e}")
+            return False
+
+    def get_embedding(self, document_id: int) -> dict:
+        """Get embedding for a document (Phase 4).
+        
+        Args:
+            document_id: Document ID
+            
+        Returns:
+            Dict with 'vector' and 'model' keys, or None
+        """
+        try:
+            import json
+            
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                "SELECT embedding, model FROM document_embeddings WHERE document_id = %s",
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if row:
+                return {
+                    'vector': json.loads(row[0]),
+                    'model': row[1]
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting embedding: {e}")
+            return None
+
     def save_events(self, document_id, events):
         """Save events to the database.
         
