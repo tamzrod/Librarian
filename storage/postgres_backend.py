@@ -1,9 +1,58 @@
 import os
 import logging
+from datetime import datetime, timezone
 import psycopg
 from .backend import StorageBackend
 
 logger = logging.getLogger(__name__)
+
+
+def _to_postgres_timestamp(value) -> datetime:
+    """
+    Convert various timestamp representations to PostgreSQL-compatible datetime.
+    
+    Handles:
+    - Unix epoch float (e.g., 1751188142.314672)
+    - datetime object
+    - ISO format string
+    - None (returns None)
+    
+    Returns:
+        datetime object in UTC, or None if input is None/invalid
+    """
+    if value is None:
+        return None
+    
+    # Already a datetime
+    if isinstance(value, datetime):
+        # Ensure timezone-aware datetime is converted to UTC
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+    
+    # Unix epoch float
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc).replace(tzinfo=None)
+    
+    # String - try parsing as float (epoch) or ISO format
+    if isinstance(value, str):
+        try:
+            # Try as epoch float first
+            epoch = float(value)
+            return datetime.fromtimestamp(epoch, tz=timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            # Try as ISO format
+            try:
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+            except ValueError:
+                pass
+    
+    # Could not convert - return None
+    logger.warning(f"Could not convert timestamp value: {value!r} (type: {type(value).__name__})")
+    return None
 
 
 class PostgresBackend(StorageBackend):
@@ -253,6 +302,9 @@ class PostgresBackend(StorageBackend):
         
         Canonical schema columns: path, extension, sha256, file_size, 
         character_count, parser, modified_time, indexed_at
+        
+        Handles timestamp conversion: Unix epoch floats are converted to
+        PostgreSQL-compatible datetime objects.
         """
         conn = self._get_connection()
         cur = conn.cursor()
@@ -264,7 +316,7 @@ class PostgresBackend(StorageBackend):
         sha256 = document.get('sha256') or document.get('hash')
         file_size = document.get('file_size') or document.get('size_bytes')
         character_count = document.get('character_count')
-        modified_time = document.get('modified_time')
+        modified_time = _to_postgres_timestamp(document.get('modified_time'))
         parser = document.get('parser')
         extension = document.get('extension')
         
@@ -335,9 +387,14 @@ class PostgresBackend(StorageBackend):
         conn.close()
 
     def save_events(self, document_id, events):
+        """Save events to the database.
+        
+        Handles timestamp conversion for events.timestamp field.
+        """
         conn = self._get_connection()
         cur = conn.cursor()
         for event in events:
+            timestamp = _to_postgres_timestamp(event.get('timestamp'))
             cur.execute(
                 """
                 INSERT INTO events (timestamp, event_type, description)
@@ -345,7 +402,7 @@ class PostgresBackend(StorageBackend):
                 ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
-                (event['timestamp'], event['event_type'], event['description'])
+                (timestamp, event.get('event_type'), event.get('description'))
             )
             result = cur.fetchone()
             if result:
@@ -353,7 +410,7 @@ class PostgresBackend(StorageBackend):
             else:
                 cur.execute(
                     "SELECT id FROM events WHERE timestamp = %s AND event_type = %s AND description = %s",
-                    (event['timestamp'], event['event_type'], event['description'])
+                    (timestamp, event.get('event_type'), event.get('description'))
                 )
                 event_id = cur.fetchone()[0]
             
