@@ -129,50 +129,25 @@ class CollectionWatcher:
             
             print(f"[CollectionWatcher] Parsed {filepath}: {parsed.get('character_count', 0)} chars")
             
-            # Try to extract metadata (optional, may not be available)
-            entities = []
-            events = []
-            locations = []
-            
-            try:
-                from extractors.entity_extractor import EntityExtractor
-                extractor = EntityExtractor()
-                entities = extractor.extract(parsed.get('text', ''))
-            except (ImportError, Exception):
-                pass
-            
-            try:
-                from extractors.event_extractor import EventExtractor
-                event_extractor = EventExtractor()
-                events = event_extractor.extract(parsed.get('text', ''))
-            except (ImportError, Exception):
-                pass
-            
-            try:
-                from extractors.location_extractor import LocationExtractor
-                location_extractor = LocationExtractor()
-                locations = location_extractor.extract(parsed.get('text', ''))
-            except (ImportError, Exception):
-                pass
-            
-            # Save to database (simplified)
+            # Build document metadata
             document = {
                 'path': str(filepath),
                 'extension': full_path.suffix,
                 'modified_time': datetime.fromtimestamp(os.path.getmtime(full_path)),
-                'file_size': os.path.getsize(full_path)
+                'file_size': os.path.getsize(full_path),
+                'character_count': parsed.get('character_count'),
+                'parser': parsed.get('parser', full_path.suffix[1:] if full_path.suffix else 'text')
             }
             
-            # Store in backend
+            # Save to backend immediately (fast operation)
             if hasattr(self.backend, 'save_document'):
                 doc_id = self.backend.save_document(document)
-                print(f"[CollectionWatcher] Saved document {filepath} -> {doc_id}")
-                if entities and hasattr(self.backend, 'save_entities'):
-                    self.backend.save_entities(doc_id, entities)
-                if events and hasattr(self.backend, 'save_events'):
-                    self.backend.save_events(doc_id, events)
-                if locations and hasattr(self.backend, 'save_locations'):
-                    self.backend.save_locations(doc_id, locations)
+                print(f"[CollectionWatcher] Saved document {filepath} -> id:{doc_id}")
+                
+                # Create processing jobs (fast operation)
+                if hasattr(self.backend, 'create_jobs_for_document'):
+                    job_ids = self.backend.create_jobs_for_document(doc_id)
+                    print(f"[CollectionWatcher] Created {len(job_ids)} jobs for document {doc_id}")
             else:
                 print(f"[CollectionWatcher] Backend has no save_document method: {type(self.backend)}")
                     

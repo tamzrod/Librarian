@@ -198,13 +198,14 @@ class AppState:
                     self._last_scan = datetime.utcnow()
                     logger.info(f"Initial scan complete. Indexed {len(self.librarian.index)} documents.")
                     
-                    # Index documents into backend
+                    # Index documents into backend and create jobs
                     if self.backend and hasattr(self.backend, 'save_document'):
                         saved_count = 0
                         failed_count = 0
+                        jobs_created = 0
                         for doc in self.librarian.index:
                             try:
-                                self.backend.save_document({
+                                document_id = self.backend.save_document({
                                     'path': doc.get('path'),
                                     'extension': doc.get('extension'),
                                     'sha256': doc.get('sha256_hash'),
@@ -214,16 +215,22 @@ class AppState:
                                     'parser': doc.get('parser')
                                 })
                                 saved_count += 1
+                                
+                                # Create processing jobs for this document
+                                if self.backend and hasattr(self.backend, 'create_jobs_for_document'):
+                                    job_ids = self.backend.create_jobs_for_document(document_id)
+                                    jobs_created += len(job_ids)
                             except Exception as e:
                                 failed_count += 1
                                 self.record_persistence_error(
                                     f"Failed to save document {doc.get('path')}: {e}",
                                     "save_document"
                                 )
+                        
                         if failed_count > 0:
-                            logger.error(f"Initial scan: saved {saved_count} documents, {failed_count} failed to persist")
+                            logger.error(f"Initial scan: saved {saved_count} documents, {jobs_created} jobs created, {failed_count} failed")
                         else:
-                            logger.info(f"Initial scan: all {saved_count} documents persisted successfully")
+                            logger.info(f"Initial scan: all {saved_count} documents persisted, {jobs_created} jobs queued")
                 else:
                     logger.warning(f"Library path does not exist for initial scan: {library_path}")
                     
