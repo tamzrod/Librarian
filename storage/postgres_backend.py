@@ -197,6 +197,67 @@ class PostgresBackend(StorageBackend):
                 self._record_migration('002_documents_path_unique')
                 logger.info("Migration 002 completed: documents.path unique index added")
             
+            # Migration 003: Add document lifecycle columns
+            # Adds status, status_updated_at, last_error, attempt_count for async processing
+            if '003_document_lifecycle' not in self._get_applied_migrations():
+                logger.info("Running migration: adding document lifecycle columns")
+                
+                # Check if columns exist before adding
+                cur.execute("""
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'documents' AND column_name = 'status'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        ALTER TABLE documents 
+                        ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'METADATA_INDEXED'
+                    """)
+                
+                cur.execute("""
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'documents' AND column_name = 'status_updated_at'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        ALTER TABLE documents 
+                        ADD COLUMN status_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    """)
+                
+                cur.execute("""
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'documents' AND column_name = 'last_error'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        ALTER TABLE documents 
+                        ADD COLUMN last_error TEXT
+                    """)
+                
+                cur.execute("""
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'documents' AND column_name = 'attempt_count'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        ALTER TABLE documents 
+                        ADD COLUMN attempt_count INTEGER DEFAULT 0
+                    """)
+                
+                conn.commit()
+                
+                # Add index on status column
+                try:
+                    cur.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_documents_status 
+                        ON documents(status)
+                    """)
+                    conn.commit()
+                except Exception:
+                    pass  # Index may already exist
+                
+                self._record_migration('003_document_lifecycle')
+                logger.info("Migration 003 completed: document lifecycle columns added")
+            
             cur.close()
             conn.close()
             return True
@@ -301,10 +362,15 @@ class PostgresBackend(StorageBackend):
         """Save a document to the database.
         
         Canonical schema columns: path, extension, sha256, file_size, 
-        character_count, parser, modified_time, indexed_at
+        character_count, parser, modified_time, status, status_updated_at,
+        last_error, attempt_count, indexed_at
         
         Handles timestamp conversion: Unix epoch floats are converted to
         PostgreSQL-compatible datetime objects.
+        
+        Document Lifecycle States:
+        - DISCOVERED: File detected, metadata not yet indexed
+        - METADATA_INDEXED: Metadata extracted, content not yet processed (default for save_document)
         """
         conn = self._get_connection()
         cur = conn.cursor()
@@ -320,27 +386,119 @@ class PostgresBackend(StorageBackend):
         parser = document.get('parser')
         extension = document.get('extension')
         
+        # Document lifecycle state
+        # Default to METADATA_INDEXED since save_document is called after metadata extraction
+        status = document.get('status', 'METADATA_INDEXED')
+        status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+        last_error = document.get('last_error')
+        attempt_count = document.get('attempt_count', 1)
+        
         cur.execute(
             """
-            INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (path) DO UPDATE SET
                 extension = EXCLUDED.extension,
                 sha256 = EXCLUDED.sha256,
                 file_size = EXCLUDED.file_size,
                 character_count = EXCLUDED.character_count,
                 parser = EXCLUDED.parser,
-                modified_time = EXCLUDED.modified_time
+                modified_time = EXCLUDED.modified_time,
+                status = EXCLUDED.status,
+                status_updated_at = EXCLUDED.status_updated_at,
+                last_error = EXCLUDED.last_error,
+                attempt_count = EXCLUDED.attempt_count
             RETURNING id
             """,
-            (path, extension, sha256, file_size, character_count, parser, modified_time)
+            (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
         )
         document_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
         conn.close()
         return document_id
-
+    
+    def update_document_status(self, document_id: int, status: str, last_error: str = None) -> bool:
+        """Update document processing status.
+        
+        Args:
+            document_id: ID of the document to update
+            status: New status (DISCOVERED, METADATA_INDEXED, CONTENT_EXTRACTED, etc.)
+            last_error: Error message if status is FAILED, None otherwise
+            
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                UPDATE documents 
+                SET status = %s, status_updated_at = %s, last_error = %s
+                WHERE id = %s
+                """,
+                (status, status_updated_at, last_error, document_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating document status: {e}")
+            return False
+    
+    def increment_attempt_count(self, document_id: int) -> bool:
+        """Increment the attempt count for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE documents SET attempt_count = attempt_count + 1 WHERE id = %s",
+                (document_id,)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error incrementing attempt count: {e}")
+            return False
+    
+    def get_document_status_counts(self) -> dict:
+        """Get count of documents grouped by status.
+        
+        Returns:
+            Dict mapping status -> count, e.g. {'METADATA_INDEXED': 10, 'FAILED': 2}
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT status, COUNT(*) as count 
+                FROM documents 
+                GROUP BY status 
+                ORDER BY status
+                """
+            )
+            results = {row[0]: row[1] for row in cur.fetchall()}
+            cur.close()
+            conn.close()
+            return results
+        except Exception as e:
+            logger.error(f"Error getting document status counts: {e}")
+            return {}
+    
     def save_entities(self, document_id, entities):
         """Save entities to the database.
         

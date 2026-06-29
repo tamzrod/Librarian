@@ -17,8 +17,23 @@ CREATE TABLE IF NOT EXISTS documents (
     file_size BIGINT,
     character_count INTEGER,
     parser VARCHAR(100),
+    -- Document processing lifecycle state
+    status VARCHAR(50) NOT NULL DEFAULT 'DISCOVERED',
+    status_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_error TEXT,
+    attempt_count INTEGER DEFAULT 0,
     indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Document status constants (for reference):
+-- DISCOVERED: File detected, metadata not yet indexed
+-- METADATA_INDEXED: Metadata extracted, content not yet processed
+-- CONTENT_EXTRACTED: Text content extracted (future phase)
+-- ENTITY_EXTRACTED: Entities identified (future phase)
+-- RELATIONSHIPS_BUILT: Relationships mapped (future phase)
+-- EMBEDDED: Vector embeddings generated (future phase)
+-- COMPLETE: All processing stages complete
+-- FAILED: Processing failed after max retries
 
 -- Entities table
 CREATE TABLE IF NOT EXISTS entities (
@@ -83,6 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection_id);
 CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
 CREATE INDEX IF NOT EXISTS idx_documents_extension ON documents(extension);
 CREATE INDEX IF NOT EXISTS idx_documents_modified_time ON documents(modified_time);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 
 -- Entities indexes
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
