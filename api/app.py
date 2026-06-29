@@ -5,6 +5,8 @@ See ADR 0005 for details.
 """
 
 import os
+import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -15,10 +17,32 @@ import uuid
 
 from api.routes import questions, collections
 from api.dependencies import get_storage_backend, MockBackend
+from api.app_state import initialize_app, shutdown_app, get_app_state
 
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Library root from environment
 LIBRARY_ROOT = os.environ.get("LIBRARIAN_LIBRARY_ROOT", "/library")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup and shutdown."""
+    # Startup
+    logger.info("Initializing Librarian API...")
+    initialize_app()
+    logger.info("Librarian API initialized successfully")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Librarian API...")
+    shutdown_app()
+    logger.info("Librarian API shutdown complete")
+
 
 # Create FastAPI application
 app = FastAPI(
@@ -27,7 +51,8 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -79,25 +104,35 @@ async def get_status():
     Returns counts for documents, entities, events, locations,
     as well as watcher status and last scan time.
     """
-    # In production, these would come from the database
+    state = get_app_state()
+    
+    try:
+        doc_count = len(state.backend.search_documents()) if state.backend else 0
+        entity_count = len(state.backend.search_entities()) if state.backend else 0
+        event_count = len(state.backend.search_events()) if state.backend else 0
+        location_count = len(state.backend.search_locations()) if state.backend else 0
+    except Exception:
+        doc_count = entity_count = event_count = location_count = 0
+    
     return {
         "status": "healthy",
-        "library_root": LIBRARY_ROOT,
+        "library_root": state.library_root,
         "documents": {
-            "total": 0,
-            "indexed": 0
+            "total": doc_count,
+            "indexed": doc_count
         },
         "entities": {
-            "total": 0
+            "total": entity_count
         },
         "events": {
-            "total": 0
+            "total": event_count
         },
         "locations": {
-            "total": 0
+            "total": location_count
         },
-        "watcher_active": False,
-        "last_scan": None,
+        "watcher_active": state.watcher_active,
+        "initial_scan_complete": state._initial_scan_complete,
+        "last_scan": state._last_scan.isoformat() + "Z" if state._last_scan else None,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
@@ -112,31 +147,40 @@ async def get_stats(
     Returns counts for documents, entities, events, locations,
     parser information, and watcher status.
     """
-    # In production, these would come from the database
-    # Using mock data for Phase 1
+    state = get_app_state()
+    
+    try:
+        doc_count = len(state.backend.search_documents()) if state.backend else 0
+        entity_count = len(state.backend.search_entities()) if state.backend else 0
+        event_count = len(state.backend.search_events()) if state.backend else 0
+        location_count = len(state.backend.search_locations()) if state.backend else 0
+    except Exception:
+        doc_count = entity_count = event_count = location_count = 0
+    
     return {
-        "library_root": LIBRARY_ROOT,
+        "library_root": state.library_root,
         "documents": {
-            "total": 0,
-            "indexed": 0
+            "total": doc_count,
+            "indexed": doc_count
         },
         "entities": {
-            "total": 0
+            "total": entity_count
         },
         "events": {
-            "total": 0
+            "total": event_count
         },
         "locations": {
-            "total": 0
+            "total": location_count
         },
         "parsers": {
             "count": 9,
             "types": ["json", "yaml", "csv", "xml", "ini", "toml", "python", "image", "text"]
         },
         "watcher": {
-            "active": False,
-            "last_scan": None
+            "active": state.watcher_active,
+            "last_scan": state._last_scan.isoformat() + "Z" if state._last_scan else None
         },
+        "initial_scan_complete": state._initial_scan_complete,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 

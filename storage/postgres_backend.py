@@ -1,3 +1,4 @@
+import os
 import psycopg
 from .backend import StorageBackend
 
@@ -21,52 +22,34 @@ class PostgresBackend(StorageBackend):
             password=self.password
         )
 
-    def _ensure_schema(self):
-        with open('storage/migrations/schema.sql', 'r') as f:
-            schema = f.read()
-        conn = self._get_connection()
-        cur = conn.cursor()
-        cur.execute(schema)
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    def save_collection(self, collection):
-        conn = self._get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO collections (name, root_path, created_at)
-            VALUES (%s, %s, %s)
-            RETURNING id
-            """,
-            (collection['name'], collection['root_path'], collection.get('created_at'))
-        )
-        collection_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close()
-        conn.close()
-        return collection_id
-
     def save_document(self, document):
+        """Save a document to the database."""
         conn = self._get_connection()
         cur = conn.cursor()
+        
+        # Extract name from path if not provided
+        path = document.get('path', '')
+        name = document.get('name') or os.path.basename(path) if path else ''
+        
         cur.execute(
             """
-            INSERT INTO documents (collection_id, path, extension, sha256, modified_time, file_size, character_count, parser, indexed_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO documents (path, name, extension, size_bytes, hash, parser)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (path) DO UPDATE SET
+                name = EXCLUDED.name,
+                extension = EXCLUDED.extension,
+                size_bytes = EXCLUDED.size_bytes,
+                hash = EXCLUDED.hash,
+                parser = EXCLUDED.parser
             RETURNING id
             """,
             (
-                document.get('collection_id'),
-                document.get('path'),
+                path,
+                name,
                 document.get('extension'),
-                document.get('sha256'),
-                document.get('modified_time'),
-                document.get('file_size'),
-                document.get('character_count'),
-                document.get('parser'),
-                document.get('indexed_at')
+                document.get('size_bytes') or document.get('file_size'),
+                document.get('sha256') or document.get('hash'),
+                document.get('parser')
             )
         )
         document_id = cur.fetchone()[0]
@@ -81,20 +64,20 @@ class PostgresBackend(StorageBackend):
         for entity in entities:
             cur.execute(
                 """
-                INSERT INTO entities (type, value, normalized_value)
+                INSERT INTO entities (name, type, normalized_value)
                 VALUES (%s, %s, %s)
                 ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
-                (entity['type'], entity['value'], entity.get('normalized_value'))
+                (entity.get('name') or entity.get('value'), entity.get('type'), entity.get('normalized_value'))
             )
             result = cur.fetchone()
             if result:
                 entity_id = result[0]
             else:
                 cur.execute(
-                    "SELECT id FROM entities WHERE type = %s AND value = %s",
-                    (entity['type'], entity['value'])
+                    "SELECT id FROM entities WHERE name = %s AND type = %s",
+                    (entity.get('name') or entity.get('value'), entity.get('type'))
                 )
                 entity_id = cur.fetchone()[0]
             
@@ -193,8 +176,8 @@ class PostgresBackend(StorageBackend):
         
         # Query text search
         if query:
-            conditions.append("(d.path ILIKE %s OR d.extension ILIKE %s)")
-            params.extend([f"%{query}%", f"%{query}%"])
+            conditions.append("(d.path ILIKE %s OR d.name ILIKE %s OR d.extension ILIKE %s)")
+            params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
         
         # Entity filter - join with document_entities
         if entity:
@@ -207,14 +190,14 @@ class PostgresBackend(StorageBackend):
             """)
             params.append(f"%{entity}%")
         
-        # Date filter - documents modified on that date
+        # Date filter - documents indexed on that date
         if date:
-            conditions.append("d.modified_time::date = %s")
+            conditions.append("d.indexed_at::date = %s")
             params.append(date)
         
-        # Month filter - documents modified in that month
+        # Month filter - documents indexed in that month
         if month:
-            conditions.append("TO_CHAR(d.modified_time, 'YYYY-MM') = %s")
+            conditions.append("TO_CHAR(d.indexed_at, 'YYYY-MM') = %s")
             params.append(month)
         
         # Location filter - join with document_locations
@@ -229,12 +212,12 @@ class PostgresBackend(StorageBackend):
             params.append(f"%{location}%")
         
         # Build query
-        sql = "SELECT d.id, d.path, d.extension, d.modified_time, d.file_size FROM documents d"
+        sql = "SELECT d.id, d.path, d.name, d.extension, d.size_bytes, d.indexed_at FROM documents d"
         
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         
-        sql += " ORDER BY d.modified_time DESC LIMIT 100"
+        sql += " ORDER BY d.indexed_at DESC LIMIT 100"
         
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -244,9 +227,10 @@ class PostgresBackend(StorageBackend):
             results.append({
                 'id': row[0],
                 'path': row[1],
-                'extension': row[2],
-                'modified_time': row[3],
-                'file_size': row[4]
+                'name': row[2],
+                'extension': row[3],
+                'size_bytes': row[4],
+                'indexed_at': row[5]
             })
         
         cur.close()
@@ -266,11 +250,11 @@ class PostgresBackend(StorageBackend):
             params.append(entity_type)
         
         if value:
-            conditions.append("e.value ILIKE %s")
+            conditions.append("e.name ILIKE %s")
             params.append(f"%{value}%")
         
         sql = """
-            SELECT e.id, e.type, e.value, e.normalized_value, 
+            SELECT e.id, e.type, e.name, e.normalized_value, 
                    COUNT(DISTINCT de.document_id) as doc_count
             FROM entities e
             LEFT JOIN document_entities de ON e.id = de.entity_id
@@ -279,8 +263,8 @@ class PostgresBackend(StorageBackend):
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         
-        sql += " GROUP BY e.id, e.type, e.value, e.normalized_value"
-        sql += " ORDER BY doc_count DESC, e.value LIMIT 100"
+        sql += " GROUP BY e.id, e.type, e.name, e.normalized_value"
+        sql += " ORDER BY doc_count DESC, e.name LIMIT 100"
         
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -290,7 +274,7 @@ class PostgresBackend(StorageBackend):
             results.append({
                 'id': row[0],
                 'type': row[1],
-                'value': row[2],
+                'name': row[2],
                 'normalized_value': row[3],
                 'document_count': row[4]
             })
