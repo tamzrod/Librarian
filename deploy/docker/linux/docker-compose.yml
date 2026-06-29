@@ -1,0 +1,57 @@
+# Librarian Docker Compose - Linux
+#
+# Single-library architecture deployment for Linux.
+# Mounts host directory as library root with automatic ingestion.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: librarian-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-librarian}
+      POSTGRES_USER: ${POSTGRES_USER:-librarian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-librarian}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-librarian} -d ${POSTGRES_DB:-librarian}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - librarian-network
+
+  librarian-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: librarian-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
+      - LIBRARIAN_LIBRARY_ROOT=/library
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - librarian-network
+
+networks:
+  librarian-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

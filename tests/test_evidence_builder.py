@@ -1,5 +1,5 @@
 import json
-from core.evidence_builder import build_evidence, EvidenceBuilder
+from evidence.evidence_builder import build_evidence, EvidenceBuilder
 
 
 class MockBackend:

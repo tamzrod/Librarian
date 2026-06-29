@@ -1,5 +1,5 @@
 import os
-from indexing.scanner import parse_file
+from ingestion.scanner import parse_file
 from registry.register_parsers import registry
 
 

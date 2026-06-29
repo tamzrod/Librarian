@@ -1,11 +1,11 @@
 import os
 import hashlib
-from indexing.scanner import parse_file
-from indexing.chunker import chunk_text
-from indexing.indexer import index_document
-from indexing.retriever import search_documents
+from ingestion.scanner import parse_file
+from ingestion.chunker import chunk_text
+from ingestion.indexer import index_document
+from ingestion.retriever import search_documents
 from graph.dependency_indexer import extract_dependencies
-from indexing.persistence import save_index, load_index
+from ingestion.persistence import save_index, load_index
 
 
 class Librarian:

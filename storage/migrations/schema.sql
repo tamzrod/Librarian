@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS entities (
     normalized_value TEXT
 );
 
+-- Relationships table
+CREATE TABLE IF NOT EXISTS relationships (
+    id SERIAL PRIMARY KEY,
+    from_entity TEXT NOT NULL,
+    to_entity TEXT NOT NULL,
+    relationship_type VARCHAR(100)
+);
+
 -- Document-Entity relationship table
 CREATE TABLE IF NOT EXISTS document_entities (
     document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
@@ -66,12 +74,38 @@ CREATE TABLE IF NOT EXISTS document_locations (
     PRIMARY KEY (document_id, location_id)
 );
 
--- Indexes for faster lookups
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+-- Documents indexes
 CREATE INDEX IF NOT EXISTS idx_documents_collection ON documents(collection_id);
 CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
+CREATE INDEX IF NOT EXISTS idx_documents_extension ON documents(extension);
+CREATE INDEX IF NOT EXISTS idx_documents_modified_time ON documents(modified_time);
+
+-- Entities indexes
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
 CREATE INDEX IF NOT EXISTS idx_entities_value ON entities(value);
+CREATE INDEX IF NOT EXISTS idx_entities_normalized ON entities(normalized_value);
+
+-- Relationships indexes
+CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_entity);
+CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_entity);
+CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type);
+
+-- Events indexes
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+
+-- Locations indexes
 CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name);
 CREATE INDEX IF NOT EXISTS idx_locations_coords ON locations(latitude, longitude);
+
+-- Junction table indexes (for efficient JOINs)
+CREATE INDEX IF NOT EXISTS idx_document_entities_doc ON document_entities(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_entities_ent ON document_entities(entity_id);
+CREATE INDEX IF NOT EXISTS idx_document_events_doc ON document_events(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_events_evt ON document_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_document_locations_doc ON document_locations(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_locations_loc ON document_locations(location_id);

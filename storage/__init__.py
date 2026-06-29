@@ -1,4 +1,8 @@
 from .backend import StorageBackend
-from .postgres_backend import PostgresBackend
+
+try:
+    from .postgres_backend import PostgresBackend
+except ImportError:
+    PostgresBackend = None
 
 __all__ = ['StorageBackend', 'PostgresBackend']

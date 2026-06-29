@@ -1,0 +1,51 @@
+# Librarian Docker Compose - Windows
+#
+# Single-library architecture deployment for Windows.
+# Mounts host directory as library root with automatic ingestion.
+
+services:
+  postgres:
+    image: postgres:16-windowsservercore
+    container_name: librarian-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-librarian}
+      POSTGRES_USER: ${POSTGRES_USER:-librarian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-librarian}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:c:/programdata/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-librarian}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - librarian-network
+
+  librarian-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/windows/Dockerfile
+    container_name: librarian-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@host.docker.internal:5432/${POSTGRES_DB:-librarian}
+      - LIBRARIAN_LIBRARY_ROOT=C:/library
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ${LIBRARY_PATH:-C:/Users/${USERNAME}/Documents}:C:/library:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - librarian-network
+
+networks:
+  librarian-network:
+    driver: nat
+
+volumes:
+  postgres_data:
