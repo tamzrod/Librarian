@@ -23,9 +23,9 @@ CREATE TABLE IF NOT EXISTS documents (
 -- Entities table: stores extracted named entities
 CREATE TABLE IF NOT EXISTS entities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT,  -- person, organization, device, etc.
+    normalized_value TEXT,
     confidence FLOAT DEFAULT 1.0,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS entities (
 -- Events table: stores timestamped occurrences
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     description TEXT,
@@ -45,7 +44,6 @@ CREATE TABLE IF NOT EXISTS events (
 -- Locations table: stores geographic data
 CREATE TABLE IF NOT EXISTS locations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     latitude FLOAT,
     longitude FLOAT,
@@ -62,6 +60,28 @@ CREATE TABLE IF NOT EXISTS relationships (
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(source_entity_id, target_entity_id, relationship_type)
+);
+
+-- Junction table for document-entity relationships
+CREATE TABLE IF NOT EXISTS document_entities (
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    entity_id UUID REFERENCES entities(id) ON DELETE CASCADE,
+    occurrences INT DEFAULT 1,
+    PRIMARY KEY (document_id, entity_id)
+);
+
+-- Junction table for document-event relationships
+CREATE TABLE IF NOT EXISTS document_events (
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
+    PRIMARY KEY (document_id, event_id)
+);
+
+-- Junction table for document-location relationships
+CREATE TABLE IF NOT EXISTS document_locations (
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    location_id UUID REFERENCES locations(id) ON DELETE CASCADE,
+    PRIMARY KEY (document_id, location_id)
 );
 
 -- Full-text search index on documents

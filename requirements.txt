@@ -23,3 +23,6 @@ PyYAML>=6.0
 
 # Date/time utilities
 python-dateutil>=2.8.0
+
+# File system monitoring
+watchdog>=3.0.0
