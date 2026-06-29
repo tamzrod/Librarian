@@ -117,11 +117,17 @@ class CollectionWatcher:
         # Detect parser
         parser = self.parser_registry.get_parser(full_path)
         if not parser:
+            print(f"[CollectionWatcher] No parser for {filepath}")
             return
         
         try:
             # Parse file
             parsed = parser.parse(full_path)
+            if not parsed:
+                print(f"[CollectionWatcher] Parser returned None for {filepath}")
+                return
+            
+            print(f"[CollectionWatcher] Parsed {filepath}: {parsed.get('character_count', 0)} chars")
             
             # Try to extract metadata (optional, may not be available)
             entities = []
@@ -160,12 +166,15 @@ class CollectionWatcher:
             # Store in backend
             if hasattr(self.backend, 'save_document'):
                 doc_id = self.backend.save_document(document)
+                print(f"[CollectionWatcher] Saved document {filepath} -> {doc_id}")
                 if entities and hasattr(self.backend, 'save_entities'):
                     self.backend.save_entities(doc_id, entities)
                 if events and hasattr(self.backend, 'save_events'):
                     self.backend.save_events(doc_id, events)
                 if locations and hasattr(self.backend, 'save_locations'):
                     self.backend.save_locations(doc_id, locations)
+            else:
+                print(f"[CollectionWatcher] Backend has no save_document method: {type(self.backend)}")
                     
         except Exception as e:
             print(f"[CollectionWatcher] Error processing {filepath}: {e}")
