@@ -64,6 +64,32 @@ def extract_entities(document):
                 })
                 seen.add(entity_key)
     
+    # Person name patterns (First Last or Title First Last)
+    # Matches patterns like "John Smith", "Dr. Jane Doe", "Mr. Robert Johnson"
+    person_patterns = [
+        # Standard person names: "John Smith", "Jane Doe"
+        re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'),
+        # Names with titles: "Dr. John Smith", "Mr. Jane Doe"
+        re.compile(r'\b(?:Dr|Mr|Mrs|Ms|Miss|Prof|Professor|Rev|Reverend)\.?\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)\b', re.IGNORECASE),
+    ]
+    for pattern in person_patterns:
+        for match in pattern.finditer(text):
+            # Get the full match or group 1
+            name = match.group(1) if match.lastindex else match.group()
+            # Skip if it looks like a sentence start or title
+            skip_words = {'The', 'This', 'That', 'These', 'Those', 'A', 'An'}
+            first_word = name.split()[0] if name else ''
+            if first_word in skip_words:
+                continue
+            entity_key = ('person', name)
+            if entity_key not in seen:
+                entities.append({
+                    'type': 'person',
+                    'value': name,
+                    'source': path
+                })
+                seen.add(entity_key)
+    
     # Extract from structured_data if available
     if structured_data:
         if isinstance(structured_data, dict):
