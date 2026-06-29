@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS collections (
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     collection_id INTEGER REFERENCES collections(id) ON DELETE CASCADE,
-    path TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
     extension VARCHAR(50),
     sha256 VARCHAR(64),
     modified_time TIMESTAMP,
