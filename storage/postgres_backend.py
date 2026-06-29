@@ -1,10 +1,74 @@
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import psycopg
 from .backend import StorageBackend
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+# Job types
+class JobType:
+    EXTRACT_TEXT = 'extract_text'
+    EXTRACT_ENTITIES = 'extract_entities'
+    EXTRACT_EVENTS = 'extract_events'
+    EXTRACT_LOCATIONS = 'extract_locations'
+    GENERATE_EMBEDDINGS = 'generate_embeddings'
+    OCR = 'ocr'
+    PLUGIN_PROCESSING = 'plugin_processing'
+
+
+# Job status
+class JobStatus:
+    QUEUED = 'QUEUED'
+    IN_PROGRESS = 'IN_PROGRESS'
+    COMPLETED = 'COMPLETED'
+    FAILED_PERMANENT = 'FAILED_PERMANENT'
+    CANCELLED = 'CANCELLED'
+
+
+# Document lifecycle states
+class DocumentStatus:
+    DISCOVERED = 'DISCOVERED'
+    METADATA_INDEXED = 'METADATA_INDEXED'
+    CONTENT_EXTRACTED = 'CONTENT_EXTRACTED'
+    ENTITY_EXTRACTED = 'ENTITY_EXTRACTED'
+    RELATIONSHIPS_BUILT = 'RELATIONSHIPS_BUILT'
+    EMBEDDED = 'EMBEDDED'
+    COMPLETE = 'COMPLETE'
+    FAILED = 'FAILED'
+
+
+# Valid state transitions
+VALID_TRANSITIONS = {
+    DocumentStatus.DISCOVERED: {DocumentStatus.METADATA_INDEXED, DocumentStatus.FAILED},
+    DocumentStatus.METADATA_INDEXED: {DocumentStatus.CONTENT_EXTRACTED, DocumentStatus.FAILED},
+    DocumentStatus.CONTENT_EXTRACTED: {DocumentStatus.ENTITY_EXTRACTED, DocumentStatus.FAILED},
+    DocumentStatus.ENTITY_EXTRACTED: {DocumentStatus.RELATIONSHIPS_BUILT, DocumentStatus.FAILED},
+    DocumentStatus.RELATIONSHIPS_BUILT: {DocumentStatus.EMBEDDED, DocumentStatus.FAILED},
+    DocumentStatus.EMBEDDED: {DocumentStatus.COMPLETE, DocumentStatus.FAILED},
+    DocumentStatus.COMPLETE: {DocumentStatus.FAILED},  # Can fail after completion
+    DocumentStatus.FAILED: {DocumentStatus.METADATA_INDEXED},  # Retry path
+}
+
+
+# Retry configuration
+MAX_RETRIES = 5
+RETRY_DELAYS = {
+    1: timedelta(seconds=0),      # Immediate
+    2: timedelta(minutes=1),
+    3: timedelta(minutes=5),
+    4: timedelta(minutes=30),
+    5: timedelta(hours=2),
+}
+
+
+# Lease configuration
+DEFAULT_LEASE_SECONDS = 300  # 5 minutes
 
 
 def _to_postgres_timestamp(value) -> datetime:
@@ -304,6 +368,88 @@ class PostgresBackend(StorageBackend):
                 
                 self._record_migration('004_document_jobs')
             
+            # Migration 006: Phase 3 - Worker runtime enhancements
+            # - Add lease management columns
+            # - Add retry/backoff columns
+            # - Add unique constraint
+            # - Add document_content table
+            if '006_worker_runtime' not in self._get_applied_migrations():
+                logger.info("Running migration: Phase 3 worker runtime")
+                
+                # Add lease management columns to document_jobs
+                for col_name, col_def in [
+                    ('claimed_at', 'TIMESTAMP'),
+                    ('lease_until', 'TIMESTAMP'),
+                    ('attempt_count', 'INTEGER DEFAULT 0'),
+                    ('last_error', 'TEXT'),
+                    ('next_retry_at', 'TIMESTAMP')
+                ]:
+                    cur.execute(f"""
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'document_jobs' AND column_name = '{col_name}'
+                    """)
+                    if not cur.fetchone():
+                        cur.execute(f"""
+                            ALTER TABLE document_jobs ADD COLUMN {col_name} {col_def}
+                        """)
+                
+                # Add unique constraint if not exists
+                try:
+                    cur.execute("""
+                        ALTER TABLE document_jobs 
+                        ADD CONSTRAINT uq_document_job UNIQUE (document_id, job_type)
+                    """)
+                except psycopg.errors.DuplicateConstraint:
+                    pass  # Already exists
+                
+                # Add indexes for lease and retry
+                try:
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_lease 
+                        ON document_jobs(lease_until) 
+                        WHERE status = 'IN_PROGRESS'
+                    """)
+                except psycopg.errors.DuplicateObject:
+                    pass
+                
+                try:
+                    cur.execute("""
+                        CREATE INDEX idx_document_jobs_retry 
+                        ON document_jobs(next_retry_at) 
+                        WHERE status = 'QUEUED'
+                    """)
+                except psycopg.errors.DuplicateObject:
+                    pass
+                
+                conn.commit()
+                
+                # Create document_content table
+                cur.execute("""
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'document_content'
+                """)
+                if not cur.fetchone():
+                    cur.execute("""
+                        CREATE TABLE document_content (
+                            id SERIAL PRIMARY KEY,
+                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+                            content TEXT,
+                            content_hash VARCHAR(64),
+                            character_count INTEGER,
+                            encoding VARCHAR(50),
+                            extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            extraction_method VARCHAR(100)
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE INDEX idx_document_content_doc 
+                        ON document_content(document_id)
+                    """)
+                    conn.commit()
+                
+                self._record_migration('006_worker_runtime')
+                logger.info("Migration 006 completed: worker runtime enhancements")
+            
             # Migration 005: Add evidence_lineage table for provenance tracking
             if '005_evidence_lineage' not in self._get_applied_migrations():
                 logger.info("Running migration: creating evidence_lineage table")
@@ -509,13 +655,251 @@ class PostgresBackend(StorageBackend):
         conn.close()
         return document_id
     
-    def update_document_status(self, document_id: int, status: str, last_error: str = None) -> bool:
-        """Update document processing status.
+    def save_document_atomic(self, document: dict, job_types: list = None) -> tuple:
+        """Save document and create jobs atomically (Phase 3F: transaction atomicity).
+        
+        All operations are wrapped in a single transaction.
+        Either all succeed or all are rolled back.
+        
+        Args:
+            document: Document data dict
+            job_types: List of job types to create. If None, creates default set.
+            
+        Returns:
+            Tuple of (document_id, list of job_ids), or (None, []) on failure
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            path = document.get('path', '')
+            sha256 = document.get('sha256') or document.get('hash')
+            file_size = document.get('file_size') or document.get('size_bytes')
+            character_count = document.get('character_count')
+            modified_time = _to_postgres_timestamp(document.get('modified_time'))
+            parser = document.get('parser')
+            extension = document.get('extension')
+            status = document.get('status', DocumentStatus.METADATA_INDEXED)
+            status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            last_error = document.get('last_error')
+            attempt_count = document.get('attempt_count', 1)
+            created_at = status_updated_at
+            
+            # Step 1: Save document
+            cur.execute(
+                """
+                INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (path) DO UPDATE SET
+                    extension = EXCLUDED.extension,
+                    sha256 = EXCLUDED.sha256,
+                    file_size = EXCLUDED.file_size,
+                    character_count = EXCLUDED.character_count,
+                    parser = EXCLUDED.parser,
+                    modified_time = EXCLUDED.modified_time,
+                    status = EXCLUDED.status,
+                    status_updated_at = EXCLUDED.status_updated_at,
+                    last_error = EXCLUDED.last_error,
+                    attempt_count = EXCLUDED.attempt_count
+                RETURNING id
+                """,
+                (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
+            )
+            document_id = cur.fetchone()[0]
+            
+            # Step 2: Create jobs (if any)
+            job_ids = []
+            if job_types is None:
+                job_types = [JobType.EXTRACT_TEXT, JobType.EXTRACT_ENTITIES,
+                            JobType.EXTRACT_EVENTS, JobType.EXTRACT_LOCATIONS]
+            
+            for job_type in job_types:
+                cur.execute(
+                    """
+                    INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (document_id, job_type) DO UPDATE SET document_id = EXCLUDED.document_id
+                    RETURNING id
+                    """,
+                    (document_id, job_type, 0, JobStatus.QUEUED, created_at)
+                )
+                row = cur.fetchone()
+                if row:
+                    job_ids.append(row[0])
+            
+            # Commit all at once
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Atomically saved document {document_id} with {len(job_ids)} jobs")
+            return (document_id, job_ids)
+            
+        except Exception as e:
+            logger.error(f"Error in atomic save: {e}")
+            if conn:
+                conn.rollback()
+            return (None, [])
+    
+    def save_content(self, document_id: int, content: str, extraction_method: str = 'textract') -> bool:
+        """Save extracted content for a document (Phase 3A: content extraction).
+        
+        Args:
+            document_id: ID of the document
+            content: Extracted text content
+            extraction_method: Method used for extraction
+            
+        Returns:
+            True if save succeeded
+        """
+        try:
+            import hashlib
+            
+            conn = self._get_connection()
+            cur = conn.cursor()
+            extracted_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest() if content else None
+            character_count = len(content) if content else 0
+            
+            cur.execute(
+                """
+                INSERT INTO document_content (document_id, content, content_hash, character_count, encoding, extracted_at, extraction_method)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (document_id) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    content_hash = EXCLUDED.content_hash,
+                    character_count = EXCLUDED.character_count,
+                    encoding = EXCLUDED.encoding,
+                    extracted_at = EXCLUDED.extracted_at,
+                    extraction_method = EXCLUDED.extraction_method
+                """,
+                (document_id, content, content_hash, character_count, 'utf-8', extracted_at, extraction_method)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Saved content for document {document_id}: {character_count} chars")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving content: {e}")
+            return False
+    
+    def get_content(self, document_id: int) -> dict:
+        """Get extracted content for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            Dict with content data, or None if not found
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                SELECT id, document_id, content, content_hash, character_count, encoding, extracted_at, extraction_method
+                FROM document_content
+                WHERE document_id = %s
+                """,
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'document_id': row[1],
+                    'content': row[2],
+                    'content_hash': row[3],
+                    'character_count': row[4],
+                    'encoding': row[5],
+                    'extracted_at': row[6],
+                    'extraction_method': row[7]
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting content: {e}")
+            return None
+    
+    def transition_document_status(self, document_id: int, new_status: str, last_error: str = None) -> bool:
+        """Transition document to a new status (Phase 3E: state machine enforcement).
+        
+        Validates that the transition is allowed according to the state machine.
+        Raises InvalidStateTransition if the transition is not valid.
         
         Args:
             document_id: ID of the document to update
-            status: New status (DISCOVERED, METADATA_INDEXED, CONTENT_EXTRACTED, etc.)
-            last_error: Error message if status is FAILED, None otherwise
+            new_status: New status (must be valid transition from current)
+            last_error: Error message if transitioning to FAILED
+            
+        Returns:
+            True if transition succeeded
+            
+        Raises:
+            ValueError: If transition is not valid
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Get current status
+            cur.execute("SELECT status FROM documents WHERE id = %s", (document_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                conn.close()
+                raise ValueError(f"Document {document_id} not found")
+            
+            current_status = row[0]
+            
+            # Validate transition
+            allowed = VALID_TRANSITIONS.get(current_status, set())
+            if new_status not in allowed:
+                cur.close()
+                conn.close()
+                raise ValueError(
+                    f"Invalid transition: {current_status} -> {new_status}. "
+                    f"Allowed transitions from {current_status}: {allowed}"
+                )
+            
+            # Perform transition
+            status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            cur.execute(
+                """
+                UPDATE documents 
+                SET status = %s, status_updated_at = %s, last_error = %s
+                WHERE id = %s
+                """,
+                (new_status, status_updated_at, last_error, document_id)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Document {document_id} transitioned: {current_status} -> {new_status}")
+            return True
+            
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Error transitioning document status: {e}")
+            return False
+    
+    def update_document_status(self, document_id: int, status: str, last_error: str = None) -> bool:
+        """Update document processing status (DEPRECATED: use transition_document_status).
+        
+        This method provides backward compatibility. For new code, use transition_document_status.
+        
+        Args:
+            document_id: ID of the document to update
+            status: New status
+            last_error: Error message if status is FAILED
             
         Returns:
             True if update succeeded, False otherwise
@@ -591,45 +975,62 @@ class PostgresBackend(StorageBackend):
             return {}
     
     # =========================================================================
-    # Job Queue Methods (Phase 2)
+    # Phase 3A: Job Queue Methods with Lease Management
     # =========================================================================
     
     def create_job(self, document_id: int, job_type: str, priority: int = 0) -> int:
-        """Create a new job for a document.
+        """Create a new job for a document (Phase 3D: duplicate prevention).
         
         Args:
             document_id: ID of the document to process
-            job_type: Type of job (compute_sha256, extract_text, extract_entities, etc.)
+            job_type: Type of job
             priority: Job priority (higher = more important)
             
         Returns:
-            Job ID if created, None on failure
+            Job ID if created, None on failure or if duplicate exists
         """
         try:
             conn = self._get_connection()
             cur = conn.cursor()
             created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
             
+            # Phase 3D: ON CONFLICT prevents duplicate jobs
             cur.execute(
                 """
                 INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
-                VALUES (%s, %s, %s, 'QUEUED', %s)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (document_id, job_type) DO NOTHING
                 RETURNING id
                 """,
-                (document_id, job_type, priority, created_at)
+                (document_id, job_type, priority, JobStatus.QUEUED, created_at)
             )
-            job_id = cur.fetchone()[0]
+            row = cur.fetchone()
             conn.commit()
-            cur.close()
-            conn.close()
-            logger.info(f"Created job {job_id}: {job_type} for document {document_id}")
-            return job_id
+            
+            if row:
+                job_id = row[0]
+                logger.info(f"Created job {job_id}: {job_type} for document {document_id}")
+                cur.close()
+                conn.close()
+                return job_id
+            else:
+                # Duplicate job - get existing job ID
+                cur.execute(
+                    "SELECT id FROM document_jobs WHERE document_id = %s AND job_type = %s",
+                    (document_id, job_type)
+                )
+                row = cur.fetchone()
+                cur.close()
+                conn.close()
+                if row:
+                    logger.info(f"Job already exists for document {document_id}: {job_type} (id={row[0]})")
+                return row[0] if row else None
         except Exception as e:
             logger.error(f"Error creating job: {e}")
             return None
     
     def create_jobs_for_document(self, document_id: int, job_types: list = None) -> list:
-        """Create multiple jobs for a document.
+        """Create multiple jobs for a document (Phase 3F: atomic transaction).
         
         Args:
             document_id: ID of the document
@@ -639,22 +1040,50 @@ class PostgresBackend(StorageBackend):
             List of created job IDs
         """
         if job_types is None:
-            job_types = ['extract_text', 'extract_entities', 'extract_events', 'extract_locations']
+            job_types = [JobType.EXTRACT_TEXT, JobType.EXTRACT_ENTITIES, 
+                        JobType.EXTRACT_EVENTS, JobType.EXTRACT_LOCATIONS]
         
-        job_ids = []
-        for job_type in job_types:
-            job_id = self.create_job(document_id, job_type)
-            if job_id:
-                job_ids.append(job_id)
-        return job_ids
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            job_ids = []
+            for job_type in job_types:
+                # Phase 3D: ON CONFLICT prevents duplicates
+                cur.execute(
+                    """
+                    INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (document_id, job_type) DO UPDATE SET document_id = EXCLUDED.document_id
+                    RETURNING id
+                    """,
+                    (document_id, job_type, 0, JobStatus.QUEUED, created_at)
+                )
+                row = cur.fetchone()
+                if row:
+                    job_ids.append(row[0])
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            logger.info(f"Created {len(job_ids)} jobs for document {document_id}")
+            return job_ids
+        except Exception as e:
+            logger.error(f"Error creating jobs: {e}")
+            if conn:
+                conn.rollback()
+            return []
     
-    def claim_job(self, worker_id: str) -> dict:
-        """Claim a queued job for processing.
+    def claim_job(self, worker_id: str, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict:
+        """Claim a queued job for processing (Phase 3A: lease management).
         
         Uses SELECT FOR UPDATE to atomically claim the oldest queued job.
+        Only claims jobs that are ready for retry (next_retry_at <= now).
         
         Args:
             worker_id: ID of the worker claiming the job
+            lease_seconds: How long to hold the lease
             
         Returns:
             Job dict with all fields, or None if no jobs available
@@ -662,23 +1091,29 @@ class PostgresBackend(StorageBackend):
         try:
             conn = self._get_connection()
             cur = conn.cursor()
-            started_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            now = _to_postgres_timestamp(datetime.now(timezone.utc))
+            claimed_at = now
+            lease_until = _to_postgres_timestamp(datetime.now(timezone.utc) + timedelta(seconds=lease_seconds))
             
-            # Claim the oldest queued job
+            # Phase 3A: Include lease columns in claim
             cur.execute(
                 """
                 UPDATE document_jobs
-                SET status = 'IN_PROGRESS', worker_id = %s, started_at = %s
+                SET status = %s, worker_id = %s, claimed_at = %s, lease_until = %s,
+                    started_at = COALESCE(started_at, %s), attempt_count = attempt_count + 1
                 WHERE id = (
                     SELECT id FROM document_jobs
-                    WHERE status = 'QUEUED'
+                    WHERE status = %s
+                    AND (next_retry_at IS NULL OR next_retry_at <= %s)
                     ORDER BY priority DESC, created_at ASC
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED
                 )
-                RETURNING id, document_id, job_type, priority, status, worker_id, created_at, started_at
+                RETURNING id, document_id, job_type, priority, status, worker_id, 
+                          claimed_at, lease_until, started_at, attempt_count
                 """,
-                (worker_id, started_at)
+                (JobStatus.IN_PROGRESS, worker_id, claimed_at, lease_until, now,
+                 JobStatus.QUEUED, now)
             )
             row = cur.fetchone()
             conn.commit()
@@ -691,12 +1126,14 @@ class PostgresBackend(StorageBackend):
                     'priority': row[3],
                     'status': row[4],
                     'worker_id': row[5],
-                    'created_at': row[6],
-                    'started_at': row[7]
+                    'claimed_at': row[6],
+                    'lease_until': row[7],
+                    'started_at': row[8],
+                    'attempt_count': row[9]
                 }
                 cur.close()
                 conn.close()
-                logger.info(f"Worker {worker_id} claimed job {job['id']}: {job['job_type']}")
+                logger.info(f"Worker {worker_id} claimed job {job['id']}: {job['job_type']} (attempt {job['attempt_count']})")
                 return job
             
             cur.close()
@@ -706,12 +1143,13 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error claiming job: {e}")
             return None
     
-    def complete_job(self, job_id: int, error_message: str = None) -> bool:
-        """Mark a job as completed.
+    def complete_job(self, job_id: int, success: bool = True, error_message: str = None) -> bool:
+        """Mark a job as completed or failed (Phase 3C: retry logic).
         
         Args:
             job_id: ID of the job to complete
-            error_message: Error message if failed, None if succeeded
+            success: True if job succeeded, False if failed
+            error_message: Error message if failed
             
         Returns:
             True if update succeeded, False otherwise
@@ -719,25 +1157,177 @@ class PostgresBackend(StorageBackend):
         try:
             conn = self._get_connection()
             cur = conn.cursor()
-            completed_at = _to_postgres_timestamp(datetime.now(timezone.utc))
-            status = 'FAILED' if error_message else 'COMPLETED'
+            now = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            if success:
+                # Job succeeded - mark as COMPLETED, clear lease
+                cur.execute(
+                    """
+                    UPDATE document_jobs
+                    SET status = %s, completed_at = %s, error_message = NULL,
+                        worker_id = NULL, lease_until = NULL
+                    WHERE id = %s
+                    """,
+                    (JobStatus.COMPLETED, now, job_id)
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+                logger.info(f"Job {job_id} marked as COMPLETED")
+                return True
+            else:
+                # Job failed - check retry count
+                cur.execute(
+                    "SELECT attempt_count FROM document_jobs WHERE id = %s",
+                    (job_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    cur.close()
+                    conn.close()
+                    return False
+                
+                attempt_count = row[0]
+                
+                if attempt_count >= MAX_RETRIES:
+                    # Max retries exceeded - permanent failure
+                    cur.execute(
+                        """
+                        UPDATE document_jobs
+                        SET status = %s, completed_at = %s, error_message = %s,
+                            worker_id = NULL, lease_until = NULL
+                        WHERE id = %s
+                        """,
+                        (JobStatus.FAILED_PERMANENT, now, error_message, job_id)
+                    )
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    logger.warning(f"Job {job_id} marked as FAILED_PERMANENT after {attempt_count} attempts")
+                    return True
+                else:
+                    # Schedule retry with backoff
+                    next_delay = RETRY_DELAYS.get(attempt_count + 1, timedelta(hours=2))
+                    next_retry_at = _to_postgres_timestamp(datetime.now(timezone.utc) + next_delay)
+                    
+                    cur.execute(
+                        """
+                        UPDATE document_jobs
+                        SET status = %s, attempt_count = attempt_count + 1,
+                            last_error = %s, error_message = %s,
+                            worker_id = NULL, lease_until = NULL, next_retry_at = %s
+                        WHERE id = %s
+                        """,
+                        (JobStatus.QUEUED, error_message, error_message, next_retry_at, job_id)
+                    )
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    logger.info(f"Job {job_id} scheduled for retry {attempt_count + 1}/{MAX_RETRIES} at {next_retry_at}")
+                    return True
+        except Exception as e:
+            logger.error(f"Error completing job: {e}")
+            return False
+    
+    def release_lease(self, job_id: int) -> bool:
+        """Release a job's lease without completing it (e.g., worker shutdown).
+        
+        Args:
+            job_id: ID of the job
+            
+        Returns:
+            True if release succeeded
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
             
             cur.execute(
                 """
                 UPDATE document_jobs
-                SET status = %s, completed_at = %s, error_message = %s
-                WHERE id = %s
+                SET status = %s, worker_id = NULL, lease_until = NULL
+                WHERE id = %s AND status = %s
                 """,
-                (status, completed_at, error_message, job_id)
+                (JobStatus.QUEUED, job_id, JobStatus.IN_PROGRESS)
             )
             conn.commit()
             cur.close()
             conn.close()
-            logger.info(f"Job {job_id} marked as {status}")
+            logger.info(f"Released lease for job {job_id}")
             return True
         except Exception as e:
-            logger.error(f"Error completing job: {e}")
+            logger.error(f"Error releasing lease: {e}")
             return False
+    
+    def renew_lease(self, job_id: int, worker_id: str, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> bool:
+        """Renew a job's lease.
+        
+        Args:
+            job_id: ID of the job
+            worker_id: ID of the worker (must match current holder)
+            lease_seconds: New lease duration
+            
+        Returns:
+            True if renewal succeeded
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            lease_until = _to_postgres_timestamp(datetime.now(timezone.utc) + timedelta(seconds=lease_seconds))
+            
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET lease_until = %s
+                WHERE id = %s AND worker_id = %s AND status = %s
+                """,
+                (lease_until, job_id, worker_id, JobStatus.IN_PROGRESS)
+            )
+            rows = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            if rows > 0:
+                logger.debug(f"Renewed lease for job {job_id}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error renewing lease: {e}")
+            return False
+    
+    def recover_expired_leases(self) -> int:
+        """Recover jobs with expired leases (Phase 3B: lease recovery).
+        
+        Returns jobs to QUEUED status so they can be re-claimed.
+        
+        Returns:
+            Number of jobs recovered
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            now = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = %s, worker_id = NULL, claimed_at = NULL, lease_until = NULL
+                WHERE status = %s AND lease_until < %s
+                """,
+                (JobStatus.QUEUED, JobStatus.IN_PROGRESS, now)
+            )
+            recovered = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            if recovered > 0:
+                logger.info(f"Recovered {recovered} expired jobs")
+            return recovered
+        except Exception as e:
+            logger.error(f"Error recovering leases: {e}")
+            return 0
     
     def get_job_status_counts(self) -> dict:
         """Get count of jobs grouped by status.

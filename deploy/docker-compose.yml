@@ -59,6 +59,30 @@ services:
     networks:
       - librarian-network
 
+  # Librarian Worker - Background job processor
+  # Phase 3A: Processes jobs from the queue
+  librarian-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: librarian-worker
+    restart: unless-stopped
+    command: python -m workers.worker
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
+      - LIBRARIAN_LIBRARY_ROOT=/library
+      - WORKER_ID=${WORKER_ID:-worker-1}
+    volumes:
+      # Mount library root for content extraction
+      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}  # Scale workers with this env var
+    networks:
+      - librarian-network
+
   # Librarian GUI (optional - uncomment to enable)
   # librarian-gui:
   #   build:

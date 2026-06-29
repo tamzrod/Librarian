@@ -35,23 +35,32 @@ CREATE TABLE IF NOT EXISTS documents (
 -- COMPLETE: All processing stages complete
 -- FAILED: Processing failed after max retries
 
--- Document jobs table (Phase 2: job queue)
+-- Document jobs table (Phase 2: job queue, Phase 3: worker runtime)
 CREATE TABLE IF NOT EXISTS document_jobs (
     id SERIAL PRIMARY KEY,
     document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
     job_type VARCHAR(100) NOT NULL,
     priority INTEGER DEFAULT 0,
     status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
+    -- Lease management for crash recovery
+    claimed_at TIMESTAMP,
+    lease_until TIMESTAMP,
+    -- Retry support
+    attempt_count INTEGER DEFAULT 0,
+    last_error TEXT,
+    next_retry_at TIMESTAMP,
+    -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
     worker_id VARCHAR(100),
-    error_message TEXT
+    error_message TEXT,
+    -- Unique constraint: one job per document per type
+    CONSTRAINT uq_document_job UNIQUE (document_id, job_type)
 );
 
 -- Job type constants (for reference):
--- compute_sha256: Compute file hash
--- extract_text: Extract text content
+-- extract_text: Extract text content (Phase 3A)
 -- extract_entities: Identify entities in text
 -- extract_events: Extract date/time references
 -- extract_locations: Extract location references
@@ -61,10 +70,29 @@ CREATE TABLE IF NOT EXISTS document_jobs (
 
 -- Job status constants (for reference):
 -- QUEUED: Job created, waiting for worker
--- IN_PROGRESS: Worker has claimed the job
+-- IN_PROGRESS: Worker has claimed the job, lease active
 -- COMPLETED: Job finished successfully
--- FAILED: Job failed after all retries
+-- FAILED_PERMANENT: Job failed after all retries (terminal state)
 -- CANCELLED: Job cancelled by user
+
+-- Job retry schedule (exponential backoff):
+-- Attempt 1: immediate
+-- Attempt 2: 1 minute
+-- Attempt 3: 5 minutes
+-- Attempt 4: 30 minutes
+-- Attempt 5: 2 hours (final attempt)
+
+-- Extracted content table (Phase 3A: CONTENT_EXTRACTION)
+CREATE TABLE IF NOT EXISTS document_content (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    content TEXT,
+    content_hash VARCHAR(64),
+    character_count INTEGER,
+    encoding VARCHAR(50),
+    extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    extraction_method VARCHAR(100)
+);
 
 -- Evidence lineage table (Phase 5: provenance tracking)
 -- Tracks: entity → derived_from → document → derived_from → artifact
@@ -158,6 +186,11 @@ CREATE INDEX IF NOT EXISTS idx_document_jobs_document ON document_jobs(document_
 CREATE INDEX IF NOT EXISTS idx_document_jobs_status ON document_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_document_jobs_type ON document_jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_document_jobs_priority ON document_jobs(priority);
+CREATE INDEX IF NOT EXISTS idx_document_jobs_lease ON document_jobs(lease_until) WHERE status = 'IN_PROGRESS';
+CREATE INDEX IF NOT EXISTS idx_document_jobs_retry ON document_jobs(next_retry_at) WHERE status = 'QUEUED';
+
+-- Document content indexes
+CREATE INDEX IF NOT EXISTS idx_document_content_doc ON document_content(document_id);
 
 -- Evidence lineage indexes
 CREATE INDEX IF NOT EXISTS idx_evidence_entity ON evidence_lineage(entity_id);
