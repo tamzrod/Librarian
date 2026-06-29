@@ -25,6 +25,30 @@ def extract_events(document):
                 })
                 seen.add(timestamp)
     
+    # Extract events from text directly - scan for date patterns
+    date_patterns = [
+        # ISO format: 2024-01-15
+        (r'\b(\d{4}-\d{2}-\d{2})\b', 'DATE_ISO'),
+        # US format: 01/15/2024
+        (r'\b(\d{1,2}/\d{1,2}/\d{4})\b', 'DATE_US'),
+        # Written: January 15, 2024
+        (r'\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})\b', 'DATE_WRITTEN'),
+        # Abbreviated: Jan 15, 2024
+        (r'\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4})\b', 'DATE_SHORT'),
+    ]
+    
+    for pattern, event_type in date_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            date_str = match.group(1)
+            if date_str not in seen:
+                seen.add(date_str)
+                events.append({
+                    'timestamp': date_str,
+                    'event_type': event_type,
+                    'description': f"Date reference: {date_str}",
+                    'source': path
+                })
+    
     # Extract events from file modified timestamp
     if modified_time:
         mod_time_str = str(modified_time)

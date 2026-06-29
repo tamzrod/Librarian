@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uuid
 
-from api.routes import questions, collections
+from api.routes import questions, collections, pipeline, operations
 from api.dependencies import get_storage_backend, MockBackend
 from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
@@ -78,6 +78,8 @@ async def add_request_id(request: Request, call_next):
 # Include routers with versioned prefix
 app.include_router(questions.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")
+app.include_router(pipeline.router, prefix="/api/v1")
+app.include_router(operations.router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -93,8 +95,70 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """
+    Health check endpoint with detailed status.
+    
+    Returns database connectivity, worker count, queue depth,
+    and oldest queued job age.
+    """
+    from api.app_state import get_app_state
+    state = get_app_state()
+    
+    # Database status
+    db_connected = state.database_connected
+    db_schema_ready = state._schema_ready
+    
+    # Job counts
+    queued_jobs = 0
+    running_jobs = 0
+    oldest_job_age = None
+    
+    try:
+        if state.backend and hasattr(state.backend, 'get_job_status_counts'):
+            job_counts = state.backend.get_job_status_counts()
+            queued_jobs = job_counts.get('queued', 0)
+            running_jobs = job_counts.get('in_progress', 0)
+        
+        if state.backend and hasattr(state.backend, '_get_connection'):
+            conn = state.backend._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXTRACT(EPOCH FROM (NOW() - created_at)) as age_seconds
+                FROM document_jobs
+                WHERE status = 'QUEUED'
+                ORDER BY created_at ASC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row and row[0]:
+                oldest_job_age = round(float(row[0]), 1)
+            cur.close()
+            conn.close()
+    except Exception:
+        pass
+    
+    # Worker count
+    worker_count = 1 if state.job_processor_active else 0
+    
+    # Overall health
+    healthy = db_connected and db_schema_ready
+    status = "healthy" if healthy else "degraded"
+    
+    return {
+        "status": status,
+        "database": {
+            "connected": db_connected,
+            "schema_ready": db_schema_ready
+        },
+        "queue": {
+            "queued": queued_jobs,
+            "running": running_jobs,
+            "oldest_job_age_seconds": oldest_job_age
+        },
+        "workers": worker_count,
+        "watcher_active": state.watcher_active,
+        "job_processor_active": state.job_processor_active
+    }
 
 
 @app.get("/api/v1/status")
