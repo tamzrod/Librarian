@@ -98,7 +98,107 @@ Librarian **automatically and recursively** discovers all files under the librar
 - **Stats**: http://localhost:8000/api/v1/stats
 - **Timeline**: http://localhost:8000/api/v1/timeline
 
-## Common Commands
+## Deployment Helper Scripts
+
+The following helper scripts are provided for streamlined development operations:
+
+### Quick Start with `dev.sh`
+
+The primary development interface for Docker operations:
+
+```bash
+./dev.sh update      # Update code and restart (preserves data)
+./dev.sh status      # Show deployment status
+./dev.sh logs        # Tail all logs
+./dev.sh logs api    # Tail API logs
+./dev.sh logs worker # Tail worker logs
+./dev.sh rebuild     # Force clean rebuild (preserves data)
+./dev.sh reset       # Destroy and recreate (DESTRUCTIVE)
+./dev.sh start       # Start containers
+./dev.sh stop        # Stop containers
+./dev.sh restart     # Restart containers
+```
+
+### Update Script (`update.sh`)
+
+Updates to the latest code and restarts containers while preserving data:
+
+```bash
+./update.sh
+```
+
+Workflow:
+- Pulls latest code from git
+- Pulls latest Docker images
+- Stops containers (preserving PostgreSQL volume and library data)
+- Builds and starts containers
+- Waits for health checks
+- Displays service status
+
+### Rebuild Script (`rebuild.sh`)
+
+Force a clean rebuild while preserving persistent data:
+
+```bash
+./rebuild.sh
+```
+
+Preserves:
+- PostgreSQL volume
+- Library contents
+
+### Reset Script (`reset.sh`)
+
+Destroy the entire environment and recreate from scratch:
+
+```bash
+./reset.sh
+```
+
+⚠️ **WARNING**: This will delete all database data. You will be prompted to confirm.
+
+### Status Script (`status.sh`)
+
+Display deployment status including:
+
+```bash
+./status.sh
+```
+
+Example output:
+```
+┌─────────────────────────────────────────┐
+│         Librarian Deployment Status     │
+└─────────────────────────────────────────┘
+
+API:        HEALTHY
+Database:   HEALTHY
+Workers:    1
+Documents:  3434
+Queue:      0 queued
+DB Size:    32 MB
+Containers: 3 running
+
+Quick Links:
+  Health:  http://localhost:8000/health
+  API:     http://localhost:8000/docs
+  Stats:   http://localhost:8000/api/v1/stats
+```
+
+### Logs Script (`logs.sh`)
+
+Interactive log viewer:
+
+```bash
+./logs.sh api       # View API server logs
+./logs.sh worker    # View worker logs
+./logs.sh postgres  # View PostgreSQL logs
+./logs.sh all       # View all logs (default)
+./logs.sh api --tail 200    # Last 200 lines
+./logs.sh all --since 30m   # Last 30 minutes
+```
+
+## Manual Docker Commands
 
 ### Start
 
@@ -128,8 +228,7 @@ docker compose restart
 ## Upgrading
 
 ```bash
-docker compose pull
-docker compose up -d
+./update.sh
 ```
 
 ## Backup
