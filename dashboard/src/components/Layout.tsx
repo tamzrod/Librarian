@@ -27,7 +27,7 @@ function Layout() {
             <span className="logo-text">Librarian</span>
           </div>
           <span className="status-indicator" style={{ backgroundColor: getStatusColor() }} />
-          <span className="status-text">{status?.status || 'Connecting...'}</span>
+          <span className="status-text">{status ? status.status.charAt(0).toUpperCase() + status.status.slice(1) : 'Connecting...'}</span>
         </div>
         <div className="header-right">
           <span className="api-version">API v1.0</span>
