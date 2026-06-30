@@ -97,31 +97,109 @@ class DocumentDetailResponse(BaseModel):
 # Helper Functions
 # ============================================================================
 
-def _build_folder_tree_from_paths(paths: list[str], parent_path: str = "") -> list[FolderNode]:
-    """Build folder tree structure from a list of paths.
+def normalize_path_relative(path: str, collection_root: str) -> str:
+    """Convert an absolute document path to a path relative to collection root.
     
     Args:
-        paths: List of document paths
-        parent_path: Parent path to filter (empty for root)
+        path: Absolute document path (e.g., "/library/Camera/IMG001.jpg")
+        collection_root: Collection root path (e.g., "/library")
     
     Returns:
-        List of FolderNode objects representing the folder hierarchy
+        Path relative to collection root (e.g., "Camera/IMG001.jpg")
+        Returns None if path doesn't start with collection_root.
+    
+    Examples:
+        normalize_path_relative("/library/Camera/IMG001.jpg", "/library")
+        -> "Camera/IMG001.jpg"
+        
+        normalize_path_relative("/library/Camera/IMG001.jpg", "/photos")
+        -> None (doesn't match)
     """
+    if not path or not collection_root:
+        return None
+    
+    # Normalize both paths - ensure trailing slash for root
+    normalized_root = collection_root.rstrip('/') + '/'
+    normalized_path = path.rstrip('/')
+    
+    if not normalized_path.startswith(normalized_root):
+        return None
+    
+    relative = normalized_path[len(normalized_root):]
+    return relative.lstrip('/')
+
+
+def _extract_folder_paths(conn, collection_root: str) -> list[str]:
+    """Extract unique folder paths from documents table, relative to collection root.
+    
+    Args:
+        conn: Database connection
+        collection_root: Collection root path for normalization (required)
+    
+    Returns:
+        List of unique parent directory paths, relative to collection root.
+        Example: ["Camera", "Camera/subfolder", "Documents"]
+    """
+    if not collection_root:
+        raise ValueError("collection_root is required and cannot be empty")
+    
+    paths = set()
+    
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT path FROM documents ORDER BY path")
+        
+        for row in cur.fetchall():
+            doc_path = row[0] or ""
+            if '/' in doc_path:
+                # Extract directory path (everything except filename)
+                folder_path = '/'.join(doc_path.rsplit('/', 1)[:-1])
+                if folder_path:
+                    # Normalize relative to collection root
+                    relative = normalize_path_relative(folder_path, collection_root)
+                    if relative:
+                        paths.add(relative)
+            else:
+                # File in root - no parent folder
+                pass
+        
+        cur.close()
+    except Exception:
+        pass
+    
+    return sorted(list(paths))
+
+
+def _build_folder_tree_from_paths(paths: list[str], collection_root: str) -> list[FolderNode]:
+    """Build folder tree structure from a list of relative paths.
+    
+    Args:
+        paths: List of document paths relative to collection root.
+               Example: ["Camera/IMG001.jpg", "Camera/IMG002.jpg", "Documents/report.pdf"]
+        collection_root: The collection root path (e.g., "/library").
+                       Used to construct full paths for folder nodes.
+    
+    Returns:
+        List of FolderNode objects representing the folder hierarchy.
+    
+    Example:
+        Input paths: ["Camera/IMG001.jpg", "Camera/IMG002.jpg", "Documents/report.pdf"]
+        Output: [FolderNode("Camera", ...), FolderNode("Documents", ...)]
+    """
+    if not collection_root:
+        raise ValueError("collection_root is required and cannot be empty")
+    
     folders_map: dict[str, set] = {}
     
     for path in paths:
         # Normalize path - remove trailing slash
         path = path.rstrip('/')
         
-        if parent_path:
-            if not path.startswith(parent_path):
-                continue
-            relative = path[len(parent_path):].lstrip('/')
-        else:
-            relative = path.lstrip('/')
+        if not path:
+            continue
         
         # Split into parts
-        parts = relative.split('/')
+        parts = path.split('/')
         
         # Add the first level folder
         if parts:
@@ -129,7 +207,7 @@ def _build_folder_tree_from_paths(paths: list[str], parent_path: str = "") -> li
             if first_folder not in folders_map:
                 folders_map[first_folder] = set()
             
-            # Track subfolders
+            # Track subfolders for nested structure
             if len(parts) > 1:
                 folders_map[first_folder].add('/'.join(parts[1:]))
     
@@ -137,7 +215,7 @@ def _build_folder_tree_from_paths(paths: list[str], parent_path: str = "") -> li
     folder_nodes = []
     for folder_name in sorted(folders_map.keys()):
         subfolders = folders_map[folder_name]
-        full_path = f"{parent_path}/{folder_name}" if parent_path else f"/{folder_name}"
+        full_path = f"{collection_root}/{folder_name}"
         
         # Check if this folder has children (subfolders or documents)
         has_children = len(subfolders) > 0 or any(
@@ -155,76 +233,41 @@ def _build_folder_tree_from_paths(paths: list[str], parent_path: str = "") -> li
     return folder_nodes
 
 
-def _extract_folder_paths(conn) -> list[str]:
-    """Extract unique folder paths from documents table.
-    
-    Returns:
-        List of unique parent directory paths
-    """
-    paths = set()
-    
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT path FROM documents ORDER BY path")
-        
-        for row in cur.fetchall():
-            doc_path = row[0] or ""
-            if '/' in doc_path:
-                # Extract directory path (everything except filename)
-                folder_path = '/'.join(doc_path.rsplit('/', 1)[:-1])
-                if folder_path:
-                    paths.add(folder_path)
-            else:
-                # File in root - treat root as a folder
-                paths.add('/')
-        
-        cur.close()
-    except Exception:
-        pass
-    
-    return sorted(list(paths))
-
-
-def _get_subfolders(conn, parent_path: str) -> list[FolderNode]:
+def _get_subfolders(conn, parent_path: str, collection_root: str) -> list[FolderNode]:
     """Get subfolders within a parent path.
     
     Args:
         conn: Database connection
-        parent_path: Parent folder path
+        parent_path: Parent folder path (absolute, relative to collection root)
+        collection_root: The collection root path for path normalization
     
     Returns:
         List of immediate subfolders
     """
+    if not collection_root:
+        raise ValueError("collection_root is required and cannot be empty")
+    
     folders_map: dict[str, bool] = {}
-    prefix = f"{parent_path}/" if not parent_path.endswith('/') else parent_path
     
     try:
         cur = conn.cursor()
         
-        if parent_path == "/":
-            # Root level - get top-level folders
-            cur.execute("SELECT path FROM documents")
-        else:
-            # Subfolder level
-            cur.execute("SELECT path FROM documents WHERE path LIKE %s", (f"{prefix}%",))
+        # Build prefix for matching - paths in DB are absolute
+        # parent_path is like "/library/Camera"
+        prefix = f"{parent_path}/"
+        
+        # Query documents under this path
+        cur.execute("SELECT path FROM documents WHERE path LIKE %s", (f"{prefix}%",))
         
         for row in cur.fetchall():
             doc_path = row[0] or ""
-            if parent_path == "/":
-                # Get top-level folder names
-                relative = doc_path.lstrip('/')
-                if '/' in relative:
-                    folder_name = relative.split('/')[0]
+            if doc_path.startswith(prefix):
+                # Get path relative to parent
+                remaining = doc_path[len(prefix):]
+                if '/' in remaining:
+                    folder_name = remaining.split('/')[0]
                     if folder_name:
                         folders_map[folder_name] = True
-            else:
-                # Get subfolder names
-                if doc_path.startswith(prefix):
-                    remaining = doc_path[len(prefix):]
-                    if '/' in remaining:
-                        folder_name = remaining.split('/')[0]
-                        if folder_name:
-                            folders_map[folder_name] = True
         
         cur.close()
     except Exception:
@@ -232,9 +275,9 @@ def _get_subfolders(conn, parent_path: str) -> list[FolderNode]:
     
     return [
         FolderNode(
-            id=f"{parent_path}/{name}" if parent_path != "/" else f"/{name}",
+            id=f"{parent_path}/{name}",
             name=name,
-            path=f"{parent_path}/{name}" if parent_path != "/" else f"/{name}",
+            path=f"{parent_path}/{name}",
             has_children=True  # Assume children for now
         )
         for name in sorted(folders_map.keys())
@@ -246,7 +289,7 @@ def _get_documents_in_folder(conn, folder_path: str) -> list[DocumentSummary]:
     
     Args:
         conn: Database connection
-        folder_path: Folder path to query
+        folder_path: Folder path to query (absolute path)
     
     Returns:
         List of documents in the folder
@@ -256,26 +299,18 @@ def _get_documents_in_folder(conn, folder_path: str) -> list[DocumentSummary]:
     try:
         cur = conn.cursor()
         
-        if folder_path == "/":
-            # Root level - documents without subfolder
-            cur.execute("""
-                SELECT id, path, extension, file_size, mime_type, modified_time,
-                       indexed_at, status, character_count
-                FROM documents
-                WHERE path NOT LIKE '%/%'
-                ORDER BY path
-            """)
-        else:
-            # Specific folder
-            prefix = f"{folder_path}/"
-            folder_name = folder_path.rsplit('/', 1)[-1]
-            cur.execute("""
-                SELECT id, path, extension, file_size, mime_type, modified_time,
-                       indexed_at, status, character_count
-                FROM documents
-                WHERE path LIKE %s AND path NOT LIKE %s
-                ORDER BY path
-            """, (f"{prefix}%", f"{prefix}%/%"))
+        # Build prefix for matching
+        prefix = f"{folder_path}/"
+        
+        # Get documents directly in this folder (not in subfolders)
+        # path LIKE prefix% AND path NOT LIKE prefix%/%
+        cur.execute("""
+            SELECT id, path, extension, file_size, mime_type, modified_time,
+                   indexed_at, status, character_count
+            FROM documents
+            WHERE path LIKE %s AND path NOT LIKE %s
+            ORDER BY path
+        """, (f"{prefix}%", f"{prefix}%/%"))
         
         for row in cur.fetchall():
             doc_id, doc_path, ext, size, mime, modified, indexed, status, char_count = row
@@ -319,8 +354,19 @@ async def get_folder_tree(
     
     Returns the root folder and all subfolders as a tree structure.
     This is used to populate the left pane of the Artifact Explorer.
+    
+    The tree is built by:
+    1. Fetching all document paths from the database (absolute paths)
+    2. Normalizing paths relative to the collection root
+    3. Building a hierarchical folder structure
     """
-    root_path = "/library"
+    # Get collection root from app state
+    app_state = get_app_state()
+    collection_root = app_state.library_root or "/library"
+    
+    # Derive root name from collection root (e.g., "/library" -> "library")
+    root_name = collection_root.lstrip('/').split('/')[-1] or "library"
+    
     subfolders = []
     total_folders = 1  # Root folder
     
@@ -328,11 +374,13 @@ async def get_folder_tree(
         try:
             conn = backend._get_connection()
             
-            # Get all unique folder paths
-            paths = _extract_folder_paths(conn)
+            # Get all folder paths normalized relative to collection root
+            # Returns paths like ["Camera", "Camera/IMG001.jpg", "Documents/report.pdf"]
+            paths = _extract_folder_paths(conn, collection_root)
             
-            # Build tree structure
-            subfolders = _build_folder_tree_from_paths(paths, "")
+            # Build tree structure with collection root normalization
+            # This correctly handles absolute paths by stripping the collection root prefix
+            subfolders = _build_folder_tree_from_paths(paths, collection_root)
             total_folders += len(subfolders)
             
             # Recursively build tree for each top-level folder
@@ -347,20 +395,11 @@ async def get_folder_tree(
     
     # Build root node
     root_node = FolderNode(
-        id=root_path,
-        name="library",
-        path=root_path,
+        id=collection_root,
+        name=root_name,
+        path=collection_root,
         has_children=len(subfolders) > 0
     )
-    
-    # If we have subfolders, the root has children
-    if subfolders:
-        root_node = FolderNode(
-            id=root_path,
-            name="library",
-            path=root_path,
-            has_children=True
-        )
     
     return FolderTreeResponse(
         root=root_node,
@@ -382,13 +421,23 @@ async def get_folder_contents(
     
     Returns subfolders and documents within the specified folder.
     The folder_path should be URL-encoded if it contains slashes.
-    """
-    # Normalize folder path
-    folder_path = "/" + folder_path.strip("/")
     
-    # Handle root folder
-    if folder_path == "/":
-        folder_path = "/library"
+    The folder_path is relative to the collection root. For example,
+    if the collection root is "/library" and folder_path is "Camera",
+    the full path becomes "/library/Camera".
+    """
+    # Get collection root from app state
+    app_state = get_app_state()
+    collection_root = app_state.library_root or "/library"
+    
+    # folder_path comes in as relative path (e.g., "Camera" or "Camera/subfolder")
+    # Build the full absolute path by combining with collection root
+    folder_path = folder_path.strip("/")
+    if folder_path:
+        full_folder_path = f"{collection_root}/{folder_path}"
+    else:
+        # Empty path means root
+        full_folder_path = collection_root
     
     subfolders = []
     documents = []
@@ -397,20 +446,20 @@ async def get_folder_contents(
         try:
             conn = backend._get_connection()
             
-            # Get subfolders
-            subfolders = _get_subfolders(conn, folder_path)
+            # Get subfolders using the full path
+            subfolders = _get_subfolders(conn, full_folder_path, collection_root)
             
             # Get documents in this folder
-            documents = _get_documents_in_folder(conn, folder_path)
+            documents = _get_documents_in_folder(conn, full_folder_path)
             
             conn.close()
         except Exception:
             pass
     
     folder_node = FolderNode(
-        id=folder_path,
-        name=folder_path.rsplit('/', 1)[-1] or "library",
-        path=folder_path,
+        id=full_folder_path,
+        name=folder_path.rsplit('/')[-1] if folder_path else collection_root.lstrip('/').split('/')[-1],
+        path=full_folder_path,
         has_children=len(subfolders) > 0
     )
     
