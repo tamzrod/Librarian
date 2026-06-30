@@ -3,13 +3,19 @@ import { useApiStatus } from '../hooks/useApiStatus'
 import BuildInfo from './BuildInfo'
 import './Layout.css'
 
-const navItems = [
-  { path: '/overview', label: 'System Overview', icon: '📊' },
-  { path: '/queue', label: 'Queue Monitor', icon: '📋' },
-  { path: '/activity', label: 'Activity Feed', icon: '📜' },
-  { path: '/documents', label: 'Document Journey', icon: '📄' },
-  { path: '/extractions', label: 'Extraction Viewer', icon: '🔍' },
-  { path: '/timeline', label: 'Evidence Timeline', icon: '🗺️' },
+const investigationItems = [
+  { path: '/explorer', label: 'Explorer', icon: '🔍' },
+  { path: '/timeline', label: 'Timeline', icon: '📅' },
+  { path: '/map', label: 'Map', icon: '🗺️' },
+  { path: '/entities', label: 'Entities', icon: '🏷️' },
+  { path: '/relationships', label: 'Relationships', icon: '🔗' },
+]
+
+const operationsItems = [
+  { path: '/overview', label: 'Overview', icon: '📊' },
+  { path: '/queue', label: 'Queue', icon: '📋' },
+  { path: '/activity', label: 'Activity', icon: '📜' },
+  { path: '/extractions', label: 'Extraction', icon: '🔎' },
 ]
 
 function Layout() {
@@ -32,21 +38,38 @@ function Layout() {
           <span className="status-text">{status ? status.status.charAt(0).toUpperCase() + status.status.slice(1) : 'Connecting...'}</span>
         </div>
         <div className="header-right">
+          <span className="workspace-label">Investigation Workspace</span>
           <span className="api-version">API v1.0</span>
         </div>
       </header>
       <div className="main-container">
         <nav className="sidebar">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
+          <div className="nav-section">
+            <span className="nav-section-label">Investigation</span>
+            {investigationItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+          <div className="nav-section">
+            <span className="nav-section-label">Operations</span>
+            {operationsItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
         </nav>
         <main className="content">
           <Outlet />
