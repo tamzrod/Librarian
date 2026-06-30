@@ -51,7 +51,8 @@ Example `.env` configuration:
 ```env
 LIBRARY_PATH=/home/user/Documents
 POSTGRES_PASSWORD=your_secure_password
-API_PORT=8000
+API_HOST_PORT=8001
+DASHBOARD_PORT=3100
 ```
 
 ### 4. Start Services
@@ -64,7 +65,7 @@ docker compose up -d
 
 ```bash
 docker compose ps
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ## Library Configuration
@@ -92,11 +93,15 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Status**: http://localhost:8000/api/v1/status
-- **Stats**: http://localhost:8000/api/v1/stats
-- **Timeline**: http://localhost:8000/api/v1/timeline
+- **API Documentation**: http://localhost:8001/api/docs
+- **Health Check**: http://localhost:8001/health
+- **Status**: http://localhost:8001/api/v1/status
+- **Stats**: http://localhost:8001/api/v1/stats
+- **Timeline**: http://localhost:8001/api/v1/timeline
+
+## Accessing the Dashboard
+
+- **Dashboard**: http://localhost:3100
 
 ## Deployment Helper Scripts
 
@@ -172,6 +177,7 @@ Example output:
 └─────────────────────────────────────────┘
 
 API:        HEALTHY
+Dashboard:  HEALTHY
 Database:   HEALTHY
 Workers:    1
 Documents:  3434
@@ -180,9 +186,10 @@ DB Size:    32 MB
 Containers: 3 running
 
 Quick Links:
-  Health:  http://localhost:8000/health
-  API:     http://localhost:8000/docs
-  Stats:   http://localhost:8000/api/v1/stats
+  Health:     http://localhost:8001/health
+  API:        http://localhost:8001/api/docs
+  Dashboard:  http://localhost:3100
+  Stats:      http://localhost:8001/api/v1/stats
 ```
 
 ### Logs Script (`logs.sh`)
@@ -191,6 +198,7 @@ Interactive log viewer:
 
 ```bash
 ./logs.sh api       # View API server logs
+./logs.sh dashboard # View dashboard logs
 ./logs.sh worker    # View worker logs
 ./logs.sh postgres  # View PostgreSQL logs
 ./logs.sh all       # View all logs (default)
@@ -260,9 +268,14 @@ sudo systemctl enable docker
 
 ### Port Already in Use
 
-Change `API_PORT` in `.env`:
+Change `API_HOST_PORT` in `.env`:
 ```env
-API_PORT=8001
+API_HOST_PORT=8002
+```
+
+Or change `DASHBOARD_PORT`:
+```env
+DASHBOARD_PORT=3101
 ```
 
 ### Permission Issues
@@ -277,6 +290,7 @@ sudo chown -R $(id -u):$(id -g) ./volumes
 ```bash
 docker compose logs postgres
 docker compose logs librarian-api
+docker compose logs librarian-dashboard
 ```
 
 ## Data Persistence

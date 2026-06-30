@@ -168,32 +168,48 @@ fi
 pass "Containers are healthy"
 echo ""
 
-# Test 3: Health Endpoint
+# Test 3: Dashboard Health Endpoint
 echo "─────────────────────────────────────────"
-info "Test 3: Health Endpoint"
+info "Test 3: Dashboard Health Endpoint"
 echo "─────────────────────────────────────────"
 
-info "Checking health endpoint..."
-HEALTH_RESPONSE=$(curl -sf http://localhost:8000/health 2>/dev/null || echo "")
-if [ -n "$HEALTH_RESPONSE" ]; then
-    pass "Health endpoint is reachable"
-    echo ""
-    info "Health response:"
-    echo "$HEALTH_RESPONSE" | python -m json.tool 2>/dev/null || echo "$HEALTH_RESPONSE"
+info "Checking dashboard health endpoint..."
+DASHBOARD_HEALTH=$(curl -sf http://localhost:3100/health 2>/dev/null || echo "")
+if [ -n "$DASHBOARD_HEALTH" ]; then
+    pass "Dashboard health endpoint is reachable"
 else
-    fail "Health endpoint returned no response"
+    fail "Dashboard health endpoint returned no response"
     exit 1
 fi
 
 echo ""
 
-# Test 4: API Status
+# Test 4: API Health Endpoint
 echo "─────────────────────────────────────────"
-info "Test 4: API Status Check"
+info "Test 4: API Health Endpoint"
+echo "─────────────────────────────────────────"
+
+info "Checking API health endpoint..."
+HEALTH_RESPONSE=$(curl -sf http://localhost:8001/health 2>/dev/null || echo "")
+if [ -n "$HEALTH_RESPONSE" ]; then
+    pass "API health endpoint is reachable"
+    echo ""
+    info "Health response:"
+    echo "$HEALTH_RESPONSE" | python -m json.tool 2>/dev/null || echo "$HEALTH_RESPONSE"
+else
+    fail "API health endpoint returned no response"
+    exit 1
+fi
+
+echo ""
+
+# Test 5: API Status
+echo "─────────────────────────────────────────"
+info "Test 5: API Status Check"
 echo "─────────────────────────────────────────"
 
 info "Checking API status..."
-STATUS_RESPONSE=$(curl -sf http://localhost:8000/api/v1/status 2>/dev/null || echo "")
+STATUS_RESPONSE=$(curl -sf http://localhost:8001/api/v1/status 2>/dev/null || echo "")
 if [ -n "$STATUS_RESPONSE" ]; then
     pass "API status endpoint is reachable"
     echo ""
@@ -218,8 +234,9 @@ if [ $FAILED -eq 0 ]; then
     docker compose ps --format "table {{.Name}}\t{{.Status}}"
     echo ""
     echo "Quick links:"
-    echo "  Health: http://localhost:8000/health"
-    echo "  API:    http://localhost:8000/docs"
+    echo "  Dashboard: http://localhost:3100"
+    echo "  Health:    http://localhost:8001/health"
+    echo "  API:       http://localhost:8001/api/docs"
     echo ""
     exit 0
 else

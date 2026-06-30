@@ -19,7 +19,16 @@ fi
 
 # Get API health status
 get_api_status() {
-    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+    if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+        echo -e "${GREEN}HEALTHY${NC}"
+    else
+        echo -e "${RED}UNHEALTHY${NC}"
+    fi
+}
+
+# Get Dashboard health status
+get_dashboard_status() {
+    if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
         echo -e "${GREEN}HEALTHY${NC}"
     else
         echo -e "${RED}UNHEALTHY${NC}"
@@ -58,7 +67,7 @@ get_container_count() {
 # Get queue depth from API
 get_queue_depth() {
     if [ "$JQ_AVAILABLE" = true ]; then
-        local stats=$(curl -sf http://localhost:8000/api/v1/stats 2>/dev/null)
+        local stats=$(curl -sf http://localhost:8001/api/v1/stats 2>/dev/null)
         if [ -n "$stats" ]; then
             local pending=$(echo "$stats" | jq -r '.pending // .queue_depth // 0')
             echo "${pending} queued"
@@ -73,7 +82,7 @@ get_queue_depth() {
 # Get document count from API
 get_document_count() {
     if [ "$JQ_AVAILABLE" = true ]; then
-        local stats=$(curl -sf http://localhost:8000/api/v1/stats 2>/dev/null)
+        local stats=$(curl -sf http://localhost:8001/api/v1/stats 2>/dev/null)
         if [ -n "$stats" ]; then
             local docs=$(echo "$stats" | jq -r '.document_count // .documents // 0')
             echo "${docs}"
@@ -102,6 +111,7 @@ echo "│         Librarian Deployment Status     │"
 echo "└─────────────────────────────────────────┘"
 echo ""
 printf "%-12s %s\n" "API:" "$(get_api_status)"
+printf "%-12s %s\n" "Dashboard:" "$(get_dashboard_status)"
 printf "%-12s %s\n" "Database:" "$(get_db_status)"
 printf "%-12s %s\n" "Workers:" "$(get_worker_count)"
 printf "%-12s %s\n" "Documents:" "$(get_document_count)"
@@ -119,6 +129,7 @@ echo ""
 
 # Show quick links
 echo "Quick Links:"
-echo "  Health:  http://localhost:8000/health"
-echo "  API:     http://localhost:8000/docs"
-echo "  Stats:   http://localhost:8000/api/v1/stats"
+echo "  Health:     http://localhost:8001/health"
+echo "  API:        http://localhost:8001/docs"
+echo "  Dashboard:  http://localhost:3100"
+echo "  Stats:      http://localhost:8001/api/v1/stats"

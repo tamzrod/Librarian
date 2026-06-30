@@ -101,7 +101,7 @@ Librarian uses a **single-library architecture**:
 4. Access:
    - Dashboard: http://localhost:3100
    - API: http://localhost:8001
-   - API Docs: http://localhost:8001/docs
+   - API Docs: http://localhost:8001/api/docs
 
 ## Library Configuration
 
