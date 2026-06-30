@@ -246,263 +246,155 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.debug(f"Error checking unique constraint: {e}")
             return False
-    
-    def _run_schema_migrations(self) -> bool:
-        """Run additional schema migrations for existing databases."""
+
+    def _get_migrations_directory(self) -> str:
+        """Get the path to the migrations directory."""
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), 'migrations'),
+            '/app/storage/migrations',
+            os.path.join(os.getcwd(), 'storage', 'migrations'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        return possible_paths[0]
+
+    def _get_migration_files(self) -> list:
+        """Discover migration files from the filesystem, sorted in lexical order.
+        
+        Only includes .sql files that match the naming pattern.
+        
+        Returns:
+            List of migration filenames sorted lexicographically
+        """
+        migrations_dir = self._get_migrations_directory()
+        if not os.path.exists(migrations_dir):
+            logger.warning(f"Migrations directory not found: {migrations_dir}")
+            return []
+        
+        migration_files = []
+        for filename in os.listdir(migrations_dir):
+            if filename.endswith('.sql') and filename != 'schema.sql':
+                migration_files.append(filename)
+        
+        migration_files.sort()
+        return migration_files
+
+    def _run_migration_file(self, filename: str) -> bool:
+        """Execute a single migration SQL file.
+        
+        Args:
+            filename: Name of the migration file (e.g., '003_photo_metadata.sql')
+            
+        Returns:
+            True if migration executed successfully, False otherwise
+        """
+        migrations_dir = self._get_migrations_directory()
+        filepath = os.path.join(migrations_dir, filename)
+        
+        if not os.path.exists(filepath):
+            logger.error(f"Migration file not found: {filepath}")
+            return False
+        
         try:
+            with open(filepath, 'r') as f:
+                sql_content = f.read()
+            
             conn = self._get_connection()
             cur = conn.cursor()
             
-            # Migration 002: Add unique index on documents.path for UPSERT support
-            # This handles existing databases that don't have the UNIQUE constraint
-            if '002_documents_path_unique' not in self._get_applied_migrations():
-                if not self._check_unique_constraint_exists():
-                    logger.info("Running migration: adding unique index on documents.path")
-                    cur.execute("""
-                        CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_path_unique 
-                        ON documents(path)
-                    """)
-                    conn.commit()
-                self._record_migration('002_documents_path_unique')
-                logger.info("Migration 002 completed: documents.path unique index added")
+            # Split by semicolons
+            raw_statements = sql_content.split(';')
             
-            # Migration 003: Add document lifecycle columns
-            # Adds status, status_updated_at, last_error, attempt_count for async processing
-            if '003_document_lifecycle' not in self._get_applied_migrations():
-                logger.info("Running migration: adding document lifecycle columns")
+            # Process each statement
+            for raw_stmt in raw_statements:
+                # Split into lines and filter out comments
+                lines = []
+                for line in raw_stmt.split('\n'):
+                    # Strip the line and check if it's a comment
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith('--'):
+                        continue
+                    lines.append(line)
                 
-                # Check if columns exist before adding
-                cur.execute("""
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'documents' AND column_name = 'status'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        ALTER TABLE documents 
-                        ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'METADATA_INDEXED'
-                    """)
+                stmt = '\n'.join(lines).strip()
                 
-                cur.execute("""
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'documents' AND column_name = 'status_updated_at'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        ALTER TABLE documents 
-                        ADD COLUMN status_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    """)
-                
-                cur.execute("""
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'documents' AND column_name = 'last_error'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        ALTER TABLE documents 
-                        ADD COLUMN last_error TEXT
-                    """)
-                
-                cur.execute("""
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'documents' AND column_name = 'attempt_count'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        ALTER TABLE documents 
-                        ADD COLUMN attempt_count INTEGER DEFAULT 0
-                    """)
-                
-                conn.commit()
-                
-                # Add index on status column
-                try:
-                    cur.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_documents_status 
-                        ON documents(status)
-                    """)
-                    conn.commit()
-                except Exception:
-                    pass  # Index may already exist
-                
-                self._record_migration('003_document_lifecycle')
-                logger.info("Migration 003 completed: document lifecycle columns added")
-            
-            # Migration 004: Add document_jobs table for job queue
-            if '004_document_jobs' not in self._get_applied_migrations():
-                logger.info("Running migration: creating document_jobs table")
-                
-                # Check if table exists
-                cur.execute("""
-                    SELECT 1 FROM information_schema.tables 
-                    WHERE table_name = 'document_jobs'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        CREATE TABLE document_jobs (
-                            id SERIAL PRIMARY KEY,
-                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
-                            job_type VARCHAR(100) NOT NULL,
-                            priority INTEGER DEFAULT 0,
-                            status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            started_at TIMESTAMP,
-                            completed_at TIMESTAMP,
-                            worker_id VARCHAR(100),
-                            error_message TEXT
-                        )
-                    """)
-                    
-                    # Create indexes
-                    cur.execute("""
-                        CREATE INDEX idx_document_jobs_document 
-                        ON document_jobs(document_id)
-                    """)
-                    cur.execute("""
-                        CREATE INDEX idx_document_jobs_status 
-                        ON document_jobs(status)
-                    """)
-                    cur.execute("""
-                        CREATE INDEX idx_document_jobs_type 
-                        ON document_jobs(job_type)
-                    """)
-                    
-                    conn.commit()
-                    logger.info("Migration 004 completed: document_jobs table created")
-                else:
-                    logger.info("Migration 004 skipped: document_jobs table already exists")
-                
-                self._record_migration('004_document_jobs')
-            
-            # Migration 006: Phase 3 - Worker runtime enhancements
-            # - Add lease management columns
-            # - Add retry/backoff columns
-            # - Add unique constraint
-            # - Add document_content table
-            if '006_worker_runtime' not in self._get_applied_migrations():
-                logger.info("Running migration: Phase 3 worker runtime")
-                
-                # Add lease management columns to document_jobs
-                for col_name, col_def in [
-                    ('claimed_at', 'TIMESTAMP'),
-                    ('lease_until', 'TIMESTAMP'),
-                    ('attempt_count', 'INTEGER DEFAULT 0'),
-                    ('last_error', 'TEXT'),
-                    ('next_retry_at', 'TIMESTAMP')
-                ]:
-                    cur.execute(f"""
-                        SELECT 1 FROM information_schema.columns 
-                        WHERE table_name = 'document_jobs' AND column_name = '{col_name}'
-                    """)
-                    if not cur.fetchone():
-                        cur.execute(f"""
-                            ALTER TABLE document_jobs ADD COLUMN {col_name} {col_def}
-                        """)
-                
-                # Add unique constraint if not exists
-                try:
-                    cur.execute("""
-                        ALTER TABLE document_jobs 
-                        ADD CONSTRAINT uq_document_job UNIQUE (document_id, job_type)
-                    """)
-                except psycopg.errors.DuplicateConstraint:
-                    pass  # Already exists
-                
-                # Add indexes for lease and retry
-                try:
-                    cur.execute("""
-                        CREATE INDEX idx_document_jobs_lease 
-                        ON document_jobs(lease_until) 
-                        WHERE status = 'IN_PROGRESS'
-                    """)
-                except psycopg.errors.DuplicateObject:
-                    pass
+                # Skip empty statements
+                if not stmt:
+                    continue
                 
                 try:
-                    cur.execute("""
-                        CREATE INDEX idx_document_jobs_retry 
-                        ON document_jobs(next_retry_at) 
-                        WHERE status = 'QUEUED'
-                    """)
-                except psycopg.errors.DuplicateObject:
-                    pass
-                
-                conn.commit()
-                
-                # Create document_content table
-                cur.execute("""
-                    SELECT 1 FROM information_schema.tables 
-                    WHERE table_name = 'document_content'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        CREATE TABLE document_content (
-                            id SERIAL PRIMARY KEY,
-                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
-                            content TEXT,
-                            content_hash VARCHAR(64),
-                            character_count INTEGER,
-                            encoding VARCHAR(50),
-                            extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            extraction_method VARCHAR(100)
-                        )
-                    """)
-                    cur.execute("""
-                        CREATE INDEX idx_document_content_doc 
-                        ON document_content(document_id)
-                    """)
-                    conn.commit()
-                
-                self._record_migration('006_worker_runtime')
-                logger.info("Migration 006 completed: worker runtime enhancements")
+                    cur.execute(stmt)
+                except Exception as e:
+                    logger.error(f"Error executing statement in {filename}: {e}")
+                    conn.rollback()
+                    cur.close()
+                    conn.close()
+                    return False
             
-            # Migration 005: Add evidence_lineage table for provenance tracking
-            if '005_evidence_lineage' not in self._get_applied_migrations():
-                logger.info("Running migration: creating evidence_lineage table")
-                
-                # Check if table exists
-                cur.execute("""
-                    SELECT 1 FROM information_schema.tables 
-                    WHERE table_name = 'evidence_lineage'
-                """)
-                if not cur.fetchone():
-                    cur.execute("""
-                        CREATE TABLE evidence_lineage (
-                            id SERIAL PRIMARY KEY,
-                            entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
-                            document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
-                            artifact_path TEXT,
-                            plugin_name VARCHAR(100),
-                            confidence DOUBLE PRECISION DEFAULT 1.0,
-                            processing_time_ms INTEGER,
-                            version VARCHAR(50),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    
-                    # Create indexes
-                    cur.execute("""
-                        CREATE INDEX idx_evidence_entity 
-                        ON evidence_lineage(entity_id)
-                    """)
-                    cur.execute("""
-                        CREATE INDEX idx_evidence_document 
-                        ON evidence_lineage(document_id)
-                    """)
-                    cur.execute("""
-                        CREATE INDEX idx_evidence_plugin 
-                        ON evidence_lineage(plugin_name)
-                    """)
-                    
-                    conn.commit()
-                    logger.info("Migration 005 completed: evidence_lineage table created")
-                else:
-                    logger.info("Migration 005 skipped: evidence_lineage table already exists")
-                
-                self._record_migration('005_evidence_lineage')
-            
+            conn.commit()
             cur.close()
             conn.close()
             return True
+            
+        except Exception as e:
+            logger.error(f"Error running migration {filename}: {e}")
+            return False
+
+    def _run_schema_migrations(self) -> bool:
+        """Run schema migrations using filesystem-based discovery.
+        
+        Scans storage/migrations/*.sql for migration files and executes
+        any that haven't been applied yet. Migrations are executed in
+        lexical order by filename.
+        
+        Each migration file should contain its own migration record
+        statement at the end (e.g., INSERT INTO schema_migrations).
+        
+        Returns:
+            True if all migrations ran successfully, False on error
+        """
+        try:
+            # Get all migration files sorted in lexical order
+            migration_files = self._get_migration_files()
+            
+            if not migration_files:
+                logger.info("No migration files found")
+                return True
+            
+            logger.info(f"Discovered {len(migration_files)} migration files: {migration_files}")
+            
+            # Get already applied migrations
+            applied = self._get_applied_migrations()
+            logger.info(f"Already applied migrations: {applied}")
+            
+            # Track if any migrations were run
+            migrations_run = 0
+            
+            for filename in migration_files:
+                if filename in applied:
+                    logger.info(f"Migration skipped (already applied): {filename}")
+                    continue
+                
+                logger.info(f"Migration discovered: {filename}")
+                
+                # Execute the migration
+                success = self._run_migration_file(filename)
+                
+                if success:
+                    logger.info(f"Migration applied: {filename}")
+                    migrations_run += 1
+                else:
+                    logger.error(f"Migration failed: {filename}")
+                    return False
+            
+            if migrations_run > 0:
+                logger.info(f"Applied {migrations_run} migration(s)")
+            else:
+                logger.info("No new migrations to apply")
+            
+            return True
+            
         except Exception as e:
             logger.error(f"Error running schema migrations: {e}")
             return False
