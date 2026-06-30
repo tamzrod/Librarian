@@ -495,16 +495,37 @@ class PostgresBackend(StorageBackend):
     def save_document(self, document):
         """Save a document to the database.
         
+        ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        
+        A file exists immediately upon discovery. Parser availability does not affect existence.
+        
         Canonical schema columns: path, extension, sha256, file_size, 
         character_count, parser, modified_time, status, status_updated_at,
-        last_error, attempt_count, indexed_at
+        last_error, attempt_count, indexed_at, artifact_type, exists_on_disk,
+        deleted_at, lifecycle_state
         
         Handles timestamp conversion: Unix epoch floats are converted to
         PostgreSQL-compatible datetime objects.
         
-        Document Lifecycle States:
-        - DISCOVERED: File detected, metadata not yet indexed
-        - METADATA_INDEXED: Metadata extracted, content not yet processed (default for save_document)
+        Lifecycle States (legacy 'status' field):
+        - DISCOVERED: File detected, document created immediately
+        - METADATA_INDEXED: Basic metadata extracted
+        - CONTENT_EXTRACTED: Text content available
+        - ENTITY_EXTRACTED: Entities identified
+        - EMBEDDED: Vector embeddings generated
+        - COMPLETE: All processing finished
+        - FAILED: Processing failed
+        
+        Artifact Types:
+        - unknown: Default for undiscovered/unclassified artifacts
+        - image: Photos, graphics (.jpg, .png, .gif, etc.)
+        - document: PDFs, office docs, text (.pdf, .doc, .txt, etc.)
+        - video: Movies, recordings (.mp4, .mov, etc.)
+        - audio: Music, voice (.mp3, .wav, etc.)
+        - archive: Compressed files (.zip, .tar, .gz, etc.)
+        - structured: Data files (.csv, .json, .xml, .db, etc.)
+        - executable: Binaries, scripts (.exe, .sh, .py, etc.)
+        - other: Known but uncategorized
         """
         conn = self._get_connection()
         cur = conn.cursor()
@@ -521,16 +542,24 @@ class PostgresBackend(StorageBackend):
         extension = document.get('extension')
         
         # Document lifecycle state
-        # Default to METADATA_INDEXED since save_document is called after metadata extraction
-        status = document.get('status', 'METADATA_INDEXED')
+        # Default to DISCOVERED since save_document is called immediately upon discovery
+        status = document.get('status', 'DISCOVERED')
         status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
         last_error = document.get('last_error')
         attempt_count = document.get('attempt_count', 1)
         
+        # Artifact inventory fields
+        # artifact_type: Classified based on extension, or 'unknown' if no parser
+        artifact_type = document.get('artifact_type') or self._classify_artifact_type(extension, parser)
+        # exists_on_disk: Always True for new documents (soft delete handled separately)
+        exists_on_disk = document.get('exists_on_disk', True)
+        # lifecycle_state: Simplified lifecycle view
+        lifecycle_state = document.get('lifecycle_state', 'discovered')
+        
         cur.execute(
             """
-            INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO documents (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count, artifact_type, exists_on_disk, lifecycle_state)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (path) DO UPDATE SET
                 extension = EXCLUDED.extension,
                 sha256 = EXCLUDED.sha256,
@@ -541,16 +570,188 @@ class PostgresBackend(StorageBackend):
                 status = EXCLUDED.status,
                 status_updated_at = EXCLUDED.status_updated_at,
                 last_error = EXCLUDED.last_error,
-                attempt_count = EXCLUDED.attempt_count
+                attempt_count = EXCLUDED.attempt_count,
+                artifact_type = EXCLUDED.artifact_type,
+                exists_on_disk = EXCLUDED.exists_on_disk,
+                lifecycle_state = EXCLUDED.lifecycle_state
             RETURNING id
             """,
-            (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count)
+            (path, extension, sha256, file_size, character_count, parser, modified_time, status, status_updated_at, last_error, attempt_count, artifact_type, exists_on_disk, lifecycle_state)
         )
         document_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
         conn.close()
         return document_id
+    
+    def _classify_artifact_type(self, extension: str = None, parser: str = None) -> str:
+        """Classify artifact type based on extension and parser.
+        
+        This is a fallback classifier used when artifact_type is not provided.
+        The parser registry may provide better classification.
+        
+        Returns:
+            Artifact type string: unknown, image, document, video, audio, archive, structured, executable, other
+        """
+        ext = (extension or '').lower()
+        
+        # Image types
+        image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff', '.tif', '.heic', '.heif'}
+        if ext in image_exts:
+            return 'image'
+        
+        # Video types
+        video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v'}
+        if ext in video_exts:
+            return 'video'
+        
+        # Audio types
+        audio_exts = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'}
+        if ext in audio_exts:
+            return 'audio'
+        
+        # Archive types
+        archive_exts = {'.zip', '.tar', '.gz', '.bz2', '.xz', '.rar', '.7z', '.tgz'}
+        if ext in archive_exts:
+            return 'archive'
+        
+        # Structured data types
+        structured_exts = {'.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.toml', '.db', '.sqlite', '.sql'}
+        if ext in structured_exts:
+            return 'structured'
+        
+        # Executable types
+        exec_exts = {'.exe', '.dll', '.so', '.dylib', '.bin', '.app', '.sh', '.bash', '.bat', '.cmd', '.ps1'}
+        if ext in exec_exts:
+            return 'executable'
+        
+        # Document types
+        doc_exts = {'.pdf', '.doc', '.docx', '.odt', '.rtf', '.txt', '.md', '.rst'}
+        if ext in doc_exts:
+            return 'document'
+        
+        # Parser-based classification as fallback
+        if parser:
+            parser_lower = parser.lower()
+            if 'image' in parser_lower or 'photo' in parser_lower:
+                return 'image'
+            if 'video' in parser_lower or 'media' in parser_lower:
+                return 'video'
+            if 'audio' in parser_lower or 'sound' in parser_lower:
+                return 'audio'
+            if 'archive' in parser_lower or 'compressed' in parser_lower:
+                return 'archive'
+            if 'text' in parser_lower or 'document' in parser_lower:
+                return 'document'
+        
+        # Default to unknown - artifacts exist before classification
+        return 'unknown'
+    
+    def discover_artifact(self, path: str, extension: str = None, file_size: int = None, modified_time = None) -> int:
+        """Create an artifact record immediately upon discovery.
+        
+        ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        A file exists immediately upon discovery. Parser availability does not affect existence.
+        
+        This method creates a minimal document record without requiring a parser.
+        It is called by CollectionWatcher before any parsing is attempted.
+        
+        Args:
+            path: Full path to the file
+            extension: File extension (e.g., '.jpg')
+            file_size: File size in bytes
+            modified_time: Last modified timestamp
+            
+        Returns:
+            Document ID if created, None on failure
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Convert timestamp
+            mod_time = _to_postgres_timestamp(modified_time)
+            
+            # Classify artifact type based on extension
+            artifact_type = self._classify_artifact_type(extension)
+            
+            # Default to DISCOVERED status
+            status = 'DISCOVERED'
+            status_updated_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO documents (
+                    path, extension, file_size, modified_time, 
+                    status, status_updated_at, artifact_type, 
+                    exists_on_disk, lifecycle_state
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (path) DO UPDATE SET
+                    extension = EXCLUDED.extension,
+                    file_size = EXCLUDED.file_size,
+                    modified_time = EXCLUDED.modified_time,
+                    exists_on_disk = TRUE,
+                    deleted_at = NULL,
+                    artifact_type = EXCLUDED.artifact_type
+                RETURNING id
+                """,
+                (path, extension, file_size, mod_time, status, status_updated_at, artifact_type, True, 'discovered')
+            )
+            document_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Discovered artifact: {path} -> id:{document_id}")
+            return document_id
+        except Exception as e:
+            logger.error(f"Error discovering artifact {path}: {e}")
+            return None
+    
+    def mark_deleted(self, path: str) -> bool:
+        """Mark a document as deleted (soft delete).
+        
+        ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        Deleted files are marked, not deleted. Records are preserved for auditability.
+        
+        Args:
+            path: Document path to mark as deleted
+            
+        Returns:
+            True if marked, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            deleted_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                UPDATE documents
+                SET exists_on_disk = FALSE,
+                    deleted_at = %s,
+                    status_updated_at = %s
+                WHERE path = %s AND exists_on_disk = TRUE
+                """,
+                (deleted_at, deleted_at, path)
+            )
+            
+            updated = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            if updated > 0:
+                logger.info(f"Marked as deleted: {path}")
+                return True
+            else:
+                logger.info(f"Document not found or already deleted: {path}")
+                return False
+        except Exception as e:
+            logger.error(f"Error marking deleted {path}: {e}")
+            return False
     
     def save_document_atomic(self, document: dict, job_types: list = None) -> tuple:
         """Save document and create jobs atomically (Phase 3F: transaction atomicity).

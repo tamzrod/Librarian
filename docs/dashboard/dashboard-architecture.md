@@ -26,6 +26,63 @@ Librarian stores artifacts once and exposes them through multiple views.
 
 ---
 
+## Core Principle: Discovery Precedes Understanding
+
+**A file does not need to be understood to exist.**
+**A file does not need a parser to become an artifact.**
+
+### Architectural Model
+
+**Previous (Incorrect):**
+```
+Filesystem → Parser → Database record created
+```
+
+**New (Correct):**
+```
+Filesystem → CollectionWatcher → Document record created immediately → Parser selection → Worker enrichment → Knowledge accumulation
+```
+
+### Design Principle
+
+```
+Artifact identity is immutable.
+Knowledge is mutable.
+
+The artifact exists independently of our understanding of it.
+```
+
+---
+
+## Artifact Inventory
+
+The database is the **canonical inventory of known artifacts**. The database is **NOT a cache of processed files**.
+
+### Inventory Properties
+
+- **Immediate:** Artifacts appear in Explorer as soon as they are discovered
+- **Stable:** Each artifact receives a permanent `document_id`
+- **Queryable:** All artifacts are searchable regardless of enrichment state
+- **Historical:** Deleted artifacts remain visible for auditability
+
+### Explorer as Inventory Interface
+
+Explorer uses the documents table as its source of truth.
+
+**Explorer does NOT:**
+- read the filesystem directly
+- perform discovery
+- trigger enrichment
+
+**Explorer benefits:**
+- instant navigation
+- cached hierarchy
+- stable identifiers
+- historical tracking
+- deleted file visibility
+
+---
+
 ## Workspaces
 
 The dashboard is organized into two workspaces:
@@ -72,25 +129,64 @@ The central object in Librarian is an **artifact**.
 
 Artifacts receive a unique artifact identifier. Current implementation uses `document_id`. Future renaming to `artifact_id` is possible but not required.
 
+### Unknown Artifacts
+
+Unknown artifacts are first-class citizens.
+
+**Examples:**
+- encrypted containers
+- proprietary files
+- unsupported formats
+- damaged files
+
+**Unknown artifacts still receive:**
+- `document_id`
+- hashes
+- timestamps
+- path tracking
+- timeline presence
+- relationship participation
+
+**Lack of understanding does not imply lack of value.**
+
 ---
 
-## Parser Responsibilities
+## Component Responsibilities
 
-Parsers are responsible for:
+### CollectionWatcher
 
-- artifact ingestion
-- validation
-- normalization
+**Responsibilities:**
+- detect new files
+- detect deleted files
+- detect moved files
+- update inventory state
+
+**CollectionWatcher does NOT:**
+- perform enrichment
+- run parsers
+- create workers
+
+### Parser Registry
+
+Parsers classify and normalize. Parsers do NOT determine existence.
+
+**Parsers are responsible for:**
+- extension-to-type mapping
 - basic metadata extraction
-- document creation
+- content normalization
 
-**Parsers must remain lightweight and deterministic. Parsers do NOT perform AI enrichment.**
+**Critical rule: Parser failure must never prevent artifact creation.**
 
----
-
-## Worker Responsibilities
+### Workers
 
 Workers enrich artifacts.
+
+**Worker characteristics:**
+- operate using `document_id`
+- never create documents
+- may run independently
+- may run asynchronously
+- never depend on other workers
 
 ### Examples by Type
 
@@ -100,11 +196,30 @@ Workers enrich artifacts.
 | PDF | text extraction, OCR, entity extraction |
 | Video | frame extraction, OCR, object detection |
 
-### Operational Characteristics
+---
 
-- Workers operate independently
-- Workers may fail independently
-- Artifacts remain valid even if some enrichments fail
+## Artifact Lifecycle
+
+See [Artifact Lifecycle](../architecture/artifact-lifecycle.md) for complete lifecycle documentation.
+
+### States
+
+| State | Description |
+|-------|-------------|
+| DISCOVERED | File detected, document record created immediately |
+| METADATA_INDEXED | Basic metadata extracted, type classified |
+| CONTENT_EXTRACTED | Text content available |
+| ENTITY_EXTRACTED | Named entities identified |
+| EMBEDDED | Vector representation generated |
+| COMPLETE | All enrichments finished |
+| ARCHIVED | Removed from disk, record preserved |
+
+### State Transition Rules
+
+```
+Any state may transition to FAILED for retry.
+Artifact identity is never lost.
+```
 
 ---
 
@@ -159,3 +274,32 @@ A user should be able to answer without understanding Librarian internals:
 - Where did it happen?
 - Who was involved?
 - How are things connected?
+
+**Instant visibility:** Dropping a file into the library immediately produces:
+- ✓ document record
+- ✓ stable `document_id`
+- ✓ explorer visibility
+
+**Even if:**
+- ✗ no parser exists
+- ✗ no worker exists
+- ✗ no preview exists
+- ✗ no enrichment exists
+
+**The artifact exists because it was observed.**
+**Understanding is optional.**
+
+---
+
+## Digital Forensics Inspiration
+
+This model follows evidence processing systems where:
+
+```
+Discovery
+    precedes
+Analysis
+
+Evidence enters inventory immediately.
+Analysis continues over time.
+```

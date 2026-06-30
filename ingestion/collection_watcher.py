@@ -14,7 +14,20 @@ except ImportError:
 
 
 class CollectionWatcher:
-    """Monitor a collection directory for file changes."""
+    """Monitor a collection directory for file changes.
+    
+    ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+    
+    This watcher creates artifact records immediately upon file discovery,
+    without requiring a parser. Parser availability does not affect existence.
+    
+    Flow:
+        1. File detected
+        2. Artifact record created immediately (discover_artifact)
+        3. Parser lookup attempted
+        4. If parser exists: create jobs for enrichment
+        5. If parser doesn't exist: artifact remains in discovered state
+    """
     
     def __init__(self, path, backend, parser_registry):
         self.path = Path(path)
@@ -111,53 +124,117 @@ class CollectionWatcher:
             self._mark_deleted(filepath)
     
     def _process_file(self, filepath):
-        """Process a new or modified file."""
+        """Process a new or modified file.
+        
+        ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        
+        This method creates an artifact record immediately, without requiring a parser.
+        Parser availability does not affect artifact existence.
+        
+        Flow:
+        1. Create artifact record immediately (discover_artifact)
+        2. Attempt parser lookup
+        3. If parser exists: build full document and update, create jobs
+        4. If parser doesn't exist: artifact remains in discovered state
+        """
         full_path = self.path / filepath
         
-        # Detect parser
-        parser = self.parser_registry.get_parser(full_path)
-        if not parser:
-            print(f"[CollectionWatcher] No parser for {filepath}")
-            return
-        
+        # Step 1: Discover artifact immediately (no parser required)
+        # ARTIFACT INVENTORY MODEL: Discovery precedes understanding
         try:
-            # Parse file
-            parsed = parser.parse(full_path)
-            if not parsed:
-                print(f"[CollectionWatcher] Parser returned None for {filepath}")
+            stat = full_path.stat()
+            doc_id = None
+            
+            if hasattr(self.backend, 'discover_artifact'):
+                # Use new discover_artifact method for immediate creation
+                doc_id = self.backend.discover_artifact(
+                    path=str(filepath),
+                    extension=full_path.suffix,
+                    file_size=stat.st_size,
+                    modified_time=datetime.fromtimestamp(stat.st_mtime)
+                )
+                print(f"[CollectionWatcher] Discovered artifact {filepath} -> id:{doc_id}")
+            elif hasattr(self.backend, 'save_document'):
+                # Fallback to save_document for backends without discover_artifact
+                document = {
+                    'path': str(filepath),
+                    'extension': full_path.suffix,
+                    'file_size': stat.st_size,
+                    'modified_time': datetime.fromtimestamp(stat.st_mtime),
+                    'status': 'DISCOVERED'
+                }
+                doc_id = self.backend.save_document(document)
+                print(f"[CollectionWatcher] Discovered artifact (fallback) {filepath} -> id:{doc_id}")
+            else:
+                print(f"[CollectionWatcher] Backend has no discover_artifact or save_document method: {type(self.backend)}")
                 return
             
-            print(f"[CollectionWatcher] Parsed {filepath}: {parsed.get('character_count', 0)} chars")
-            
-            # Build document metadata
-            document = {
-                'path': str(filepath),
-                'extension': full_path.suffix,
-                'modified_time': datetime.fromtimestamp(os.path.getmtime(full_path)),
-                'file_size': os.path.getsize(full_path),
-                'character_count': parsed.get('character_count'),
-                'parser': parsed.get('parser', full_path.suffix[1:] if full_path.suffix else 'text')
-            }
-            
-            # Save to backend immediately (fast operation)
-            if hasattr(self.backend, 'save_document'):
-                doc_id = self.backend.save_document(document)
-                print(f"[CollectionWatcher] Saved document {filepath} -> id:{doc_id}")
-                
-                # Create processing jobs (fast operation)
-                if hasattr(self.backend, 'create_jobs_for_document'):
-                    job_ids = self.backend.create_jobs_for_document(doc_id)
-                    print(f"[CollectionWatcher] Created {len(job_ids)} jobs for document {doc_id}")
-            else:
-                print(f"[CollectionWatcher] Backend has no save_document method: {type(self.backend)}")
-                    
         except Exception as e:
-            print(f"[CollectionWatcher] Error processing {filepath}: {e}")
+            print(f"[CollectionWatcher] Error discovering artifact {filepath}: {e}")
+            return
+        
+        # Step 2: Attempt parser lookup (enrichment phase)
+        # Parser availability does not affect existence
+        parser = self.parser_registry.get_parser(full_path)
+        
+        if parser:
+            # Parser exists - attempt enrichment
+            try:
+                parsed = parser.parse(full_path)
+                if parsed:
+                    print(f"[CollectionWatcher] Parsed {filepath}: {parsed.get('character_count', 0)} chars")
+                    
+                    # Build full document metadata
+                    document = {
+                        'path': str(filepath),
+                        'extension': full_path.suffix,
+                        'modified_time': datetime.fromtimestamp(stat.st_mtime),
+                        'file_size': stat.st_size,
+                        'character_count': parsed.get('character_count'),
+                        'parser': parsed.get('parser', full_path.suffix[1:] if full_path.suffix else 'text'),
+                        'status': 'METADATA_INDEXED'
+                    }
+                    
+                    # Update document with parsed data
+                    if hasattr(self.backend, 'save_document'):
+                        self.backend.save_document(document)
+                        print(f"[CollectionWatcher] Updated document {filepath} with parsed data")
+                    
+                    # Create processing jobs for enrichment
+                    if doc_id and hasattr(self.backend, 'create_jobs_for_document'):
+                        job_ids = self.backend.create_jobs_for_document(doc_id)
+                        print(f"[CollectionWatcher] Created {len(job_ids)} jobs for document {doc_id}")
+                else:
+                    print(f"[CollectionWatcher] Parser returned None for {filepath}")
+                    
+            except Exception as e:
+                print(f"[CollectionWatcher] Error parsing {filepath}: {e}")
+                # Parser failure does not remove artifact - it remains in discovered state
+        else:
+            # No parser exists - artifact remains in discovered state
+            # This is expected behavior - understanding is optional
+            print(f"[CollectionWatcher] No parser for {filepath} - artifact remains discovered")
     
     def _mark_deleted(self, filepath):
-        """Mark a deleted file in the database."""
+        """Mark a deleted file in the database.
+        
+        ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        Deleted files are marked, not deleted. Records are preserved for auditability.
+        """
+        full_path = self.path / filepath
+        
         if hasattr(self.backend, 'mark_deleted'):
-            self.backend.mark_deleted(filepath)
+            self.backend.mark_deleted(str(filepath))
+        elif hasattr(self.backend, 'save_document'):
+            # Fallback: update exists_on_disk via save_document
+            document = {
+                'path': str(filepath),
+                'exists_on_disk': False
+            }
+            try:
+                self.backend.save_document(document)
+            except Exception as e:
+                print(f"[CollectionWatcher] Error marking deleted {filepath}: {e}")
     
     def get_events(self):
         """Get recent events."""
