@@ -217,11 +217,9 @@ def _build_folder_tree_from_paths(paths: list[str], collection_root: str) -> lis
         subfolders = folders_map[folder_name]
         full_path = f"{collection_root}/{folder_name}"
         
-        # Check if this folder has children (subfolders or documents)
-        has_children = len(subfolders) > 0 or any(
-            f.startswith(f"{folder_name}/") or f.split('/')[0] == folder_name
-            for f in paths
-        )
+        # Check if this folder has children (subfolders only)
+        # Note: we track subfolders in the folders_map, so len(subfolders) > 0 means there are nested folders
+        has_children = len(subfolders) > 0
         
         folder_nodes.append(FolderNode(
             id=full_path,
@@ -384,8 +382,13 @@ async def get_folder_tree(
             total_folders += len(subfolders)
             
             # Recursively build tree for each top-level folder
+            # Filter paths to only include those under the current folder
             for folder in subfolders:
-                nested = _build_folder_tree_from_paths(paths, folder.path)
+                # Get paths that are under this folder (relative to collection root)
+                # e.g., for "Camera", get paths like "Camera/2024" (not "Documents/report.pdf")
+                folder_prefix = folder.name + "/"
+                nested_paths = [p[len(folder.name)+1:] for p in paths if p.startswith(folder_prefix)]
+                nested = _build_folder_tree_from_paths(nested_paths, folder.path)
                 if nested:
                     folder.has_children = True
             
