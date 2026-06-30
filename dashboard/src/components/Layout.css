@@ -4,6 +4,12 @@
   min-height: 100vh;
 }
 
+.layout > .main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
 .header {
   display: flex;
   align-items: center;

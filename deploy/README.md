@@ -193,6 +193,27 @@ Uncomment the `nginx` section in `docker-compose.yml` and configure `nginx/nginx
 | `DASHBOARD_HOST_PORT` | 3100 | Dashboard host port (internal: 3000) |
 | `LIBRARY_PATH` | ./volumes/library | Host path to library |
 
+### Dashboard Build Metadata
+
+When building the dashboard container, the following environment variables can be passed to inject build metadata:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DASHBOARD_BUILD_SHA` | Git commit hash | `a8c1d92` |
+| `DASHBOARD_BUILD_TIME` | Build timestamp (ISO 8601) | `2026-06-30T14:32:10Z` |
+| `DASHBOARD_VERSION` | Dashboard version | `1.0.0` |
+| `DASHBOARD_API_CONTRACT_VERSION` | API contract version | `v1.0` |
+| `DASHBOARD_ENVIRONMENT` | Environment name | `production` |
+
+Example with build metadata:
+
+```bash
+DASHBOARD_BUILD_SHA=$(git rev-parse --short HEAD) \
+DASHBOARD_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+DASHBOARD_VERSION=1.0.0 \
+docker compose up -d librarian-dashboard
+```
+
 ## Management Scripts
 
 ### Backup

@@ -50,13 +50,31 @@ The following are NOT considered breaking changes:
 
 ## Dashboard Compatibility
 
-The dashboard explicitly declares its supported API version:
+The dashboard declares its supported API contract version at build time via `VITE_API_CONTRACT_VERSION`. This version is baked into the build artifact during the Docker build or npm build process.
 
-```
-# dashboard/src/config/api.ts
-export const API_VERSION = 'v1.0'
-export const API_BASE_URL = process.env.VITE_API_URL || ''
-```
+### Build-Time Version Declaration
+
+The API contract version is:
+
+1. **Read from** `docs/api-contract/v1.0.md` (the version in the header, e.g., `# API Contract v1.0`)
+2. **Injected into** the dashboard build via `VITE_API_CONTRACT_VERSION`
+3. **Displayed in** the dashboard footer alongside other build metadata
+
+### Version Correlation
+
+| Dashboard Build | API Contract | Expected Behavior |
+|-----------------|--------------|------------------|
+| v1.0 (v1.0) | v1.0 | ✅ Fully compatible |
+| v1.0 (v1.0) | v1.1 | ⚠️ Minor version - backward compatible |
+| v1.0 (v1.0) | v2.0 | ❌ Breaking change - upgrade required |
+
+### Verifying Version Alignment
+
+Operators can verify version alignment by:
+
+1. **Dashboard footer** - Shows the API contract version the dashboard was built against
+2. **API `/health` endpoint** - Returns API version information
+3. **Docker container inspection** - Build metadata is embedded in the container
 
 ## Schema
 

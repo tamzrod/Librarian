@@ -94,13 +94,67 @@ Validate that the dashboard is compatible with the API:
 npm run validate-contract
 ```
 
+## Build Metadata
+
+The dashboard includes immutable build identification for version traceability.
+
+### What's Included
+
+Each build automatically includes:
+
+- **Dashboard Version** - From `package.json` version field
+- **Git Commit SHA** - Short hash of the commit that triggered the build
+- **Build Timestamp** - UTC timestamp when the build was created
+- **API Contract Version** - Version from `docs/api-contract/v1.0.md`
+- **Environment** - `development`, `staging`, or `production`
+
+### Viewing Build Information
+
+Build metadata is displayed in the footer of the dashboard:
+
+```
+Dashboard v1.0.0 | Build a8c1d92 | Built 2026-06-30 14:32 UTC | API Contract v1.0 | production
+```
+
+### Optional Enhancements
+
+- **Click the build hash** to open the corresponding GitHub commit page
+- **Copy button** to copy full build info to clipboard
+
+### Verifying Running Version
+
+Operators can verify the running dashboard version by:
+
+1. Looking at the footer in the dashboard UI
+2. Inspecting Docker container labels:
+   ```bash
+   docker inspect librarian-dashboard --format='{{json .Config.Labels}}'
+   ```
+3. Checking the build artifact metadata
+
+### Build Metadata Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VITE_BUILD_SHA` | Git commit short hash | `a8c1d92` |
+| `VITE_BUILD_TIME` | ISO 8601 UTC timestamp | `2026-06-30T14:32:10Z` |
+| `VITE_DASHBOARD_VERSION` | Dashboard version | `1.0.0` |
+| `VITE_API_CONTRACT_VERSION` | API contract version | `v1.0` |
+| `VITE_ENVIRONMENT` | Build environment | `production` |
+
 ## Docker
 
 ### Development Build
 
 ```bash
+cd ../dashboard
 docker build -t librarian-dashboard:dev \
   --build-arg API_URL=http://localhost:8000 \
+  --build-arg VITE_BUILD_SHA=$(git rev-parse --short HEAD) \
+  --build-arg VITE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --build-arg VITE_DASHBOARD_VERSION=dev \
+  --build-arg VITE_API_CONTRACT_VERSION=v1.0 \
+  --build-arg VITE_ENVIRONMENT=development \
   .
 ```
 
@@ -114,6 +168,17 @@ docker compose up -d librarian-dashboard
 ```
 
 The dashboard will be available at http://localhost:3000
+
+### Docker Build Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `API_URL` | Backend API URL | `http://localhost:8000` |
+| `VITE_BUILD_SHA` | Git commit hash | `unknown` |
+| `VITE_BUILD_TIME` | Build timestamp | (empty) |
+| `VITE_DASHBOARD_VERSION` | Dashboard version | `dev` |
+| `VITE_API_CONTRACT_VERSION` | API contract version | `v1.0` |
+| `VITE_ENVIRONMENT` | Environment | `production` |
 
 ## Project Structure
 

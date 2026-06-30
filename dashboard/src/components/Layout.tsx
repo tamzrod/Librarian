@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useApiStatus } from '../hooks/useApiStatus'
+import BuildInfo from './BuildInfo'
 import './Layout.css'
 
 const navItems = [
@@ -50,6 +51,7 @@ function Layout() {
           <Outlet />
         </main>
       </div>
+      <BuildInfo />
     </div>
   )
 }
