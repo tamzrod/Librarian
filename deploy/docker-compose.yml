@@ -6,10 +6,17 @@
 # Usage:
 #   docker compose up -d
 #
+# Network Configuration:
+#   - PostgreSQL: Internal-only (postgres:5432) - NOT exposed to host
+#   - API: librarian-api:8000 (internal), host:8001
+#   - Dashboard: librarian-dashboard:3000 (internal), host:3100
+#
 # See README.md for detailed setup instructions.
 
 services:
   # PostgreSQL Database
+  # Internal-only: accessible via Docker service discovery (postgres:5432)
+  # NOT exposed to host - applications connect via Docker network
   postgres:
     image: postgres:16-alpine
     container_name: librarian-postgres
@@ -18,8 +25,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-librarian}
       POSTGRES_USER: ${POSTGRES_USER:-librarian}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-librarian}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # No host port exposure - internal Docker network only
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -32,6 +38,8 @@ services:
       - librarian-network
 
   # Librarian API Server
+  # Internal: librarian-api:8000
+  # Host: localhost:8001
   librarian-api:
     build:
       context: ..
@@ -41,9 +49,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
-      - API_PORT=${API_PORT:-8000}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_HOST_PORT:-8001}:8000"
     volumes:
       # Mount library root - RECURSIVE FILE DISCOVERY IS AUTOMATIC
       # No collection management, no folder picker, no import wizard
@@ -60,7 +67,7 @@ services:
       - librarian-network
 
   # Librarian Worker - Background job processor
-  # Phase 3A: Processes jobs from the queue
+  # Internal-only service for processing extraction jobs
   librarian-worker:
     build:
       context: ..
@@ -83,23 +90,34 @@ services:
     networks:
       - librarian-network
 
-  # Librarian GUI (optional - uncomment to enable)
-  # librarian-gui:
-  #   build:
-  #     context: ../gui
-  #     dockerfile: Dockerfile
-  #   container_name: librarian-gui
-  #   restart: unless-stopped
-  #   environment:
-  #     - API_URL=http://librarian-api:8000
-  #   ports:
-  #     - "${GUI_PORT:-8080}:8080"
-  #   depends_on:
-  #     - librarian-api
-  #   networks:
-  #     - librarian-network
+  # Librarian Dashboard - Operational Dashboard
+  # Separate React application for system observability
+  # Internal: librarian-dashboard:3000
+  # Host: localhost:3100
+  librarian-dashboard:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+      args:
+        API_URL: http://librarian-api:8000
+    container_name: librarian-dashboard
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://librarian-api:8000
+    ports:
+      - "${DASHBOARD_HOST_PORT:-3100}:3000"
+    depends_on:
+      - librarian-api
+    networks:
+      - librarian-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Nginx Reverse Proxy (optional - uncomment to enable)
+  # Useful for production with HTTPS termination
   # nginx:
   #   image: nginx:alpine
   #   container_name: librarian-nginx
@@ -111,7 +129,7 @@ services:
   #     - "443:443"
   #   depends_on:
   #     - librarian-api
-  #     # - librarian-gui
+  #     - librarian-dashboard
   #   networks:
   #     - librarian-network
 

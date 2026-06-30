@@ -99,8 +99,9 @@ Librarian uses a **single-library architecture**:
    ```
 
 4. Access:
-   - API: http://localhost:8000/docs
-   - GUI: http://localhost:8080 (optional)
+   - Dashboard: http://localhost:3100
+   - API: http://localhost:8001
+   - API Docs: http://localhost:8001/docs
 
 ## Library Configuration
 
@@ -152,18 +153,28 @@ Librarian **automatically and recursively** discovers all files and subfolders u
 ### PostgreSQL
 
 - **Image**: postgres:16-alpine
-- **Port**: 5432 (configurable)
+- **Internal**: `postgres:5432` (Docker service discovery)
+- **Host**: NOT exposed (internal network only)
 - **Data**: Persisted to Docker volume
 - **Initialization**: Runs `postgres/init.sql` on first startup
 
 ### Librarian API
 
-- **Build**: From repository root
-- **Port**: 8000 (configurable)
+- **Internal**: `librarian-api:8000`
+- **Host Port**: 8001 (via `API_HOST_PORT`)
 - **Library**: Mounted read-only at `/library`
-- **Database**: Connects to PostgreSQL via `DATABASE_URL`
+- **Database**: Connects to PostgreSQL via `postgres:5432`
+- **Access**: http://localhost:8001
 
-### Librarian GUI (Optional)
+### Librarian Dashboard
+
+- **Internal**: `librarian-dashboard:3000`
+- **Host Port**: 3100 (via `DASHBOARD_HOST_PORT`)
+- **Purpose**: Operational dashboard for system observability
+- **API**: Connects to `librarian-api:8000` via Docker network
+- **Access**: http://localhost:3100
+
+### Librarian GUI (Optional - Legacy)
 
 Uncomment the `librarian-gui` section in `docker-compose.yml` to enable.
 
@@ -175,11 +186,11 @@ Uncomment the `nginx` section in `docker-compose.yml` and configure `nginx/nginx
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POSTGRES_DB` | librarian | Database name |
-| `POSTGRES_USER` | librarian | Database user |
-| `POSTGRES_PASSWORD` | librarian | Database password |
-| `POSTGRES_PORT` | 5432 | PostgreSQL port |
-| `API_PORT` | 8000 | API server port |
+| `POSTGRES_DB` | librarian | Database name (internal) |
+| `POSTGRES_USER` | librarian | Database user (internal) |
+| `POSTGRES_PASSWORD` | librarian | Database password (internal) |
+| `API_HOST_PORT` | 8001 | API host port (internal: 8000) |
+| `DASHBOARD_HOST_PORT` | 3100 | Dashboard host port (internal: 3000) |
 | `LIBRARY_PATH` | ./volumes/library | Host path to library |
 
 ## Management Scripts
@@ -301,6 +312,7 @@ docker compose ps
 
 ## Future Features
 
-- GUI accessible at http://localhost:8080 (when enabled)
+- GUI accessible at http://localhost:8080 (when enabled, legacy)
 - Nginx reverse proxy (when enabled)
 - Automated backups via cron
+- API authentication and authorization
