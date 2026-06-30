@@ -5,6 +5,7 @@ import QueueMonitor from './pages/QueueMonitor'
 import ActivityFeed from './pages/ActivityFeed'
 import DocumentJourney from './pages/DocumentJourney'
 import ExtractionViewer from './pages/ExtractionViewer'
+import EvidenceTimeline from './pages/EvidenceTimeline'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="documents/:id" element={<DocumentJourney />} />
         <Route path="extractions" element={<ExtractionViewer />} />
         <Route path="extractions/:id" element={<ExtractionViewer />} />
+        <Route path="timeline" element={<EvidenceTimeline />} />
       </Route>
     </Routes>
   )

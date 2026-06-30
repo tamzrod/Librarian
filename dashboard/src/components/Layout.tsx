@@ -9,6 +9,7 @@ const navItems = [
   { path: '/activity', label: 'Activity Feed', icon: '📜' },
   { path: '/documents', label: 'Document Journey', icon: '📄' },
   { path: '/extractions', label: 'Extraction Viewer', icon: '🔍' },
+  { path: '/timeline', label: 'Evidence Timeline', icon: '🗺️' },
 ]
 
 function Layout() {

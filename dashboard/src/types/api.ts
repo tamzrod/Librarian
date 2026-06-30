@@ -296,3 +296,71 @@ export const LIFECYCLE_STATE_COLORS: Record<string, string> = {
   COMPLETE: '#22c55e',
   FAILED: '#ef4444',
 }
+
+// Evidence Timeline API Types (Phase 1B)
+
+export interface TimelineStats {
+  photos_total: number
+  gps_tagged: number
+  unique_cameras: number
+  first_photo_timestamp: string | null
+  last_photo_timestamp: string | null
+}
+
+export interface PhotoSummary {
+  document_id: number
+  filename: string
+  timestamp: string | null
+  camera_make: string | null
+  camera_model: string | null
+  gps_latitude: number | null
+  gps_longitude: number | null
+}
+
+export interface PhotoMapMarker {
+  document_id: number
+  latitude: number
+  longitude: number
+  timestamp: string | null
+  camera: string | null
+  filename: string
+}
+
+export interface PhotoDetail {
+  document_id: number
+  filename: string
+  timestamp: string | null
+  timestamp_digitized: string | null
+  gps_latitude: number | null
+  gps_longitude: number | null
+  gps_altitude: number | null
+  camera_make: string | null
+  camera_model: string | null
+  lens_model: string | null
+  width: number
+  height: number
+  orientation: number | null
+  file_format: string
+  extracted_at: string | null
+}
+
+export interface TimelinePhotosResponse {
+  data: PhotoSummary[]
+  pagination: {
+    total: number
+    limit: number
+    offset: number
+    returned: number
+  }
+  filters: {
+    camera: string | null
+    gps_only: boolean
+    start_date: string | null
+    end_date: string | null
+  }
+}
+
+export interface TimelineMapResponse {
+  markers: PhotoMapMarker[]
+  count: number
+}
