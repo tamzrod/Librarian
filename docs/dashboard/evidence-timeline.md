@@ -14,9 +14,64 @@ This document establishes product direction and tracks implementation phases.
 |-------|--------|-------------|
 | Phase 1A | ✅ Complete | Photo metadata extraction from EXIF |
 | Phase 1B | ✅ Complete | REST API Exposure |
-| Phase 1C | Pending | Timeline visualization UI |
+| Phase 1C | ✅ Complete | Dashboard Visualization |
 | Phase 2 | Pending | Additional artifact types (PDF, video) |
 | Future | Backlog | AI inference, reverse geocoding |
+
+---
+
+## Phase 1C: Completed (Dashboard Visualization)
+
+**Goal:** First operational Evidence Timeline dashboard page.
+
+### What Was Implemented
+
+1. **New Dashboard Page** (`/timeline`)
+   - Statistics section
+   - Photo table with filters
+   - Map view with Leaflet/OpenStreetMap
+
+2. **Components**
+   - `EvidenceTimeline.tsx` - Main page component
+   - `useTimeline.ts` - Custom hooks for API calls
+   - Sidebar navigation entry added
+
+3. **Map Features**
+   - Leaflet with OpenStreetMap tiles
+   - Markers for GPS-tagged photos
+   - Popup with filename, timestamp, camera
+
+### Files Changed
+
+- `src/pages/EvidenceTimeline.tsx` - Timeline page
+- `src/pages/EvidenceTimeline.css` - Page styles
+- `src/hooks/useTimeline.ts` - API hooks
+- `src/types/api.ts` - Timeline types
+- `src/components/Layout.tsx` - Sidebar nav
+- `src/App.tsx` - Route registration
+- `package.json` - Added leaflet dependencies
+
+### API Endpoints Consumed
+
+- `GET /api/v1/timeline/stats` - Statistics
+- `GET /api/v1/timeline/photos` - Photo list
+- `GET /api/v1/timeline/map` - GPS markers
+
+### Success Criteria
+
+```
+Drop geotagged image
+    ↓
+Metadata extracted
+    ↓
+Timeline API exposes data
+    ↓
+Dashboard map shows marker
+    ↓
+Click marker
+    ↓
+See timestamp, filename, camera
+```
 
 ---
 
