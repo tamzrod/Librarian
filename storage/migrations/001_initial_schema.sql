@@ -251,3 +251,6 @@ CREATE INDEX IF NOT EXISTS idx_document_embeddings_doc ON document_embeddings(do
 -- Plugin types indexes
 CREATE INDEX IF NOT EXISTS idx_plugin_types_job ON plugin_types(job_type);
 CREATE INDEX IF NOT EXISTS idx_plugin_types_enabled ON plugin_types(enabled) WHERE enabled = TRUE;
+
+-- Record migration
+INSERT INTO schema_migrations (migration_name) VALUES ('001_initial_schema.sql');
