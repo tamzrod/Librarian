@@ -28,7 +28,8 @@ services:
     # No host port exposure - internal Docker network only
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # NOTE: No init.sql - schema is managed by MigrationManager via migrations/
+      # Librarian automatically initializes schema on startup via run_migrations_for_backend()
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-librarian} -d ${POSTGRES_DB:-librarian}"]
       interval: 10s

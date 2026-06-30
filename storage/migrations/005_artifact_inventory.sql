@@ -5,6 +5,9 @@
 -- The database becomes the canonical inventory of known artifacts.
 -- A file does not require a parser to exist as an artifact.
 --
+-- FILESYSTEM = SOURCE OF TRUTH
+-- DATABASE = REGENERATABLE CACHE
+--
 -- Changes:
 -- 1. Add artifact_type column for classification
 -- 2. Add exists_on_disk column for soft deletion tracking
