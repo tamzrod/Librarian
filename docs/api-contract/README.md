@@ -136,6 +136,14 @@ _Changes to be documented when v2.0 is released._
 | GET | `/api/v1/operations/documents/{id}/extractions` | Document extractions |
 | GET | `/api/v1/timeline` | Event timeline |
 
+### Evidence Timeline Endpoints (Phase 1A)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/photos/{document_id}/metadata` | Get photo metadata |
+| GET | `/api/v1/photos/timeline` | Timeline of photos by date |
+| GET | `/api/v1/photos/map` | Photos with GPS coordinates |
+
 ### Question/Answer Endpoints
 
 | Method | Path | Description |
@@ -167,6 +175,47 @@ interface ApiResponse<T> {
     returned: number
   }
   timestamp: string
+}
+```
+
+## Photo Metadata Response (Phase 1A)
+
+Photo metadata returned from the Evidence Timeline system:
+
+```typescript
+interface PhotoMetadata {
+  document_id: number
+  timestamp_original: string | null    // ISO 8601 format
+  timestamp_digitized: string | null
+  gps_latitude: number | null          // Decimal degrees
+  gps_longitude: number | null         // Decimal degrees
+  gps_altitude: number | null          // Meters
+  camera_make: string | null
+  camera_model: string | null
+  lens_model: string | null
+  width: number
+  height: number
+  orientation: number | null
+  file_format: string
+  extracted_at: string                  // ISO 8601 format
+}
+```
+
+### Example Response
+
+```json
+{
+  "document_id": 123,
+  "timestamp_original": "2026-01-01T12:25:10",
+  "gps_latitude": 14.635189,
+  "gps_longitude": 121.092548,
+  "gps_altitude": -57.2,
+  "camera_make": "HONOR",
+  "camera_model": "BRP-NX1",
+  "width": 3000,
+  "height": 4000,
+  "file_format": "JPEG",
+  "extracted_at": "2026-06-30T14:32:10Z"
 }
 ```
 

@@ -248,6 +248,7 @@ def run_worker(backend, worker_id: str = None):
     from .event_extractor import EventExtractor
     from .location_extractor import LocationExtractor
     from .embedding_generator import EmbeddingGenerator
+    from .photo_metadata_extractor import PhotoMetadataExtractor
     
     worker = Worker(backend, worker_id=worker_id)
     
@@ -257,6 +258,7 @@ def run_worker(backend, worker_id: str = None):
     worker.register_handler('extract_events', EventExtractor(backend).extract_events)
     worker.register_handler('extract_locations', LocationExtractor(backend).extract_locations)
     worker.register_handler('generate_embeddings', EmbeddingGenerator(backend).generate_embeddings)
+    worker.register_handler('extract_photo_metadata', PhotoMetadataExtractor(backend).extract_photo_metadata)
     
     logger.info("Starting worker with all extraction handlers")
     worker.start()
