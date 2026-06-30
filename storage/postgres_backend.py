@@ -91,8 +91,34 @@ class JobStatus:
     QUEUED = 'QUEUED'
     IN_PROGRESS = 'IN_PROGRESS'
     COMPLETED = 'COMPLETED'
+    BLOCKED = 'BLOCKED'  # Waiting on prerequisites
     FAILED_PERMANENT = 'FAILED_PERMANENT'
     CANCELLED = 'CANCELLED'
+
+
+# Job dependencies - what must complete before a job can run
+# Format: job_type -> set of prerequisite job_types that must be COMPLETED
+JOB_DEPENDENCIES = {
+    'extract_entities': {'extract_text'},
+    'extract_locations': {'extract_text'},
+    'generate_embeddings': {'extract_text'},
+}
+
+
+# Invalid job types per artifact type (these jobs should NEVER be created)
+# Images cannot do text extraction, text cannot do vision tasks
+INVALID_JOBS_BY_ARTIFACT = {
+    'image': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations'},
+    'video': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations'},
+    'audio': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations'},
+    'archive': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations'},
+    'executable': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations'},
+    'unknown': {'extract_text', 'extract_entities', 'extract_events', 'extract_locations',
+                'object_detection', 'face_detection'},
+    'text': {'object_detection', 'face_detection'},
+    'document': {'object_detection', 'face_detection'},
+    'structured': {'object_detection', 'face_detection'},
+}
 
 
 # Document lifecycle states
@@ -1393,31 +1419,41 @@ class PostgresBackend(StorageBackend):
     # Phase 3A: Job Queue Methods with Lease Management
     # =========================================================================
     
-    def create_job(self, document_id: int, job_type: str, priority: int = 0) -> int:
-        """Create a new job for a document (Phase 3D: duplicate prevention).
+    def create_job(self, document_id: int, job_type: str, priority: int = 0,
+                  worker_version: str = None, scan_snapshot_id: int = None) -> int:
+        """Create a new job for a document with duplicate prevention and dependency handling.
         
         Args:
             document_id: ID of the document to process
             job_type: Type of job
             priority: Job priority (higher = more important)
+            worker_version: Version of the worker (for scan idempotency)
+            scan_snapshot_id: ID of the scan snapshot (for tracking)
             
         Returns:
             Job ID if created, None on failure or if duplicate exists
         """
         try:
+            # Check for existing active job of this type
+            if self.is_duplicate_job(document_id, job_type):
+                logger.info(f"Skipping duplicate job: document={document_id} job={job_type}")
+                return None
+            
             conn = self._get_connection()
             cur = conn.cursor()
             created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
             
-            # Phase 3D: ON CONFLICT prevents duplicate jobs
+            # Insert job - database will also prevent duplicates via unique constraint
             cur.execute(
                 """
-                INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO document_jobs (document_id, job_type, priority, status, created_at, 
+                                         worker_version, scan_snapshot_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (document_id, job_type) DO NOTHING
                 RETURNING id
                 """,
-                (document_id, job_type, priority, JobStatus.QUEUED, created_at)
+                (document_id, job_type, priority, JobStatus.QUEUED, created_at, 
+                 worker_version, scan_snapshot_id)
             )
             row = cur.fetchone()
             conn.commit()
@@ -1425,26 +1461,27 @@ class PostgresBackend(StorageBackend):
             if row:
                 job_id = row[0]
                 logger.info(f"Created job {job_id}: {job_type} for document {document_id}")
+                
+                # Check if job should be blocked due to missing prerequisites
+                all_met, reason = self.check_job_prerequisites(document_id, job_type)
+                if not all_met:
+                    self.block_job(job_id, reason)
+                    logger.info(f"Blocking job: document={document_id} job={job_type} reason={reason}")
+                
                 cur.close()
                 conn.close()
                 return job_id
             else:
-                # Duplicate job - get existing job ID
-                cur.execute(
-                    "SELECT id FROM document_jobs WHERE document_id = %s AND job_type = %s",
-                    (document_id, job_type)
-                )
-                row = cur.fetchone()
                 cur.close()
                 conn.close()
-                if row:
-                    logger.info(f"Job already exists for document {document_id}: {job_type} (id={row[0]})")
-                return row[0] if row else None
+                logger.info(f"Skipping duplicate job: document={document_id} job={job_type}")
+                return None
         except Exception as e:
             logger.error(f"Error creating job: {e}")
             return None
     
-    def create_jobs_for_document(self, document_id: int, job_types: list = None) -> list:
+    def create_jobs_for_document(self, document_id: int, job_types: list = None,
+                                worker_version: str = None, scan_snapshot_id: int = None) -> list:
         """Create multiple jobs for a document based on artifact_type.
         
         ARCHITECTURE REQUIREMENT: Job scheduling must depend on artifact_type.
@@ -1457,59 +1494,57 @@ class PostgresBackend(StorageBackend):
         - "No content found for document XXX"
         - "PostgreSQL text fields cannot contain NUL bytes"
         
+        ARTIFACT TYPE VALIDATION:
+        - Image artifacts may never receive: extract_text, extract_entities, extract_events, extract_locations
+        - Text artifacts may never receive: object_detection, face_detection
+        
         Args:
             document_id: ID of the document
             job_types: List of job types to create. If None, uses artifact_type mapping.
+            worker_version: Version of the worker (for scan idempotency)
+            scan_snapshot_id: ID of the scan snapshot (for tracking)
             
         Returns:
             List of created job IDs
         """
+        # Get artifact type for validation
+        artifact_type = self._get_document_artifact_type(document_id)
+        invalid_jobs = self.get_invalid_jobs_for_artifact(artifact_type)
+        
         # If job_types is not specified, determine based on artifact_type
         if job_types is None:
-            artifact_type = self._get_document_artifact_type(document_id)
             job_types = ARTIFACT_TYPE_JOBS.get(
                 artifact_type, 
                 ARTIFACT_TYPE_JOBS.get('unknown', [JobType.INVENTORY])
             )
             logger.info(f"Creating jobs for document {document_id} based on artifact_type '{artifact_type}': {job_types}")
         
-        try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
-            
-            job_ids = []
-            for job_type in job_types:
-                # Phase 3D: ON CONFLICT prevents duplicates
-                cur.execute(
-                    """
-                    INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (document_id, job_type) DO UPDATE SET document_id = EXCLUDED.document_id
-                    RETURNING id
-                    """,
-                    (document_id, job_type, 0, JobStatus.QUEUED, created_at)
-                )
-                row = cur.fetchone()
-                if row:
-                    job_ids.append(row[0])
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            logger.info(f"Created {len(job_ids)} jobs for document {document_id}")
-            return job_ids
-        except Exception as e:
-            logger.error(f"Error creating jobs: {e}")
-            if conn:
-                conn.rollback()
-            return []
+        # Filter out invalid jobs for this artifact type
+        filtered_job_types = [jt for jt in job_types if jt not in invalid_jobs]
+        skipped_jobs = [jt for jt in job_types if jt in invalid_jobs]
+        
+        if skipped_jobs:
+            logger.warning(f"Skipping invalid jobs for artifact type '{artifact_type}': {skipped_jobs}")
+        
+        job_ids = []
+        for job_type in filtered_job_types:
+            job_id = self.create_job(
+                document_id, job_type, priority=0,
+                worker_version=worker_version, scan_snapshot_id=scan_snapshot_id
+            )
+            if job_id:
+                job_ids.append(job_id)
+        
+        logger.info(f"Created {len(job_ids)} jobs for document {document_id} (filtered {len(skipped_jobs)} invalid)")
+        return job_ids
     
     def claim_job(self, worker_id: str, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict:
-        """Claim a queued job for processing (Phase 3A: lease management).
+        """Claim a queued job for processing with prerequisite checking.
         
         Uses SELECT FOR UPDATE to atomically claim the oldest queued job.
         Only claims jobs that are ready for retry (next_retry_at <= now).
+        
+        Jobs with unmet prerequisites are BLOCKED rather than retried.
         
         Args:
             worker_id: ID of the worker claiming the job
@@ -1525,7 +1560,7 @@ class PostgresBackend(StorageBackend):
             claimed_at = now
             lease_until = _to_postgres_timestamp(datetime.now(timezone.utc) + timedelta(seconds=lease_seconds))
             
-            # Phase 3A: Include lease columns in claim
+            # Claim the next queued job
             cur.execute(
                 """
                 UPDATE document_jobs
@@ -1549,10 +1584,26 @@ class PostgresBackend(StorageBackend):
             conn.commit()
             
             if row:
+                job_id = row[0]
+                document_id = row[1]
+                job_type = row[2]
+                
+                # Check prerequisites before running
+                all_met, reason = self.check_job_prerequisites(document_id, job_type)
+                
+                if not all_met:
+                    # Block the job instead of running it
+                    self.block_job(job_id, reason)
+                    logger.info(f"Blocking job: document={document_id} job={job_type} reason={reason}")
+                    cur.close()
+                    conn.close()
+                    # Try to claim another job
+                    return self.claim_job(worker_id, lease_seconds)
+                
                 job = {
-                    'id': row[0],
-                    'document_id': row[1],
-                    'job_type': row[2],
+                    'id': job_id,
+                    'document_id': document_id,
+                    'job_type': job_type,
                     'priority': row[3],
                     'status': row[4],
                     'worker_id': row[5],
@@ -1600,10 +1651,25 @@ class PostgresBackend(StorageBackend):
                     """,
                     (JobStatus.COMPLETED, now, job_id)
                 )
+                
+                # Get job info before closing cursor for unblocking
+                cur.execute(
+                    "SELECT document_id, job_type FROM document_jobs WHERE id = %s",
+                    (job_id,)
+                )
+                row = cur.fetchone()
+                document_id = row[0] if row else None
+                job_type = row[1] if row else None
+                
                 conn.commit()
                 cur.close()
                 conn.close()
                 logger.info(f"Job {job_id} marked as COMPLETED")
+                
+                # Unblock any dependent jobs now that prerequisites may be met
+                if document_id and job_type:
+                    self.unblock_dependent_jobs(document_id, job_type)
+                
                 return True
             else:
                 # Job failed - check retry count
@@ -1846,7 +1912,264 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting queued jobs count: {e}")
             return 0
-    
+
+    # =========================================================================
+    # Job Dependency and Orchestration Methods
+    # =========================================================================
+
+    def check_job_prerequisites(self, document_id: int, job_type: str) -> tuple[bool, str]:
+        """Check if all prerequisites for a job are met.
+        
+        Args:
+            document_id: ID of the document
+            job_type: Type of job to check
+            
+        Returns:
+            Tuple of (all_met, reason) where reason explains what's missing if not met
+        """
+        prerequisites = JOB_DEPENDENCIES.get(job_type, set())
+        if not prerequisites:
+            return True, ""
+        
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Check if any prerequisite is NOT completed
+            cur.execute(
+                """
+                SELECT job_type FROM document_jobs
+                WHERE document_id = %s AND job_type = ANY(%s) AND status != 'COMPLETED'
+                """,
+                (document_id, list(prerequisites))
+            )
+            incomplete = [row[0] for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+            
+            if incomplete:
+                reason = f"missing {', '.join(sorted(incomplete))}"
+                return False, reason
+            return True, ""
+        except Exception as e:
+            logger.error(f"Error checking prerequisites for job {job_type}: {e}")
+            return False, str(e)
+
+    def block_job(self, job_id: int, reason: str) -> bool:
+        """Block a job that cannot execute due to missing prerequisites.
+        
+        Args:
+            job_id: ID of the job to block
+            reason: Why the job is blocked
+            
+        Returns:
+            True if update succeeded
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = %s, last_error = %s, error_message = %s
+                WHERE id = %s AND status = %s
+                """,
+                (JobStatus.BLOCKED, reason, f"Blocked: {reason}", job_id, JobStatus.QUEUED)
+            )
+            rows = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            if rows > 0:
+                logger.info(f"Blocking job {job_id}: {reason}")
+            return rows > 0
+        except Exception as e:
+            logger.error(f"Error blocking job {job_id}: {e}")
+            return False
+
+    def unblock_dependent_jobs(self, document_id: int, completed_job_type: str) -> int:
+        """Unblock jobs that were waiting for a completed job.
+        
+        When a job completes, any jobs that depend on it may now be able to run.
+        
+        Args:
+            document_id: ID of the document
+            completed_job_type: The job type that just completed
+            
+        Returns:
+            Number of jobs unblocked
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Find blocked jobs that depend on the completed job type
+            cur.execute(
+                """
+                UPDATE document_jobs j
+                SET status = %s
+                FROM job_prerequisites p
+                WHERE j.document_id = %s
+                  AND j.status = %s
+                  AND p.job_type = j.job_type
+                  AND p.requires_job_type = %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM document_jobs dep
+                      JOIN job_prerequisites pd ON dep.job_type = pd.requires_job_type
+                      WHERE dep.document_id = j.document_id
+                        AND pd.job_type = j.job_type
+                        AND dep.status != 'COMPLETED'
+                  )
+                RETURNING j.id, j.job_type
+                """,
+                (JobStatus.QUEUED, document_id, JobStatus.BLOCKED, completed_job_type)
+            )
+            unblocked = cur.fetchall()
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            count = len(unblocked)
+            if count > 0:
+                logger.info(f"Unblocked {count} jobs for document {document_id} after {completed_job_type} completed")
+                for row in unblocked:
+                    logger.debug(f"  Unblocked job {row[0]}: {row[1]}")
+            
+            return count
+        except Exception as e:
+            logger.error(f"Error unblocking dependent jobs: {e}")
+            return 0
+
+    def is_duplicate_job(self, document_id: int, job_type: str) -> bool:
+        """Check if an active job of this type already exists for the document.
+        
+        Checks across QUEUED, IN_PROGRESS, and BLOCKED statuses.
+        
+        Args:
+            document_id: ID of the document
+            job_type: Type of job
+            
+        Returns:
+            True if an active job of this type exists
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id FROM document_jobs
+                WHERE document_id = %s 
+                  AND job_type = %s
+                  AND status IN ('QUEUED', 'IN_PROGRESS', 'BLOCKED')
+                LIMIT 1
+                """,
+                (document_id, job_type)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            return row is not None
+        except Exception as e:
+            logger.error(f"Error checking duplicate job: {e}")
+            return False
+
+    def create_scan_snapshot(self, collection_id: int, scan_path: str, file_hash: str, 
+                           artifact_type: str = None, worker_version: str = None) -> int:
+        """Create a snapshot entry for an artifact in a scan.
+        
+        Used for idempotent rescans - tracks what was processed.
+        
+        Args:
+            collection_id: ID of the collection
+            scan_path: Path of the file
+            file_hash: SHA256 hash of the file
+            artifact_type: Classified artifact type
+            worker_version: Version of the workers
+            
+        Returns:
+            Snapshot ID if created, None on failure
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            cur.execute(
+                """
+                INSERT INTO scan_snapshots (collection_id, scan_path, file_hash, artifact_type, worker_version, processed_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (scan_path, file_hash) DO UPDATE SET
+                    artifact_type = COALESCE(EXCLUDED.artifact_type, scan_snapshots.artifact_type),
+                    worker_version = EXCLUDED.worker_version,
+                    processed_at = EXCLUDED.processed_at
+                RETURNING id
+                """,
+                (collection_id, scan_path, file_hash, artifact_type, worker_version, created_at)
+            )
+            snapshot_id = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+            return snapshot_id
+        except Exception as e:
+            logger.error(f"Error creating scan snapshot: {e}")
+            return None
+
+    def check_scan_snapshot_exists(self, scan_path: str, file_hash: str, 
+                                   worker_version: str = None) -> bool:
+        """Check if a scan snapshot exists and is current.
+        
+        Args:
+            scan_path: Path of the file
+            file_hash: SHA256 hash of the file
+            worker_version: Version of the workers (if changed, snapshot is stale)
+            
+        Returns:
+            True if snapshot exists and is current
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            if worker_version:
+                cur.execute(
+                    """
+                    SELECT id FROM scan_snapshots
+                    WHERE scan_path = %s AND file_hash = %s AND worker_version = %s
+                    LIMIT 1
+                    """,
+                    (scan_path, file_hash, worker_version)
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id FROM scan_snapshots
+                    WHERE scan_path = %s AND file_hash = %s
+                    LIMIT 1
+                    """,
+                    (scan_path, file_hash)
+                )
+            
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            return row is not None
+        except Exception as e:
+            logger.error(f"Error checking scan snapshot: {e}")
+            return False
+
+    def get_invalid_jobs_for_artifact(self, artifact_type: str) -> set:
+        """Get the set of invalid job types for an artifact type.
+        
+        Args:
+            artifact_type: The artifact type
+            
+        Returns:
+            Set of invalid job type strings
+        """
+        return INVALID_JOBS_BY_ARTIFACT.get(artifact_type, set())
+
     # =========================================================================
     # Evidence Lineage Methods (Phase 5)
     # =========================================================================

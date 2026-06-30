@@ -247,6 +247,108 @@ class CollectionWatcher:
             except Exception as e:
                 print(f"[CollectionWatcher] Error marking deleted {artifact_path}: {e}")
     
+    def scan_collection(self, collection_id=None, worker_version=None):
+        """Perform an idempotent scan of the collection directory.
+        
+        This method scans the filesystem and creates jobs only for:
+        - New artifacts not yet in the database
+        - Artifacts with changed hashes
+        - Artifacts requiring jobs due to worker version changes
+        
+        SCAN IDEMPOTENCY:
+        - Uses scan_snapshots to track what has been processed
+        - Same file with same hash = no duplicate jobs created
+        - Worker version changes trigger reprocessing
+        
+        Args:
+            collection_id: ID of the collection (for snapshot tracking)
+            worker_version: Version of the workers (changes invalidate snapshots)
+            
+        Returns:
+            Dict with scan statistics: {'new_jobs': int, 'skipped': int, 'errors': int}
+        """
+        import hashlib
+        stats = {'new_jobs': 0, 'skipped': 0, 'errors': 0}
+        
+        for root, dirs, files in os.walk(self.path):
+            # Skip hidden directories
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            
+            for filename in files:
+                if filename.startswith('.'):
+                    continue
+                    
+                full_path = Path(root) / filename
+                artifact_path = str(full_path)
+                
+                try:
+                    stat = full_path.stat()
+                    file_hash = self._compute_file_hash(full_path)
+                    
+                    if not file_hash:
+                        stats['errors'] += 1
+                        continue
+                    
+                    # Check if we already have a current snapshot for this file
+                    if hasattr(self.backend, 'check_scan_snapshot_exists'):
+                        if self.backend.check_scan_snapshot_exists(artifact_path, file_hash, worker_version):
+                            stats['skipped'] += 1
+                            continue
+                    
+                    # Discover artifact
+                    doc_id = None
+                    if hasattr(self.backend, 'discover_artifact'):
+                        doc_id = self.backend.discover_artifact(
+                            path=artifact_path,
+                            extension=full_path.suffix,
+                            file_size=stat.st_size,
+                            modified_time=datetime.fromtimestamp(stat.st_mtime)
+                        )
+                    
+                    # Create scan snapshot for tracking
+                    snapshot_id = None
+                    if hasattr(self.backend, 'create_scan_snapshot') and collection_id:
+                        artifact_type = self.parser_registry.get_artifact_type(full_path)
+                        snapshot_id = self.backend.create_scan_snapshot(
+                            collection_id=collection_id,
+                            scan_path=artifact_path,
+                            file_hash=file_hash,
+                            artifact_type=artifact_type,
+                            worker_version=worker_version
+                        )
+                    
+                    # Create jobs for enrichment (only for new/processed files)
+                    if doc_id and hasattr(self.backend, 'create_jobs_for_document'):
+                        job_ids = self.backend.create_jobs_for_document(
+                            doc_id,
+                            worker_version=worker_version,
+                            scan_snapshot_id=snapshot_id
+                        )
+                        stats['new_jobs'] += len(job_ids)
+                        print(f"[CollectionWatcher] Scanned {artifact_path}: {len(job_ids)} jobs created")
+                    
+                except Exception as e:
+                    print(f"[CollectionWatcher] Error scanning {artifact_path}: {e}")
+                    stats['errors'] += 1
+        
+        print(f"[CollectionWatcher] Scan complete: {stats['new_jobs']} new jobs, {stats['skipped']} skipped, {stats['errors']} errors")
+        return stats
+    
+    def _compute_file_hash(self, filepath):
+        """Compute SHA256 hash of a file.
+        
+        Args:
+            filepath: Path to the file
+            
+        Returns:
+            Hex string of SHA256 hash, or None on error
+        """
+        try:
+            with open(filepath, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            return None
+    
     def get_events(self):
         """Get recent events."""
         return self._events.copy()
