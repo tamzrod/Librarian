@@ -215,38 +215,6 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error recording migration: {e}")
             return False
 
-    def _get_schema_path(self) -> str:
-        """Get the path to the schema.sql file."""
-        # Try multiple locations for the schema file
-        possible_paths = [
-            os.path.join(os.path.dirname(__file__), 'migrations', 'schema.sql'),
-            '/app/storage/migrations/schema.sql',
-            os.path.join(os.getcwd(), 'storage', 'migrations', 'schema.sql'),
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
-        return possible_paths[0]  # Return first option for error message
-
-    def _check_unique_constraint_exists(self) -> bool:
-        """Check if the unique constraint on documents.path exists."""
-        try:
-            conn = self._get_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT 1 FROM information_schema.table_constraints
-                WHERE constraint_type = 'UNIQUE'
-                AND table_name = 'documents'
-                AND constraint_name LIKE '%path%'
-            """)
-            exists = cur.fetchone() is not None
-            cur.close()
-            conn.close()
-            return exists
-        except Exception as e:
-            logger.debug(f"Error checking unique constraint: {e}")
-            return False
-
     def _get_migrations_directory(self) -> str:
         """Get the path to the migrations directory."""
         possible_paths = [
@@ -259,158 +227,13 @@ class PostgresBackend(StorageBackend):
                 return path
         return possible_paths[0]
 
-    def _get_migration_files(self) -> list:
-        """Discover migration files from the filesystem, sorted in lexical order.
-        
-        Only includes .sql files that match the naming pattern.
-        
-        Returns:
-            List of migration filenames sorted lexicographically
-        """
-        migrations_dir = self._get_migrations_directory()
-        if not os.path.exists(migrations_dir):
-            logger.warning(f"Migrations directory not found: {migrations_dir}")
-            return []
-        
-        migration_files = []
-        for filename in os.listdir(migrations_dir):
-            if filename.endswith('.sql') and filename != 'schema.sql':
-                migration_files.append(filename)
-        
-        migration_files.sort()
-        return migration_files
-
-    def _run_migration_file(self, filename: str) -> bool:
-        """Execute a single migration SQL file.
-        
-        Args:
-            filename: Name of the migration file (e.g., '003_photo_metadata.sql')
-            
-        Returns:
-            True if migration executed successfully, False otherwise
-        """
-        migrations_dir = self._get_migrations_directory()
-        filepath = os.path.join(migrations_dir, filename)
-        
-        if not os.path.exists(filepath):
-            logger.error(f"Migration file not found: {filepath}")
-            return False
-        
-        try:
-            with open(filepath, 'r') as f:
-                sql_content = f.read()
-            
-            conn = self._get_connection()
-            cur = conn.cursor()
-            
-            # Split by semicolons
-            raw_statements = sql_content.split(';')
-            
-            # Process each statement
-            for raw_stmt in raw_statements:
-                # Split into lines and filter out comments
-                lines = []
-                for line in raw_stmt.split('\n'):
-                    # Strip the line and check if it's a comment
-                    stripped = line.strip()
-                    if not stripped or stripped.startswith('--'):
-                        continue
-                    lines.append(line)
-                
-                stmt = '\n'.join(lines).strip()
-                
-                # Skip empty statements
-                if not stmt:
-                    continue
-                
-                try:
-                    cur.execute(stmt)
-                except Exception as e:
-                    logger.error(f"Error executing statement in {filename}: {e}")
-                    conn.rollback()
-                    cur.close()
-                    conn.close()
-                    return False
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error running migration {filename}: {e}")
-            return False
-
-    def _run_schema_migrations(self) -> bool:
-        """Run schema migrations using filesystem-based discovery.
-        
-        Scans storage/migrations/*.sql for migration files and executes
-        any that haven't been applied yet. Migrations are executed in
-        lexical order by filename.
-        
-        Each migration file should contain its own migration record
-        statement at the end (e.g., INSERT INTO schema_migrations).
-        
-        Returns:
-            True if all migrations ran successfully, False on error
-        """
-        try:
-            # Get all migration files sorted in lexical order
-            migration_files = self._get_migration_files()
-            
-            if not migration_files:
-                logger.info("No migration files found")
-                return True
-            
-            logger.info(f"Discovered {len(migration_files)} migration files: {migration_files}")
-            
-            # Get already applied migrations
-            applied = self._get_applied_migrations()
-            logger.info(f"Already applied migrations: {applied}")
-            
-            # Track if any migrations were run
-            migrations_run = 0
-            
-            for filename in migration_files:
-                if filename in applied:
-                    logger.info(f"Migration skipped (already applied): {filename}")
-                    continue
-                
-                logger.info(f"Migration discovered: {filename}")
-                
-                # Execute the migration
-                success = self._run_migration_file(filename)
-                
-                if success:
-                    logger.info(f"Migration applied: {filename}")
-                    migrations_run += 1
-                else:
-                    logger.error(f"Migration failed: {filename}")
-                    return False
-            
-            if migrations_run > 0:
-                logger.info(f"Applied {migrations_run} migration(s)")
-            else:
-                logger.info("No new migrations to apply")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error running schema migrations: {e}")
-            return False
-
     def ensure_schema(self) -> bool:
         """
         Ensure database schema exists, creating it if necessary.
 
-        Uses the MigrationManager for proper version tracking and automatic
-        upgrades from older schema versions (e.g., V2 to V5).
-
-        Required columns added in schema version 5:
-        - artifact_type, exists_on_disk, deleted_at, lifecycle_state
-
-        For backward compatibility, databases created before these columns
-        existed will be automatically upgraded on first startup.
+        Uses the MigrationManager as the only schema initialization mechanism.
+        For fresh databases, MigrationManager runs 001_initial_schema.sql first.
+        For existing databases, MigrationManager applies pending migrations.
 
         Returns:
             True if schema is ready, False on failure
@@ -420,7 +243,7 @@ class PostgresBackend(StorageBackend):
 
         try:
             # Import here to avoid circular imports
-            from storage.migration_manager import MigrationManager, run_migrations_for_backend
+            from storage.migration_manager import run_migrations_for_backend
             
             # Use MigrationManager for proper migration handling
             result = run_migrations_for_backend(self)
@@ -435,98 +258,8 @@ class PostgresBackend(StorageBackend):
                     logger.error(f"Failed migration: {result.failed_migration}")
                 return False
 
-        except ImportError:
-            # Fallback to old behavior if MigrationManager not available
-            logger.warning("MigrationManager not available, using legacy schema initialization")
-            return self._ensure_schema_legacy()
         except Exception as e:
             logger.error(f"Error during schema initialization: {e}")
-            return False
-    
-    def _ensure_schema_legacy(self) -> bool:
-        """
-        Legacy schema initialization for backward compatibility.
-        
-        This method is used as a fallback when MigrationManager is not available.
-        """
-        try:
-            # First, ensure migrations table exists
-            self._ensure_migrations_table()
-
-            # Check for existing initial migration
-            applied = self._get_applied_migrations()
-
-            # Check if tables already exist
-            if self._check_tables_exist():
-                # Tables exist - run any pending migrations
-                self._run_schema_migrations()
-
-                # Check if we have migration record
-                if '001_initial' not in applied:
-                    # Tables exist but no migration record - record it
-                    self._record_migration('001_initial')
-                logger.info("Database schema already exists")
-                self._schema_verified = True
-                return True
-
-            # Schema doesn't exist, create it
-            logger.warning("Database schema not found, creating...")
-
-            schema_path = self._get_schema_path()
-            if not os.path.exists(schema_path):
-                logger.error(f"Schema file not found at: {schema_path}")
-                return False
-
-            # Read and execute schema
-            with open(schema_path, 'r') as f:
-                schema_sql = f.read()
-
-            conn = self._get_connection()
-            cur = conn.cursor()
-
-            # Execute each statement separately
-            statements = []
-            current_stmt = []
-            for line in schema_sql.split('\n'):
-                stripped = line.strip()
-                # Skip comments and empty lines
-                if not stripped or stripped.startswith('--'):
-                    continue
-                current_stmt.append(line)
-                if stripped.endswith(';'):
-                    statements.append('\n'.join(current_stmt))
-                    current_stmt = []
-
-            # Execute each statement
-            for stmt in statements:
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cur.execute(stmt)
-                    except Exception as e:
-                        # Log but continue - some statements might fail on re-run
-                        logger.debug(f"Statement execution note: {e}")
-
-            conn.commit()
-            cur.close()
-            conn.close()
-
-            # Run any additional migrations after initial schema creation
-            self._run_schema_migrations()
-
-            # Verify schema was created
-            if self._check_tables_exist():
-                logger.info("Database schema created successfully")
-                # Record the migration
-                self._record_migration('001_initial')
-                self._schema_verified = True
-                return True
-            else:
-                logger.error("Schema creation failed - tables still don't exist")
-                return False
-
-        except Exception as e:
-            logger.error(f"Error ensuring schema (legacy): {e}")
             return False
 
     def save_document(self, document):

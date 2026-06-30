@@ -4,17 +4,15 @@ Schema Migration Manager for Librarian.
 This module provides automatic database schema migration handling to ensure
 backward compatibility with older database versions while supporting new features.
 
-Schema Bootstrap:
-- On fresh databases (no tables except schema_migrations), the base schema is 
-  bootstrapped from schema.sql before applying migrations
-- This ensures migrations can reference tables (like 'documents') that exist 
-  in the base schema
-
 Migration System:
-- Migration files are named with version prefixes (e.g., 003_photo_metadata.sql)
+- Migration files are named with version prefixes (e.g., 001_initial_schema.sql)
+- Migration 001_initial_schema.sql creates the base schema for fresh databases
 - Each migration is recorded in the schema_migrations table after successful execution
 - Migrations are applied in sorted order (by version number)
 - Schema verification runs at startup before any operations begin
+
+Startup Sequence:
+  Empty DB → 001_initial_schema.sql → remaining migrations → startup complete
 
 Required Columns (added in V5 - 005_artifact_inventory.sql):
 - artifact_type: Classification of artifact type
@@ -22,7 +20,7 @@ Required Columns (added in V5 - 005_artifact_inventory.sql):
 - deleted_at: Timestamp when file was deleted
 - lifecycle_state: Simplified lifecycle tracking
 
-V2 databases (without these columns) are automatically upgraded on startup.
+Existing databases are automatically upgraded on startup through MigrationManager.
 """
 
 import os
@@ -131,111 +129,6 @@ class MigrationManager:
         self.backend = backend
         self._migrations_cache: Optional[List[MigrationInfo]] = None
     
-    def _needs_base_schema_bootstrap(self) -> bool:
-        """
-        Check if the base schema needs to be bootstrapped.
-        
-        Returns:
-            True if the documents table is missing and needs to be created, False otherwise
-        """
-        try:
-            conn = self.backend._get_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' AND table_name = 'documents'
-                )
-            """)
-            documents_exists = cur.fetchone()[0]
-            cur.close()
-            conn.close()
-            return not documents_exists
-        except Exception as e:
-            logger.error(f"Error checking for documents table: {e}")
-            return True  # Assume bootstrap needed if we can't check
-    
-    def _get_base_schema_path(self) -> Optional[str]:
-        """
-        Get the path to the base schema.sql file.
-        
-        Returns:
-            Path to schema.sql if found, None otherwise
-        """
-        possible_paths = [
-            os.path.join(os.path.dirname(__file__), 'migrations', 'schema.sql'),
-            '/app/storage/migrations/schema.sql',
-            os.path.join(os.getcwd(), 'storage', 'migrations', 'schema.sql'),
-        ]
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
-        return None
-    
-    def _bootstrap_base_schema(self) -> Tuple[bool, Optional[str]]:
-        """
-        Bootstrap the base schema on a fresh database.
-        
-        This reads schema.sql and executes it to create all base tables.
-        
-        Returns:
-            Tuple of (success, error_message)
-        """
-        schema_path = self._get_base_schema_path()
-        if not schema_path:
-            return False, f"Base schema file not found at any expected location"
-        
-        try:
-            with open(schema_path, 'r') as f:
-                schema_sql = f.read()
-            
-            conn = self.backend._get_connection()
-            cur = conn.cursor()
-            
-            # Execute each statement separately
-            statements = []
-            current_stmt = []
-            in_block = False
-            
-            for line in schema_sql.split('\n'):
-                stripped = line.strip()
-                
-                # Skip comments and empty lines
-                if not stripped or stripped.startswith('--'):
-                    continue
-                
-                # Handle DO blocks
-                if '$$' in stripped:
-                    in_block = not in_block
-                
-                if in_block or not stripped.endswith(';'):
-                    current_stmt.append(line)
-                else:
-                    current_stmt.append(line)
-                    statements.append('\n'.join(current_stmt))
-                    current_stmt = []
-            
-            # Execute each statement
-            for stmt in statements:
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cur.execute(stmt)
-                    except Exception as e:
-                        # Log but continue - some statements might be idempotent
-                        logger.debug(f"Schema bootstrap statement note: {e}")
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            logger.info(f"Base schema bootstrapped successfully from: {schema_path}")
-            return True, None
-            
-        except Exception as e:
-            logger.error(f"Error bootstrapping base schema: {e}")
-            return False, str(e)
-    
     def _get_migrations_directory(self) -> str:
         """Get the path to the migrations directory."""
         possible_paths = [
@@ -271,8 +164,8 @@ class MigrationManager:
         """
         Discover all migration files in the migrations directory.
         
-        Only includes .sql files that match the naming pattern (e.g., 003_photo_metadata.sql).
-        Excludes schema.sql and any non-matching files.
+        Only includes .sql files that match the naming pattern (e.g., 001_initial_schema.sql).
+        All migrations including 001_initial_schema.sql are discovered and applied in order.
         
         Returns:
             List of MigrationInfo sorted by version number
@@ -290,8 +183,8 @@ class MigrationManager:
         migrations = []
         
         for filename in os.listdir(migrations_dir):
-            # Skip non-SQL files and schema.sql
-            if not filename.endswith('.sql') or filename == 'schema.sql':
+            # Skip non-SQL files
+            if not filename.endswith('.sql'):
                 continue
             
             # Extract version number
@@ -487,12 +380,14 @@ class MigrationManager:
         This is the main entry point for migration execution.
         It:
         1. Ensures migrations table exists
-        2. Detects fresh database and bootstraps base schema
-        3. Discovers all migration files
-        4. Checks which migrations have been applied
-        5. Runs pending migrations in version order
-        6. Records successful migrations
-        7. Returns detailed result information
+        2. Discovers all migration files
+        3. Checks which migrations have been applied
+        4. Runs pending migrations in version order (including 001_initial_schema.sql)
+        5. Records successful migrations
+        6. Returns detailed result information
+        
+        For fresh databases, migration 001_initial_schema.sql creates all base tables.
+        For existing databases, pending migrations are applied to upgrade the schema.
         
         Returns:
             MigrationResult with success status and details
@@ -515,20 +410,6 @@ class MigrationManager:
                 applied_migrations=[],
                 error_message="Failed to create migrations tracking table"
             )
-        
-        # Detect if base schema needs bootstrapping
-        if self._needs_base_schema_bootstrap():
-            logger.info("Documents table missing - bootstrapping base schema...")
-            bootstrap_success, bootstrap_error = self._bootstrap_base_schema()
-            if not bootstrap_success:
-                return MigrationResult(
-                    success=False,
-                    current_version=0,
-                    target_version=self.TARGET_SCHEMA_VERSION,
-                    applied_migrations=[],
-                    error_message=f"Failed to bootstrap base schema: {bootstrap_error}"
-                )
-            logger.info("Base schema bootstrapped successfully")
         
         # Get current state
         applied_migrations = self.get_applied_migrations()
@@ -586,8 +467,7 @@ class MigrationManager:
         error_message = None
         
         for migration in pending:
-            logger.info(f"Applying migration: {migration.name}")
-            logger.info(f"  Description: {migration.description}")
+            logger.info(f"Applying migration {migration.name}")
             
             success, error = self._execute_migration_sql(migration)
             
@@ -595,11 +475,11 @@ class MigrationManager:
                 self._record_migration(migration.name)
                 applied_list.append(migration.name)
                 current_version = migration.version_int
-                logger.info(f"  SUCCESS: Migration {migration.name} applied")
+                logger.info(f"Applied migration {migration.name}")
             else:
                 failed_migration = migration.name
                 error_message = error
-                logger.error(f"  FAILED: {error}")
+                logger.error(f"Failed migration {migration.name}: {error}")
                 break
         
         duration_ms = (time.time() - start_time) * 1000
