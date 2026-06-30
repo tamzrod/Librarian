@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:production": "tsc && vite build --mode production",
+    "build:staging": "tsc && vite build --mode staging",
     "preview": "vite preview",
     "generate-types": "openapi-typescript http://localhost:8000/api/openapi.json -o src/types/api.d.ts",
     "validate-contract": "openapi-typescript http://localhost:8000/api/openapi.json -o src/types/api.d.ts && npm run build"

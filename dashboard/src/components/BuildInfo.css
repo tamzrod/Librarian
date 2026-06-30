@@ -1,0 +1,115 @@
+.build-info {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.build-info-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.build-info-left,
+.build-info-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.build-info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.build-info-separator {
+  color: var(--border-color);
+}
+
+.build-info-item.version {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.build-info-item.build-sha {
+  color: var(--accent-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.build-info-item.build-sha:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.build-info-item.build-time {
+  color: var(--text-muted);
+}
+
+.build-info-item.api-version {
+  color: var(--text-secondary);
+}
+
+.build-info-item.environment {
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.build-info-item.environment.production {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-success);
+}
+
+.build-info-item.environment.development {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-warning);
+}
+
+.build-info-copy-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.build-info-copy-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.build-info-copy-btn.copied {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: var(--accent-success);
+  color: var(--accent-success);
+}
+
+@media (max-width: 768px) {
+  .build-info-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .build-info-left,
+  .build-info-right {
+    width: 100%;
+  }
+}

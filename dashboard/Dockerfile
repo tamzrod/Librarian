@@ -19,10 +19,24 @@ COPY . .
 ARG API_URL=http://localhost:8000
 ENV VITE_API_URL=$API_URL
 
+# Build metadata arguments
+ARG VITE_BUILD_SHA=unknown
+ARG VITE_BUILD_TIME
+ARG VITE_DASHBOARD_VERSION=dev
+ARG VITE_API_CONTRACT_VERSION=v1.0
+ARG VITE_ENVIRONMENT=production
+
+# Pass build metadata to Vite (injected into the app at build time)
+ENV VITE_BUILD_SHA=$VITE_BUILD_SHA
+ENV VITE_BUILD_TIME=$VITE_BUILD_TIME
+ENV VITE_DASHBOARD_VERSION=$VITE_DASHBOARD_VERSION
+ENV VITE_API_CONTRACT_VERSION=$VITE_API_CONTRACT_VERSION
+ENV VITE_ENVIRONMENT=$VITE_ENVIRONMENT
+
 # Generate types (will fail build if schema is invalid)
 RUN npm run generate-types || true
 
-# Build the application
+# Build the application with injected metadata
 RUN npm run build
 
 # Production stage - serve with nginx

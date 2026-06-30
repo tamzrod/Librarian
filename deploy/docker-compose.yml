@@ -100,6 +100,12 @@ services:
       dockerfile: Dockerfile
       args:
         API_URL: http://librarian-api:8000
+        # Build metadata - injected at build time for version traceability
+        VITE_BUILD_SHA: ${DASHBOARD_BUILD_SHA:-local}
+        VITE_BUILD_TIME: ${DASHBOARD_BUILD_TIME:-}
+        VITE_DASHBOARD_VERSION: ${DASHBOARD_VERSION:-dev}
+        VITE_API_CONTRACT_VERSION: ${DASHBOARD_API_CONTRACT_VERSION:-v1.0}
+        VITE_ENVIRONMENT: ${DASHBOARD_ENVIRONMENT:-production}
     container_name: librarian-dashboard
     restart: unless-stopped
     environment:
