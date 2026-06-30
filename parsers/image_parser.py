@@ -1,25 +1,123 @@
 """
-Image parser for extracting EXIF metadata from image files.
+Image parser for artifact ingestion.
 
-Phase 1A: Evidence Timeline - Photo Metadata Extraction
+Artifact Ingestion Phase 1: First-Class Image Support
 
-This module provides deterministic metadata extraction from image files.
-No AI inference, no OCR, no object recognition - only metadata already
-present in the image file.
+This module provides lightweight image artifact ingestion.
+Its purpose is ingestion, NOT enrichment.
+
+Parser responsibilities:
+- Validate image file
+- Identify mime type
+- Identify dimensions (inexpensive)
+- Create document record
+- Return artifact metadata
+
+Worker responsibilities (handled by PhotoMetadataExtractor):
+- EXIF extraction
+- GPS coordinates
+- Camera information
+- Timestamps
 """
 
-from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
 from pathlib import Path
 from typing import Optional
 
+from PIL import Image
 
-# Supported image extensions
-SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif'}
+
+# MIME type mapping for supported image formats
+MIME_TYPES = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+    '.tiff': 'image/tiff',
+    '.tif': 'image/tiff',
+    '.webp': 'image/webp',
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
+}
+
+# Supported image extensions for ingestion
+SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.heic', '.heif'}
+
+
+class ImageParser:
+    """
+    Parser for image artifacts.
+    
+    This parser is intentionally lightweight. Its purpose is ingestion,
+    not enrichment. It validates the image file and extracts basic
+    metadata needed for document creation.
+    
+    The actual enrichment (EXIF extraction, GPS, camera info) is handled
+    by the PhotoMetadataExtractor worker.
+    """
+    
+    def parse(self, file_path):
+        """
+        Parse an image file and extract artifact metadata.
+        
+        Args:
+            file_path: Path to the image file
+            
+        Returns:
+            Dict with artifact metadata, or None if parsing failed
+        """
+        try:
+            path = Path(file_path)
+            
+            # Validate file exists and has supported extension
+            if not path.exists():
+                return None
+            
+            extension = path.suffix.lower()
+            if extension not in SUPPORTED_EXTENSIONS:
+                return None
+            
+            # Get MIME type
+            mime_type = MIME_TYPES.get(extension, 'application/octet-stream')
+            
+            # Get dimensions (PIL does this without loading full image into memory)
+            width, height = self._get_dimensions(path)
+            
+            # Get file size
+            file_size = path.stat().st_size
+            
+            return {
+                'text': None,  # Images don't have text content
+                'structured_data': {
+                    'mime_type': mime_type,
+                    'width': width,
+                    'height': height,
+                    'aspect_ratio': round(width / height, 2) if height > 0 else None,
+                },
+                'character_count': file_size,  # Use file size as character_count equivalent
+                'extension': extension,
+                'parser': 'image',
+            }
+            
+        except Exception:
+            return None
+    
+    def _get_dimensions(self, path: Path) -> tuple:
+        """
+        Get image dimensions without loading full image into memory.
+        
+        Uses PIL's efficient dimension-only loading.
+        """
+        try:
+            with Image.open(path) as img:
+                return img.size  # Returns (width, height)
+        except Exception:
+            return (0, 0)
 
 
 def is_image_file(filepath: Path) -> bool:
-    """Check if a file is a supported image type.
+    """
+    Check if a file is a supported image type.
     
     Args:
         filepath: Path to the file
@@ -30,202 +128,16 @@ def is_image_file(filepath: Path) -> bool:
     return filepath.suffix.lower() in SUPPORTED_EXTENSIONS
 
 
-def extract_photo_metadata(filepath: Path) -> Optional[dict]:
+def get_mime_type(extension: str) -> str:
     """
-    Extract photo metadata from an image file.
-    
-    Phase 1A implementation - only extracts EXIF metadata present in the file.
-    No AI inference, no OCR, no object detection.
+    Get MIME type for a file extension.
     
     Args:
-        filepath: Path to the image file
+        extension: File extension (with or without dot)
         
     Returns:
-        Dict with extracted metadata, or None if extraction failed
+        MIME type string
     """
-    try:
-        img = Image.open(filepath)
-        
-        # Get basic image properties
-        width, height = img.size
-        file_format = img.format
-        
-        # Get EXIF data
-        exif = img._getexif() if hasattr(img, '_getexif') else None
-        
-        metadata = {
-            'width': width,
-            'height': height,
-            'file_format': file_format,
-            'raw_exif': None,
-        }
-        
-        # Extract EXIF fields
-        if exif:
-            exif_data = _parse_exif(exif)
-            metadata.update(exif_data)
-            metadata['raw_exif'] = exif_data
-        
-        return metadata
-        
-    except Exception as e:
-        return None
-
-
-def _parse_exif(exif) -> dict:
-    """
-    Parse EXIF data from an image.
-    
-    Only extracts deterministic metadata fields - no inference.
-    """
-    result = {}
-    exif_data = {}
-    
-    # Convert EXIF tags to readable names
-    for tag_id, value in exif.items():
-        tag = TAGS.get(tag_id, tag_id)
-        exif_data[tag] = value
-    
-    # Timestamp extraction (in order of preference)
-    # DateTimeOriginal: When photo was actually taken
-    # DateTimeDigitized: When photo was digitized
-    # DateTime: File modification time
-    for key in ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']:
-        if key in exif_data:
-            ts_value = _parse_exif_timestamp(exif_data[key])
-            if key == 'DateTimeOriginal':
-                result['timestamp_original'] = ts_value
-            elif key == 'DateTimeDigitized':
-                result['timestamp_digitized'] = ts_value
-            else:
-                result['timestamp_metadata'] = ts_value
-            break
-    
-    # Camera make (manufacturer)
-    if 'Make' in exif_data:
-        result['camera_make'] = str(exif_data['Make']).strip()
-    
-    # Camera model
-    if 'Model' in exif_data:
-        result['camera_model'] = str(exif_data['Model']).strip()
-    
-    # Lens model
-    if 'LensModel' in exif_data:
-        result['lens_model'] = str(exif_data['LensModel']).strip()
-    
-    # Orientation
-    if 'Orientation' in exif_data:
-        result['orientation'] = int(exif_data['Orientation'])
-    
-    # GPS coordinates
-    gps_ifd = exif_data.get('GPSInfo', {})
-    if gps_ifd:
-        gps_data = {}
-        for tag_id, value in gps_ifd.items():
-            tag = GPSTAGS.get(tag_id, tag_id)
-            gps_data[tag] = value
-        
-        # GPS Latitude
-        lat = gps_data.get('GPSLatitude')
-        lat_ref = gps_data.get('GPSLatitudeRef')
-        if lat and lat_ref:
-            result['gps_latitude'] = _convert_dms_to_decimal(lat, lat_ref)
-        
-        # GPS Longitude
-        lon = gps_data.get('GPSLongitude')
-        lon_ref = gps_data.get('GPSLongitudeRef')
-        if lon and lon_ref:
-            result['gps_longitude'] = _convert_dms_to_decimal(lon, lon_ref)
-        
-        # GPS Altitude
-        altitude = gps_data.get('GPSAltitude')
-        if altitude is not None:
-            if isinstance(altitude, tuple):
-                altitude = altitude[0] / altitude[1] if altitude[1] != 0 else 0
-            alt_ref = gps_data.get('GPSAltitudeRef', 0)
-            result['gps_altitude'] = abs(float(altitude)) if not alt_ref else -abs(float(altitude))
-    
-    return result
-
-
-def _parse_exif_timestamp(value) -> Optional[str]:
-    """
-    Parse EXIF timestamp format to ISO format.
-    
-    EXIF format: "YYYY:MM:DD HH:MM:SS"
-    ISO format: "YYYY-MM-DDTHH:MM:SS"
-    """
-    if not value or not isinstance(value, str):
-        return None
-    
-    # EXIF format: "2026:01:15 09:42:18"
-    try:
-        # Handle the format with space separator
-        if ' ' in value:
-            date_part, time_part = value.split(' ')
-            # Handle colon separators in date
-            date_part = date_part.replace(':', '-')
-            return f"{date_part}T{time_part}"
-    except (ValueError, IndexError):
-        pass
-    
-    return None
-
-
-def _convert_dms_to_decimal(dms, ref) -> float:
-    """
-    Convert GPS DMS (Degrees, Minutes, Seconds) to decimal degrees.
-    
-    Args:
-        dms: Tuple of (degrees, minutes, seconds) - each can be tuple (num, denom) or int
-        ref: Reference direction ('N', 'S', 'E', 'W')
-        
-    Returns:
-        Decimal degrees as float
-    """
-    degrees = float(dms[0][0]) / dms[0][1] if isinstance(dms[0], tuple) else float(dms[0])
-    minutes = float(dms[1][0]) / dms[1][1] if isinstance(dms[1], tuple) else float(dms[1])
-    seconds = float(dms[2][0]) / dms[2][1] if isinstance(dms[2], tuple) else float(dms[2])
-    
-    decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
-    
-    # Negative for South (S) or West (W)
-    if ref in ['S', 'W']:
-        decimal = -decimal
-    
-    return round(decimal, 6)
-
-
-def parse_image(filepath):
-    """
-    Legacy function for backward compatibility.
-    Use extract_photo_metadata() for new code.
-    """
-    structured_data = {}
-    
-    img = Image.open(filepath)
-    exif = img._getexif() if hasattr(img, '_getexif') else None
-    
-    if exif:
-        exif_data = _parse_exif(exif)
-        
-        # Map to legacy field names
-        if 'timestamp_original' in exif_data:
-            structured_data['timestamp'] = exif_data['timestamp_original']
-        
-        if 'camera_make' in exif_data:
-            structured_data['camera_make'] = exif_data['camera_make']
-        
-        if 'camera_model' in exif_data:
-            structured_data['camera_model'] = exif_data['camera_model']
-        
-        if 'gps_latitude' in exif_data:
-            structured_data['gps_latitude'] = exif_data['gps_latitude']
-        
-        if 'gps_longitude' in exif_data:
-            structured_data['gps_longitude'] = exif_data['gps_longitude']
-        
-        if 'gps_altitude' in exif_data:
-            structured_data['gps_altitude'] = exif_data['gps_altitude']
-    
-    return structured_data
+    if not extension.startswith('.'):
+        extension = '.' + extension
+    return MIME_TYPES.get(extension.lower(), 'application/octet-stream')

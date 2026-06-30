@@ -161,6 +161,52 @@ GUI clients communicate exclusively through the REST API. GUI implementations ar
 
 Users do not manually trigger ingestion. File changes are automatically detected and processed.
 
+### Artifact Ingestion vs Document Processing
+
+Librarian has evolved from a **Document Processing Platform** to an **Artifact Ingestion Platform**.
+
+| Concept | Document Processing | Artifact Ingestion |
+|---------|--------------------|--------------------|
+| Focus | Text documents | All file types |
+| Ingestion | Parse content | Create artifact record |
+| Enrichment | Part of parsing | Independent workers |
+| Timeline | Text-based | Artifact-anchored |
+
+### Parser vs Worker Distinction
+
+**Parsers** are responsible for:
+- Validating artifact files
+- Identifying file types and MIME types
+- Extracting inexpensive metadata (dimensions, basic properties)
+- Creating the initial document record
+
+**Workers** are responsible for:
+- Enriching artifacts with derived information
+- Extracting structured data (EXIF, entities, events, locations)
+- Generating embeddings
+- Processing that may fail independently
+
+Example flow for an image:
+```
+ImageParser
+    ↓
+document created (lightweight, fast)
+
+PhotoMetadataWorker (independent)
+    ↓
+GPS, camera, timestamp extracted
+
+OCRWorker (independent)
+    ↓
+text extracted from image
+
+ObjectDetectionWorker (independent)
+    ↓
+objects detected
+```
+
+Each worker references the same `document_id`. Workers may fail independently. The artifact remains valid even if one enrichment fails.
+
 ### Ingestion Pipeline
 
 ```
@@ -172,29 +218,23 @@ File Change Detected
 └────────┬──────────┘
          ↓
 ┌───────────────────┐
-│     Scanner       │
-│ (discover files)  │
-└────────┬──────────┘
-         ↓
-┌───────────────────┐
 │   Parser Router   │
 │ (route by type)   │
 └────────┬──────────┘
          ↓
 ┌───────────────────┐
 │     Parser        │
-│ (extract content) │
-└────────┬──────────┘
-         ↓
-┌───────────────────┐
-│    Extractors     │
-│ (entities, events,│
-│  locations)       │
+│ (artifact record)  │
 └────────┬──────────┘
          ↓
 ┌───────────────────┐
 │   PostgreSQL      │
 │     Catalog       │
+└────────┬──────────┘
+         ↓
+┌───────────────────┐
+│  Workers          │
+│ (parallel enrich) │
 └───────────────────┘
 ```
 
@@ -210,7 +250,7 @@ File Change Detected
 
 | Change | Action |
 |--------|--------|
-| New file | Parse, extract, index |
+| New file | Parse, create artifact, schedule workers |
 | Modified file | Re-parse, update catalog |
 | Deleted file | Remove from catalog |
 | Renamed file | Update path in catalog |
@@ -287,14 +327,28 @@ docs/               # Documentation
 
 ## Supported Artifact Types
 
-| Category | Types | Extracted Evidence |
-|----------|-------|-------------------|
-| Images | JPEG, PNG | GPS, timestamps, camera info, EXIF |
-| Structured | JSON, YAML, TOML, CSV | Schema, values, relationships |
-| Code | Python | Imports, classes, functions |
-| Config | INI, XML | Key-value pairs, structure |
-| Text | Plain text, Markdown | Entities via regex |
-| Future | PDF, DOC, audio, video, CAD | TBD |
+| Category | Formats | Parser | Workers |
+|----------|--------|--------|---------|
+| Images | JPEG, PNG, WebP, HEIC, GIF, BMP, TIFF | ImageParser | PhotoMetadataExtractor, OCRWorker, ObjectDetectionWorker |
+| Structured | JSON, YAML, TOML, CSV | JsonParser, YamlParser, etc. | ContentExtractor |
+| Code | Python | PythonParser | EntityExtractor, EmbeddingGenerator |
+| Config | INI, XML | IniParser, XmlParser | EntityExtractor |
+| Text | Plain text, Markdown | TextParser | EntityExtractor, EmbeddingGenerator |
+| Future | PDF, DOC, audio, video, CAD | TBD | TBD |
+
+### Image Support (Phase 1)
+
+**ImageParser** provides lightweight ingestion:
+- Validates image file
+- Identifies MIME type
+- Extracts dimensions
+- Creates document record
+
+**PhotoMetadataExtractor** worker provides enrichment:
+- EXIF metadata extraction
+- GPS coordinates
+- Camera information
+- Timestamps
 
 ## Query Pipeline
 
@@ -316,12 +370,10 @@ The purpose is NOT to answer questions directly. The purpose is to assemble evid
 
 | Component | Directory | Responsibility |
 |-----------|-----------|----------------|
-| **Scanner** | `indexing/` | Discovers files, computes hashes, tracks modifications |
+| **Collection Watcher** | `ingestion/` | Monitors filesystem, detects file changes |
 | **Parser Registry** | `registry/` | Routes files to appropriate parser |
-| **Parsers** | `parsers/` | Extract structured data from artifacts |
-| **Indexer** | `indexing/` | Creates searchable index with metadata |
-| **Retriever** | `indexing/` | Searches index for relevant documents |
-| **Persistence** | `indexing/` | Saves/loads index to/from JSON |
+| **Parsers** | `parsers/` | Creates artifact records (ingestion) |
+| **Workers** | `workers/` | Enriches artifacts (extraction) |
 | **Entity Extractor** | `extractors/` | Extracts named entities |
 | **Event Extractor** | `extractors/` | Extracts timestamped events |
 | **Location Extractor** | `extractors/` | Extracts locations and GPS |

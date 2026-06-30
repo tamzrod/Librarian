@@ -7,6 +7,7 @@ from parsers.toml_parser import TomlParser
 from parsers.xml_parser import XmlParser
 from parsers.python_parser import PythonParser
 from parsers.text_parser import TextParser
+from parsers.image_parser import ImageParser
 
 registry = ParserRegistry()
 registry.register('.json', JsonParser())
@@ -18,3 +19,17 @@ registry.register('.xml', XmlParser())
 registry.register('.py', PythonParser())
 registry.register('.txt', TextParser())
 registry.register('.md', TextParser())
+
+# Image parser - Artifact Ingestion Phase 1
+# Required formats
+registry.register('.jpg', ImageParser())
+registry.register('.jpeg', ImageParser())
+registry.register('.png', ImageParser())
+registry.register('.heic', ImageParser())
+registry.register('.webp', ImageParser())
+
+# Optional formats
+registry.register('.bmp', ImageParser())
+registry.register('.tiff', ImageParser())
+registry.register('.tif', ImageParser())
+registry.register('.gif', ImageParser())
