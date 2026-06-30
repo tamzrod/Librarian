@@ -48,7 +48,39 @@ echo_status "Checking service status..."
 docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || echo_warn "Could not get container status"
 
 echo ""
+echo_status "Waiting for health checks..."
+MAX_WAIT=120
+INTERVAL=5
+WAITED=0
+
+# Wait for API health
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+        break
+    fi
+    sleep $INTERVAL
+    WAITED=$((WAITED + INTERVAL))
+done
+
+# Wait for Dashboard health
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
+        break
+    fi
+    sleep $INTERVAL
+    WAITED=$((WAITED + INTERVAL))
+done
+
+if [ $WAITED -ge $MAX_WAIT ]; then
+    echo_warn "Health check timed out after ${MAX_WAIT}s"
+fi
+
+echo ""
 echo -e "${GREEN}Done.${NC}"
+echo ""
+echo_status "Services:"
+echo "  API:       http://localhost:8001"
+echo "  Dashboard: http://localhost:3100"
 echo ""
 echo_status "Data preserved:"
 echo "  - PostgreSQL volume (postgres_data)"

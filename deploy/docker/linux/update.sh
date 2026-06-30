@@ -74,8 +74,13 @@ wait_for_service() {
 }
 
 # Wait for API health
-wait_for_service "api" "http://localhost:8000/health" "API" || {
+wait_for_service "api" "http://localhost:8001/health" "API" || {
     echo_warn "API health check timed out after ${MAX_WAIT}s"
+}
+
+# Wait for Dashboard health
+wait_for_service "dashboard" "http://localhost:3100/health" "Dashboard" || {
+    echo_warn "Dashboard health check timed out after ${MAX_WAIT}s"
 }
 
 echo ""
@@ -84,10 +89,17 @@ echo_status "Checking service status..."
 # Display service status
 docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || echo_warn "Could not get container status"
 
-# Display health endpoint if available
+# Display health endpoints if available
 echo ""
-echo_status "Health endpoint response:"
-curl -s http://localhost:8000/health 2>/dev/null || echo_warn "Could not reach health endpoint"
+echo_status "Health endpoint responses:"
+echo -n "  API:       "
+curl -s http://localhost:8001/health 2>/dev/null || echo_warn "Could not reach API health endpoint"
+echo -n "  Dashboard: "
+curl -s http://localhost:3100/health 2>/dev/null || echo_warn "Could not reach Dashboard health endpoint"
 
+echo ""
+echo_status "Services:"
+echo "  API:       http://localhost:8001"
+echo "  Dashboard: http://localhost:3100"
 echo ""
 echo -e "${GREEN}Done.${NC}"
