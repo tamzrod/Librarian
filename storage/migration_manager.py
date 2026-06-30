@@ -131,12 +131,12 @@ class MigrationManager:
         self.backend = backend
         self._migrations_cache: Optional[List[MigrationInfo]] = None
     
-    def _is_fresh_database(self) -> bool:
+    def _needs_base_schema_bootstrap(self) -> bool:
         """
-        Check if this is a fresh database with no tables.
+        Check if the base schema needs to be bootstrapped.
         
         Returns:
-            True if no tables exist in the public schema, False otherwise
+            True if the documents table is missing and needs to be created, False otherwise
         """
         try:
             conn = self.backend._get_connection()
@@ -144,16 +144,16 @@ class MigrationManager:
             cur.execute("""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' AND table_name != 'schema_migrations'
+                    WHERE table_schema = 'public' AND table_name = 'documents'
                 )
             """)
-            has_tables = cur.fetchone()[0]
+            documents_exists = cur.fetchone()[0]
             cur.close()
             conn.close()
-            return not has_tables
+            return not documents_exists
         except Exception as e:
-            logger.error(f"Error checking for fresh database: {e}")
-            return False
+            logger.error(f"Error checking for documents table: {e}")
+            return True  # Assume bootstrap needed if we can't check
     
     def _get_base_schema_path(self) -> Optional[str]:
         """
@@ -516,9 +516,9 @@ class MigrationManager:
                 error_message="Failed to create migrations tracking table"
             )
         
-        # Detect fresh database and bootstrap base schema
-        if self._is_fresh_database():
-            logger.info("Fresh database detected - bootstrapping base schema...")
+        # Detect if base schema needs bootstrapping
+        if self._needs_base_schema_bootstrap():
+            logger.info("Documents table missing - bootstrapping base schema...")
             bootstrap_success, bootstrap_error = self._bootstrap_base_schema()
             if not bootstrap_success:
                 return MigrationResult(

@@ -96,8 +96,8 @@ class TestMigrationManager:
         version, desc = manager._extract_version('invalid.sql')
         assert version is None
     
-    def test_is_fresh_database(self):
-        """_is_fresh_database detects empty databases."""
+    def test_needs_base_schema_bootstrap(self):
+        """_needs_base_schema_bootstrap returns True when documents table is missing."""
         from storage.migration_manager import MigrationManager
         
         mock_backend = MagicMock()
@@ -105,10 +105,26 @@ class TestMigrationManager:
         mock_backend._get_connection.return_value.__exit__ = MagicMock()
         mock_backend._get_connection.return_value.cursor.return_value.__enter__ = MagicMock()
         mock_backend._get_connection.return_value.cursor.return_value.__exit__ = MagicMock()
+        # documents table does NOT exist
         mock_backend._get_connection.return_value.cursor.return_value.fetchone.return_value = (False,)
         
         manager = MigrationManager(mock_backend)
-        assert manager._is_fresh_database() == True
+        assert manager._needs_base_schema_bootstrap() == True
+    
+    def test_no_bootstrap_needed(self):
+        """_needs_base_schema_bootstrap returns False when documents table exists."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        mock_backend._get_connection.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.__exit__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__exit__ = MagicMock()
+        # documents table EXISTS
+        mock_backend._get_connection.return_value.cursor.return_value.fetchone.return_value = (True,)
+        
+        manager = MigrationManager(mock_backend)
+        assert manager._needs_base_schema_bootstrap() == False
     
     def test_get_base_schema_path(self):
         """_get_base_schema_path returns path to schema.sql."""
