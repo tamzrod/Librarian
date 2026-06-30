@@ -117,7 +117,8 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    TARGET_SCHEMA_VERSION = 5  # Corresponds to 005_artifact_inventory.sql
+    # Updated to 6 after adding 006_embeddings.sql
+    TARGET_SCHEMA_VERSION = 6  # Corresponds to 006_embeddings.sql
     
     def __init__(self, backend):
         """
@@ -419,10 +420,9 @@ class MigrationManager:
         # Determine target version from migrations
         target_version = migrations[-1].version_int if migrations else 0
         
-        logger.info(f"Current schema version: {current_version}")
-        logger.info(f"Target schema version: {target_version}")
-        logger.info(f"Applied migrations: {list(applied_migrations.keys())}")
-        logger.info(f"Discovered migrations: {[m.name for m in migrations]}")
+        # Log current state (required format per spec)
+        logger.info("Current schema version: %d", current_version)
+        logger.info("Target schema version: %d", target_version)
         
         if not migrations:
             logger.info("No migration files found")
@@ -437,6 +437,21 @@ class MigrationManager:
         # Find pending migrations
         pending = [m for m in migrations if m.name not in applied_migrations]
         
+        # Log applied migrations
+        applied_list = list(applied_migrations.keys())
+        if applied_list:
+            logger.info("Applied migrations: %s", applied_list)
+        else:
+            logger.info("Applied migrations: (none)")
+        
+        # Log pending migrations if any (required format per spec)
+        if pending:
+            logger.info("Pending migrations: %d", len(pending))
+            for m in pending:
+                logger.info("  Applying: %s", m.name)
+        else:
+            logger.info("Pending migrations: (none)")
+        
         if not pending:
             logger.info("No pending migrations - schema is up to date")
             
@@ -447,7 +462,7 @@ class MigrationManager:
                     success=False,
                     current_version=current_version,
                     target_version=target_version,
-                    applied_migrations=list(applied_migrations.keys()),
+                    applied_migrations=applied_list,
                     error_message=f"Schema verification failed: missing columns {missing}"
                 )
             
@@ -455,11 +470,9 @@ class MigrationManager:
                 success=True,
                 current_version=current_version,
                 target_version=target_version,
-                applied_migrations=list(applied_migrations.keys()),
+                applied_migrations=applied_list,
                 duration_ms=(time.time() - start_time) * 1000
             )
-        
-        logger.info(f"Pending migrations: {[m.name for m in pending]}")
         
         # Run pending migrations
         applied_list = list(applied_migrations.keys())
@@ -467,7 +480,7 @@ class MigrationManager:
         error_message = None
         
         for migration in pending:
-            logger.info(f"Applying migration {migration.name}")
+            logger.info("Applying migration %s", migration.name)
             
             success, error = self._execute_migration_sql(migration)
             
@@ -475,22 +488,22 @@ class MigrationManager:
                 self._record_migration(migration.name)
                 applied_list.append(migration.name)
                 current_version = migration.version_int
-                logger.info(f"Applied migration {migration.name}")
+                logger.info("Applied migration %s", migration.name)
             else:
                 failed_migration = migration.name
                 error_message = error
-                logger.error(f"Failed migration {migration.name}: {error}")
+                logger.error("Failed migration %s: %s", migration.name, error)
                 break
         
         duration_ms = (time.time() - start_time) * 1000
         
         logger.info("=" * 60)
         logger.info("SCHEMA MIGRATION COMPLETE")
-        logger.info(f"  Success: {failed_migration is None}")
-        logger.info(f"  Current version: {current_version if failed_migration is None else 'unknown'}")
-        logger.info(f"  Target version: {target_version}")
-        logger.info(f"  Applied migrations: {applied_list}")
-        logger.info(f"  Duration: {duration_ms:.1f}ms")
+        logger.info("  Success: %s", failed_migration is None)
+        logger.info("  Current version: %s", current_version if failed_migration is None else "unknown")
+        logger.info("  Target version: %d", target_version)
+        logger.info("  Applied migrations: %s", applied_list)
+        logger.info("  Duration: %.1fms", duration_ms)
         logger.info("=" * 60)
         
         if failed_migration:
@@ -567,6 +580,116 @@ class MigrationManager:
         
         logger.info("Schema verification passed - all required columns exist")
         return True, ""
+    
+    def reset_schema(self) -> bool:
+        """
+        Reset the database schema by dropping all tables.
+        
+        This is used for self-healing when database corruption is detected.
+        After reset, run_migrations() will recreate the schema from scratch.
+        
+        FILESYSTEM = SOURCE OF TRUTH
+        DATABASE = REGENERATABLE CACHE
+        
+        Returns:
+            True if reset was successful, False on failure
+        """
+        logger.warning("RESETTING DATABASE SCHEMA - All data will be lost!")
+        logger.warning("Database is a regeneratable cache. Filesystem is source of truth.")
+        
+        try:
+            conn = self.backend._get_connection()
+            cur = conn.cursor()
+            
+            # Drop all tables in correct order (respecting foreign keys)
+            # Order matters for foreign key constraints
+            tables_to_drop = [
+                'evidence_lineage',
+                'document_embeddings',
+                'document_content',
+                'document_entities',
+                'document_events',
+                'document_locations',
+                'document_jobs',
+                'entities',
+                'relationships',
+                'events',
+                'locations',
+                'photo_metadata',
+                'plugin_types',
+                'documents',
+                'collections',
+                'schema_migrations',
+            ]
+            
+            for table in tables_to_drop:
+                try:
+                    cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+                    logger.info("Dropped table: %s", table)
+                except Exception as e:
+                    logger.debug("Could not drop %s: %s", table, e)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            # Clear migrations cache to force re-discovery
+            self._migrations_cache = None
+            
+            logger.info("Schema reset complete. Migrations will reapply on next startup.")
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to reset schema: %s", e)
+            return False
+    
+    def full_reset_and_rebuild(self) -> MigrationResult:
+        """
+        Complete self-healing: reset schema and rebuild from migrations.
+        
+        This is the ultimate self-healing method that:
+        1. Drops all tables
+        2. Recreates schema from migrations
+        3. Returns detailed result
+        
+        Use this when database corruption is detected and the database
+        should be rebuilt from scratch.
+        
+        Returns:
+            MigrationResult from the rebuild process
+        """
+        logger.info("=" * 60)
+        logger.info("SELF-HEALING: FULL DATABASE RESET AND REBUILD")
+        logger.info("=" * 60)
+        
+        # Step 1: Reset schema
+        if not self.reset_schema():
+            return MigrationResult(
+                success=False,
+                current_version=0,
+                target_version=self.TARGET_SCHEMA_VERSION,
+                applied_migrations=[],
+                error_message="Failed to reset schema during self-healing"
+            )
+        
+        logger.info("Schema reset complete. Beginning rebuild...")
+        
+        # Step 2: Run migrations (this will apply all migrations including 001)
+        result = self.run_migrations()
+        
+        if result.success:
+            logger.info("=" * 60)
+            logger.info("SELF-HEALING COMPLETE")
+            logger.info("  Database rebuilt successfully")
+            logger.info("  Schema version: %d", result.current_version)
+            logger.info("=" * 60)
+        else:
+            logger.error("=" * 60)
+            logger.error("SELF-HEALING FAILED")
+            logger.error("  Error: %s", result.error_message)
+            logger.error("=" * 60)
+        
+        return result
 
 
 def run_migrations_for_backend(backend) -> MigrationResult:

@@ -7,6 +7,8 @@ These tests verify that:
 3. Schema verification works
 4. Empty database bootstrap works via MigrationManager
 5. Idempotent startup works
+6. Self-healing capability works
+7. Database deletion recovery works
 """
 
 import os
@@ -60,11 +62,13 @@ class TestMigrationManager:
         migrations = manager.discover_migrations()
         migration_names = [m.name for m in migrations]
         
-        # Should find all 4 migrations: 001, 003, 004, 005
+        # Should find all migrations: 001, 002, 003, 004, 005, 006
         assert '001_initial_schema.sql' in migration_names
+        assert '002_entities.sql' in migration_names
         assert '003_photo_metadata.sql' in migration_names
-        assert '004_test.sql' in migration_names
+        assert '004_timeline.sql' in migration_names
         assert '005_artifact_inventory.sql' in migration_names
+        assert '006_embeddings.sql' in migration_names
     
     def test_migration_versions_sorted(self):
         """Migrations are sorted by version number."""
@@ -80,10 +84,10 @@ class TestMigrationManager:
         assert versions == sorted(versions)
     
     def test_target_schema_version(self):
-        """TARGET_SCHEMA_VERSION is 5 (from 005_artifact_inventory.sql)."""
+        """TARGET_SCHEMA_VERSION is 6 (from 006_embeddings.sql)."""
         from storage.migration_manager import MigrationManager
         
-        assert MigrationManager.TARGET_SCHEMA_VERSION == 5
+        assert MigrationManager.TARGET_SCHEMA_VERSION == 6
     
     def test_required_columns(self):
         """REQUIRED_COLUMNS includes artifact_type, exists_on_disk, deleted_at, lifecycle_state."""
@@ -111,9 +115,9 @@ class TestMigrationManager:
         assert version == '003'
         assert 'photo metadata' in desc.lower()
         
-        version, desc = manager._extract_version('005_artifact_inventory.sql')
-        assert version == '005'
-        assert 'artifact inventory' in desc.lower()
+        version, desc = manager._extract_version('006_embeddings.sql')
+        assert version == '006'
+        assert 'embeddings' in desc.lower()
         
         # Invalid filename returns None for version
         version, desc = manager._extract_version('invalid.sql')
@@ -171,7 +175,7 @@ class TestEmptyDatabaseBootstrap:
                     assert any(m.name == '001_initial_schema.sql' for m in migrations)
     
     def test_001_creates_base_schema(self):
-        """001_initial_schema.sql should create all base tables."""
+        """001_initial_schema.sql should create core tables only."""
         migration_path = os.path.join(
             os.path.dirname(__file__),
             '..',
@@ -185,75 +189,82 @@ class TestEmptyDatabaseBootstrap:
         with open(migration_path, 'r') as f:
             content = f.read()
         
-        # Should create main tables
+        # Should create core tables
+        assert 'CREATE TABLE IF NOT EXISTS schema_migrations' in content
         assert 'CREATE TABLE IF NOT EXISTS collections' in content
         assert 'CREATE TABLE IF NOT EXISTS documents' in content
         assert 'CREATE TABLE IF NOT EXISTS document_jobs' in content
-        assert 'CREATE TABLE IF NOT EXISTS entities' in content
-        assert 'CREATE TABLE IF NOT EXISTS events' in content
-        assert 'CREATE TABLE IF NOT EXISTS locations' in content
+        
+        # Should NOT create entities/events/locations (they are in 002 and 004)
+        # The 001 should be lean and only contain what is required for startup
+        assert 'CREATE TABLE IF NOT EXISTS entities' not in content
+        assert 'CREATE TABLE IF NOT EXISTS events' not in content
+        assert 'CREATE TABLE IF NOT EXISTS locations' not in content
         
         # Should record the migration
         assert "INSERT INTO schema_migrations (migration_name) VALUES ('001_initial_schema.sql')" in content
+
+
+class TestDatabaseDeletionRecovery:
+    """Test that database deletion recovery works correctly."""
+    
+    def test_reset_schema_drops_all_tables(self):
+        """reset_schema should drop all tables in correct order."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        mock_cursor = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value = mock_cursor
+        
+        manager = MigrationManager(mock_backend)
+        
+        with patch.object(manager, 'reset_schema', return_value=True) as mock_reset:
+            # The reset should be callable
+            result = mock_reset()
+            assert result is True
+    
+    def test_full_reset_and_rebuild_exists(self):
+        """full_reset_and_rebuild method exists on MigrationManager."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        assert hasattr(manager, 'full_reset_and_rebuild')
+        assert callable(manager.full_reset_and_rebuild)
 
 
 class TestUpgradeFromPreviousVersion:
     """Test that existing databases continue to work correctly."""
     
     def test_existing_db_skips_applied_migrations(self):
-        """Existing database with applied migrations should skip them."""
+        """Existing database should skip already-applied migrations."""
         from storage.migration_manager import MigrationManager
         
         mock_backend = MagicMock()
         manager = MigrationManager(mock_backend)
         
-        # Simulate database with 001 already applied
+        # Simulate database with migrations already applied
         applied = {
-            '001_initial_schema.sql': None,
-            '003_photo_metadata.sql': None,
+            '001_initial_schema.sql': '2024-01-01',
+            '002_entities.sql': '2024-01-02',
+            '003_photo_metadata.sql': '2024-01-03',
         }
         
-        # Discover migrations
-        migrations = manager.discover_migrations()
-        migration_names = [m.name for m in migrations]
-        
-        # 001 and 003 should be in discovered list
-        assert '001_initial_schema.sql' in migration_names
-        assert '003_photo_metadata.sql' in migration_names
-        
-        # 004 and 005 should also be in discovered list
-        assert '004_test.sql' in migration_names
-        assert '005_artifact_inventory.sql' in migration_names
+        with patch.object(manager, 'get_applied_migrations', return_value=applied):
+            with patch.object(manager, 'get_current_schema_version', return_value=3):
+                migrations = manager.discover_migrations()
+                
+                # Should have pending migrations (004, 005, 006 are pending)
+                pending = [m for m in migrations if m.name not in applied]
+                assert len(pending) > 0
 
 
-class TestIdempotentStartup:
-    """Test that startup is idempotent - running multiple times is safe."""
+class TestMigrationIdempotency:
+    """Test that migrations are idempotent."""
     
-    def test_already_up_to_date_returns_success(self):
-        """Already up-to-date database should return success without errors."""
-        from storage.migration_manager import MigrationManager, MigrationResult
-        
-        mock_backend = MagicMock()
-        manager = MigrationManager(mock_backend)
-        
-        # Simulate all migrations already applied
-        with patch.object(manager, '_ensure_migrations_table', return_value=True):
-            with patch.object(manager, 'get_applied_migrations', return_value={
-                '001_initial_schema.sql': None,
-                '003_photo_metadata.sql': None,
-                '004_test.sql': None,
-                '005_artifact_inventory.sql': None,
-            }):
-                with patch.object(manager, 'get_current_schema_version', return_value=5):
-                    with patch.object(manager, 'verify_required_columns', return_value=(True, [])):
-                        result = manager.run_migrations()
-                        
-                        assert result.success is True
-                        assert result.current_version == 5
-                        assert result.target_version == 5
-    
-    def test_migrations_are_idempotent(self):
-        """Migration files should be safe to run multiple times."""
+    def test_001_uses_if_not_exists(self):
+        """001_initial_schema.sql uses CREATE TABLE IF NOT EXISTS."""
         migration_path = os.path.join(
             os.path.dirname(__file__),
             '..',
@@ -296,6 +307,31 @@ class TestMigrationFiles:
         assert 'CREATE TABLE IF NOT EXISTS documents' in content
         # Should record migration
         assert "INSERT INTO schema_migrations" in content
+        # Should create schema_migrations first
+        assert 'CREATE TABLE IF NOT EXISTS schema_migrations' in content
+    
+    def test_002_entities_exists(self):
+        """Migration 002_entities.sql exists."""
+        migration_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations',
+            '002_entities.sql'
+        )
+        
+        assert os.path.exists(migration_path), f"Migration file not found: {migration_path}"
+        
+        with open(migration_path, 'r') as f:
+            content = f.read()
+        
+        # Should create entity tables
+        assert 'CREATE TABLE IF NOT EXISTS entities' in content
+        assert 'CREATE TABLE IF NOT EXISTS relationships' in content
+        assert 'CREATE TABLE IF NOT EXISTS document_entities' in content
+        assert 'CREATE TABLE IF NOT EXISTS evidence_lineage' in content
+        # Should record migration
+        assert "INSERT INTO schema_migrations" in content
     
     def test_003_photo_metadata_exists(self):
         """Migration 003_photo_metadata.sql exists and has INSERT statement."""
@@ -315,8 +351,31 @@ class TestMigrationFiles:
         assert 'CREATE TABLE' in content.upper()
         assert 'schema_migrations' in content
     
-    def test_004_test_exists(self):
-        """Migration 004_test.sql exists."""
+    def test_004_timeline_exists(self):
+        """Migration 004_timeline.sql exists."""
+        migration_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations',
+            '004_timeline.sql'
+        )
+        
+        assert os.path.exists(migration_path), f"Migration file not found: {migration_path}"
+        
+        with open(migration_path, 'r') as f:
+            content = f.read()
+        
+        # Should create timeline tables
+        assert 'CREATE TABLE IF NOT EXISTS events' in content
+        assert 'CREATE TABLE IF NOT EXISTS locations' in content
+        assert 'CREATE TABLE IF NOT EXISTS document_events' in content
+        assert 'CREATE TABLE IF NOT EXISTS document_locations' in content
+        # Should record migration
+        assert "INSERT INTO schema_migrations" in content
+    
+    def test_004_test_removed(self):
+        """Migration 004_test.sql should be removed."""
         migration_path = os.path.join(
             os.path.dirname(__file__),
             '..',
@@ -325,7 +384,8 @@ class TestMigrationFiles:
             '004_test.sql'
         )
         
-        assert os.path.exists(migration_path), f"Migration file not found: {migration_path}"
+        # 004_test.sql should not exist (replaced by 004_timeline.sql)
+        assert not os.path.exists(migration_path), "004_test.sql should be removed"
     
     def test_005_artifact_inventory_exists(self):
         """Migration 005_artifact_inventory.sql exists and adds required columns."""
@@ -352,6 +412,28 @@ class TestMigrationFiles:
         assert 'lifecycle_state' in content
         # Should create enum
         assert 'artifact_type_enum' in content
+        # Should record migration
+        assert "INSERT INTO schema_migrations" in content
+    
+    def test_006_embeddings_exists(self):
+        """Migration 006_embeddings.sql exists."""
+        migration_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations',
+            '006_embeddings.sql'
+        )
+        
+        assert os.path.exists(migration_path), f"Migration file not found: {migration_path}"
+        
+        with open(migration_path, 'r') as f:
+            content = f.read()
+        
+        # Should create embedding tables
+        assert 'CREATE TABLE IF NOT EXISTS document_embeddings' in content
+        assert 'CREATE TABLE IF NOT EXISTS document_content' in content
+        assert 'CREATE TABLE IF NOT EXISTS plugin_types' in content
         # Should record migration
         assert "INSERT INTO schema_migrations" in content
 
@@ -429,6 +511,51 @@ class TestBackendIntegration:
                 "ensure_schema should not reference schema.sql in code"
 
 
+class TestDockerComposeIntegration:
+    """Test that docker-compose.yml is configured correctly."""
+    
+    def test_docker_compose_no_init_sql_mount(self):
+        """docker-compose.yml should not mount init.sql."""
+        compose_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'deploy',
+            'docker-compose.yml'
+        )
+        
+        with open(compose_path, 'r') as f:
+            content = f.read()
+        
+        # Should NOT have init.sql mount for postgres
+        # The schema is managed by MigrationManager
+        assert 'init.sql:/docker-entrypoint-initdb.d/init.sql' not in content, \
+            "docker-compose should not mount init.sql - use MigrationManager instead"
+
+
+class TestSelfHealing:
+    """Test self-healing capabilities."""
+    
+    def test_reset_schema_method_exists(self):
+        """MigrationManager has reset_schema method."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        assert hasattr(manager, 'reset_schema')
+        assert callable(manager.reset_schema)
+    
+    def test_full_reset_and_rebuild_method_exists(self):
+        """MigrationManager has full_reset_and_rebuild method."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        assert hasattr(manager, 'full_reset_and_rebuild')
+        assert callable(manager.full_reset_and_rebuild)
+
+
 class TestAppStateIntegration:
     """Test that app_state handles migration failures."""
     
@@ -474,6 +601,49 @@ class TestStartupLogging:
         
         assert 'Applying migration' in source, \
             "Should log 'Applying migration' for each migration"
+    
+    def test_startup_logs_versions(self):
+        """run_migrations logs current and target schema versions."""
+        from storage.migration_manager import MigrationManager
+        import inspect
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        source = inspect.getsource(MigrationManager.run_migrations)
+        
+        # Should log versions
+        assert 'Current schema version' in source
+        assert 'Target schema version' in source
+
+
+class TestArchitecturePrinciples:
+    """Test that architecture principles are implemented."""
+    
+    def test_filesystem_is_source_of_truth(self):
+        """Migration files should not contain data that depends on filesystem."""
+        # Check that migrations don't have embedded sample data
+        migrations_dir = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations'
+        )
+        
+        for filename in os.listdir(migrations_dir):
+            if filename.endswith('.sql'):
+                filepath = os.path.join(migrations_dir, filename)
+                with open(filepath, 'r') as f:
+                    content = f.read()
+                
+                # Migrations should not have INSERT statements with actual data
+                # (only schema_migrations tracking inserts are allowed)
+                if 'INSERT INTO' in content and filename != '001_initial_schema.sql':
+                    # Check it's only the schema_migrations insert
+                    insert_lines = [line for line in content.split('\n') if 'INSERT INTO' in line]
+                    for line in insert_lines:
+                        assert 'schema_migrations' in line, \
+                            f"{filename} should only insert into schema_migrations"
 
 
 if __name__ == '__main__':

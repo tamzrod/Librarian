@@ -288,25 +288,25 @@ class TestSchemaFileExists:
     """Verify schema file exists and is valid."""
     
     def test_schema_file_exists(self):
-        """storage/migrations/schema.sql must exist."""
+        """storage/migrations/001_initial_schema.sql must exist."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
-        assert os.path.exists(schema_path), "schema.sql not found"
+                                   '..', 'storage', 'migrations', '001_initial_schema.sql')
+        assert os.path.exists(schema_path), "001_initial_schema.sql not found"
     
     def test_schema_creates_documents_table(self):
-        """schema.sql must create documents table."""
+        """001_initial_schema.sql must create documents table."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '001_initial_schema.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
         assert 'CREATE TABLE' in content.upper() and 'documents' in content.lower(), \
-            "schema.sql must contain CREATE TABLE documents"
+            "001_initial_schema.sql must contain CREATE TABLE documents"
     
     def test_schema_documents_has_sha256(self):
-        """schema.sql documents table must have sha256 column."""
+        """001_initial_schema.sql documents table must have sha256 column."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '001_initial_schema.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
@@ -320,9 +320,9 @@ class TestSchemaFileExists:
         assert 'file_size' in table_def, "documents table must have file_size column"
     
     def test_schema_entities_has_value(self):
-        """schema.sql entities table must have value column (not name)."""
+        """002_entities.sql entities table must have value column (not name)."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '002_entities.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
@@ -444,7 +444,7 @@ class TestTimestampContract:
     def test_modified_time_is_timestamp_in_schema(self):
         """documents.modified_time must be TIMESTAMP in schema."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '001_initial_schema.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
@@ -461,7 +461,7 @@ class TestTimestampContract:
     def test_events_timestamp_is_timestamp_in_schema(self):
         """events.timestamp must be TIMESTAMP in schema."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '004_timeline.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
@@ -477,7 +477,7 @@ class TestTimestampContract:
     def test_indexed_at_is_timestamp_in_schema(self):
         """documents.indexed_at must be TIMESTAMP in schema."""
         schema_path = os.path.join(os.path.dirname(__file__), 
-                                   '..', 'storage', 'migrations', 'schema.sql')
+                                   '..', 'storage', 'migrations', '001_initial_schema.sql')
         with open(schema_path, 'r') as f:
             content = f.read()
         
