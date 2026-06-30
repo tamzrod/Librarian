@@ -1,0 +1,70 @@
+.stats-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.stats-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.stats-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.stats-card-title {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stats-card-value-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stats-card-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-card-trend {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.trend-up {
+  color: var(--accent-danger);
+}
+
+.trend-down {
+  color: var(--accent-success);
+}
+
+.trend-stable {
+  color: var(--text-muted);
+}
