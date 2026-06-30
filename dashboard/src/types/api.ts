@@ -398,6 +398,12 @@ export interface FolderContentsResponse {
   total_items: number
 }
 
+export interface ProcessingStatus {
+  job_type: string
+  status: 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  label: string
+}
+
 export interface DocumentDetail {
   id: number
   name: string
@@ -410,7 +416,14 @@ export interface DocumentDetail {
   indexed_at: string | null
   status: string
   character_count: number | null
+  // File hashes
+  md5: string | null
+  sha1: string | null
   sha256: string | null
+  // Artifact type classification
+  artifact_type: string | null
+  // Processing status from jobs
+  processing_status: ProcessingStatus[]
 }
 
 export interface DocumentDetailResponse {
