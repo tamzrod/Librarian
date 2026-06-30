@@ -58,7 +58,7 @@ services:
     container_name: librarian-dashboard
     restart: unless-stopped
     environment:
-      - VITE_API_URL=http://librarian-api:8000
+      - VITE_API_URL=
     ports:
       - "${DASHBOARD_PORT:-3100}:3000"
     depends_on:
