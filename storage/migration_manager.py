@@ -322,6 +322,104 @@ class MigrationManager:
             logger.error(f"Error recording migration: {e}")
             return False
     
+    def _split_sql_statements(self, sql: str) -> List[str]:
+        """
+        Split SQL by semicolons, respecting dollar-quoted strings ($$).
+        
+        PostgreSQL uses dollar-quoting for function bodies and DO blocks:
+            DO $$ ... END $$;
+            CREATE FUNCTION foo() AS $body$ ... $body$ LANGUAGE plpgsql;
+        
+        Dollar quotes work by matching tags. The tag (between $ signs) must match.
+        
+        Args:
+            sql: Raw SQL content
+            
+        Returns:
+            List of individual SQL statements
+        """
+        statements = []
+        current = []
+        i = 0
+        n = len(sql)
+        
+        while i < n:
+            # Check for dollar quote start
+            if sql[i] == '$':
+                # Check if this starts a dollar quote
+                # Dollar quote format: $tag$ or $$$...$$$
+                j = i + 1
+                
+                # Find the end of the opening tag
+                # The tag ends at the next $
+                while j < n and sql[j] != '$':
+                    j += 1
+                
+                if j >= n:
+                    # No closing $, treat as literal
+                    current.append(sql[i])
+                    i += 1
+                    continue
+                
+                # Extract the tag
+                tag = sql[i+1:j]
+                num_dollars = len(tag) + 1  # tag length + opening $
+                
+                # Find matching closing delimiter
+                k = j + 1  # Start after the closing $
+                found = False
+                while k < n:
+                    if sql[k] == '$':
+                        # Find end of potential closing tag
+                        l = k + 1
+                        while l < n and sql[l] != '$':
+                            l += 1
+                        
+                        if l >= n:
+                            # No closing $
+                            k += 1
+                            continue
+                        
+                        close_tag = sql[k+1:l]
+                        if len(close_tag) + 1 == num_dollars:
+                            # Same number of $ signs
+                            if close_tag == tag:
+                                # Found matching close! Add from i to l+1 (include closing $)
+                                for idx in range(i, l+1):
+                                    current.append(sql[idx])
+                                i = l + 1
+                                found = True
+                                break
+                        k = l + 1
+                    else:
+                        k += 1
+                
+                if not found:
+                    # No matching close found, treat $ as literal
+                    current.append(sql[i])
+                    i += 1
+                continue
+            
+            # Check for semicolon (statement separator)
+            if sql[i] == ';':
+                stmt = ''.join(current).strip()
+                if stmt:
+                    statements.append(stmt)
+                current = []
+                i += 1
+                continue
+            
+            # Regular character
+            current.append(sql[i])
+            i += 1
+        
+        # Add final statement
+        final = ''.join(current).strip()
+        if final:
+            statements.append(final)
+        
+        return statements
+    
     def _execute_migration_sql(self, migration: MigrationInfo) -> Tuple[bool, str]:
         """
         Execute the SQL statements in a migration file.
@@ -336,13 +434,13 @@ class MigrationManager:
             conn = self.backend._get_connection()
             cur = conn.cursor()
             
-            # Split by semicolons
-            raw_statements = migration.sql.split(';')
+            # Split by semicolons, respecting dollar-quoted strings
+            statements = self._split_sql_statements(migration.sql)
             
-            for raw_stmt in raw_statements:
-                # Split into lines and filter out comments
+            for stmt in statements:
+                # Filter out comment-only lines
                 lines = []
-                for line in raw_stmt.split('\n'):
+                for line in stmt.split('\n'):
                     stripped = line.strip()
                     if not stripped or stripped.startswith('--'):
                         continue

@@ -617,6 +617,131 @@ class TestStartupLogging:
         assert 'Target schema version' in source
 
 
+class TestSqlDollarQuoteSplitting:
+    """Test SQL splitting correctly handles dollar-quoted strings."""
+    
+    def test_split_simple_dollar_quotes(self):
+        """Simple $$...$$ blocks should not be split on internal semicolons."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        sql = """
+DO $$ BEGIN
+    CREATE TYPE foo AS ENUM ('a', 'b', 'c');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+ALTER TABLE foo ADD COLUMN x INT;
+"""
+        statements = manager._split_sql_statements(sql)
+        
+        assert len(statements) == 2
+        assert 'DO $$' in statements[0]
+        assert 'CREATE TYPE foo AS ENUM' in statements[0]
+        assert 'EXCEPTION' in statements[0]
+        assert 'END $$' in statements[0]
+        assert 'ALTER TABLE' in statements[1]
+    
+    def test_split_tagged_dollar_quotes(self):
+        """Tagged $tag$...$tag$ blocks should not be split."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        sql = """
+CREATE FUNCTION foo() RETURNS void AS $body$
+BEGIN
+    SELECT 1;  -- internal semicolon
+END;
+$body$ LANGUAGE plpgsql;
+CREATE TABLE bar (id INT);
+"""
+        statements = manager._split_sql_statements(sql)
+        
+        assert len(statements) == 2
+        assert '$body$' in statements[0]
+        assert 'SELECT 1;' in statements[0]  # internal semicolon preserved
+        assert 'CREATE TABLE' in statements[1]
+    
+    def test_split_multiple_dollar_blocks(self):
+        """Multiple DO $$...$$ blocks should each be one statement."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        sql = """
+DO $$ BEGIN CREATE TYPE t1 AS ENUM ('x'); END $$;
+DO $$ BEGIN CREATE TYPE t2 AS ENUM ('y'); END $$;
+SELECT 1;
+"""
+        statements = manager._split_sql_statements(sql)
+        
+        assert len(statements) == 3
+        assert statements[0].count('DO $$') == 1
+        assert statements[1].count('DO $$') == 1
+        assert 'SELECT 1' in statements[2]
+    
+    def test_split_no_dangling_semicolons(self):
+        """Semicolons inside dollar quotes don't terminate statements."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        # This SQL has internal semicolons but only one real statement
+        sql = """
+DO $$
+BEGIN
+    RAISE NOTICE 'hello; world';
+    PERFORM 1;  -- Another internal semicolon
+END $$;
+"""
+        statements = manager._split_sql_statements(sql)
+        
+        assert len(statements) == 1
+        assert "RAISE NOTICE 'hello; world'" in statements[0]
+        assert 'PERFORM 1;' in statements[0]
+    
+    def test_split_preserves_migration_005_pattern(self):
+        """Migration 005 pattern with DO $$ should produce correct statements."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        # Read actual migration 005
+        migration_005_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations',
+            '005_artifact_inventory.sql'
+        )
+        
+        with open(migration_005_path, 'r') as f:
+            content = f.read()
+        
+        statements = manager._split_sql_statements(content)
+        
+        # Find the DO $$ block - it should contain both BEGIN and END $$ as a single statement
+        do_blocks = [s for s in statements if 'DO $$' in s and 'END $$' in s]
+        assert len(do_blocks) == 1, f"Expected 1 DO block statement, got {len(do_blocks)}"
+        
+        do_stmt = do_blocks[0]
+        assert 'BEGIN' in do_stmt
+        assert 'END $$' in do_stmt
+        assert 'CREATE TYPE artifact_type_enum' in do_stmt
+        assert 'EXCEPTION' in do_stmt
+        
+        # Verify the DO block is NOT split at internal semicolons
+        # (If we split by ';' naively, we'd get 3 pieces, but dollar-quote aware gives 1)
+        assert do_stmt.count(';') == 3  # The ENUM list has 3 semicolons + EXCEPTION + END $$;
+
+
 class TestArchitecturePrinciples:
     """Test that architecture principles are implemented."""
     
