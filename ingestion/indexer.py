@@ -1,5 +1,5 @@
 def index_document(document):
-    text = document.get('text', '')
+    text = document.get('text', '') or ''
     structured_data = document.get('structured_data')
     chunks = document.get('chunks', [])
     
