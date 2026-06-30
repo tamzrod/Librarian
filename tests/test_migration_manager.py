@@ -96,6 +96,49 @@ class TestMigrationManager:
         version, desc = manager._extract_version('invalid.sql')
         assert version is None
     
+    def test_is_fresh_database(self):
+        """_is_fresh_database detects empty databases."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        mock_backend._get_connection.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.__exit__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__exit__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.fetchone.return_value = (False,)
+        
+        manager = MigrationManager(mock_backend)
+        assert manager._is_fresh_database() == True
+    
+    def test_get_base_schema_path(self):
+        """_get_base_schema_path returns path to schema.sql."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        manager = MigrationManager(mock_backend)
+        
+        path = manager._get_base_schema_path()
+        assert path is not None
+        assert path.endswith('schema.sql')
+    
+    def test_bootstrap_base_schema(self):
+        """_bootstrap_base_schema executes schema.sql on fresh database."""
+        from storage.migration_manager import MigrationManager
+        
+        mock_backend = MagicMock()
+        mock_backend._get_connection.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.__exit__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__enter__ = MagicMock()
+        mock_backend._get_connection.return_value.cursor.return_value.__exit__ = MagicMock()
+        
+        manager = MigrationManager(mock_backend)
+        success, error = manager._bootstrap_base_schema()
+        
+        assert success == True
+        assert error is None
+        # Verify connection was used
+        mock_backend._get_connection.assert_called()
+    
     def test_schema_migration_error(self):
         """SchemaMigrationError has correct attributes."""
         from storage.migration_manager import SchemaMigrationError
