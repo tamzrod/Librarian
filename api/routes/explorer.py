@@ -332,7 +332,10 @@ async def get_folder_tree(
             paths = _extract_folder_paths(conn)
             
             # Build tree structure
-            subfolders = _build_folder_tree_from_paths(paths, "")
+            # Pass root_path as parent_path to skip the library prefix when extracting
+            # folder names. Without this, absolute paths like /library/Camera would
+            # incorrectly extract "library" as the first folder segment.
+            subfolders = _build_folder_tree_from_paths(paths, root_path)
             total_folders += len(subfolders)
             
             # Recursively build tree for each top-level folder
