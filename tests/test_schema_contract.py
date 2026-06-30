@@ -13,10 +13,14 @@ import pytest
 
 
 # Canonical schema columns extracted from storage/migrations/schema.sql
+# NOTE: Columns from migration 005_artifact_inventory.sql are included
+# (artifact_type, exists_on_disk, deleted_at, lifecycle_state)
 CANONICAL_SCHEMA = {
     'documents': {
         'columns': ['id', 'collection_id', 'path', 'extension', 'sha256', 
-                   'modified_time', 'file_size', 'character_count', 'parser', 'indexed_at'],
+                   'modified_time', 'file_size', 'character_count', 'parser', 'indexed_at',
+                   'status', 'status_updated_at', 'last_error', 'attempt_count',
+                   'artifact_type', 'exists_on_disk', 'deleted_at', 'lifecycle_state'],
         'primary_key': 'id',
         'unique_constraints': ['path']
     },
@@ -242,11 +246,14 @@ class TestSearchMethodsContract:
         method_body = match.group(1)
         
         # Find SELECT ... FROM documents
-        select_match = re.search(r'SELECT\s+.*?\s+FROM\s+documents', 
+        select_match = re.search(r'SELECT\s+.*?\sFROM\s+documents',
                                   method_body, re.IGNORECASE | re.DOTALL)
         assert select_match, "SELECT FROM documents not found"
         
         select_cols = extract_select_columns(select_match.group(0))
+
+        # Filter out numeric literals (e.g., '1' from EXISTS)
+        select_cols = {c for c in select_cols if not c.isdigit()}
         
         # These columns should exist in documents table
         canonical_doc_cols = set(CANONICAL_SCHEMA['documents']['columns'])
@@ -304,7 +311,7 @@ class TestSchemaFileExists:
             content = f.read()
         
         # Find documents table definition
-        match = re.search(r'CREATE\s+TABLE\s+.*?documents\s*\((.*?)\)', 
+        match = re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?documents\s*\((.*?)(?=\nCREATE\s+(?:TABLE|INDEX)|\Z)',
                           content, re.IGNORECASE | re.DOTALL)
         assert match, "documents table definition not found"
         
@@ -320,7 +327,7 @@ class TestSchemaFileExists:
             content = f.read()
         
         # Find entities table definition
-        match = re.search(r'CREATE\s+TABLE\s+.*?entities\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+        match = re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?entities\s*\((.*?)(?=\nCREATE\s+(?:TABLE|INDEX)|\Z)',
                           content, re.IGNORECASE | re.DOTALL)
         assert match, "entities table definition not found"
         
@@ -442,7 +449,7 @@ class TestTimestampContract:
             content = f.read()
         
         # Find documents table and check modified_time column type
-        match = re.search(r'CREATE\s+TABLE\s+.*?documents\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+        match = re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?documents\s*\((.*?)(?=\nCREATE\s+(?:TABLE|INDEX)|\Z)',
                           content, re.IGNORECASE | re.DOTALL)
         assert match, "documents table definition not found"
         
@@ -475,7 +482,7 @@ class TestTimestampContract:
             content = f.read()
         
         # Find documents table and check indexed_at column
-        match = re.search(r'CREATE\s+TABLE\s+.*?documents\s*\((.*?)(?:CREATE|INDEX|\Z)', 
+        match = re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?documents\s*\((.*?)(?=\nCREATE\s+(?:TABLE|INDEX)|\Z)',
                           content, re.IGNORECASE | re.DOTALL)
         assert match, "documents table definition not found"
         

@@ -219,7 +219,15 @@ class AppState:
         logger.info("Persistence errors cleared after successful recovery")
     
     def initialize_backend(self) -> bool:
-        """Initialize the PostgreSQL backend."""
+        """Initialize the PostgreSQL backend with automatic schema migration.
+        
+        This method initializes the database connection and runs any pending
+        schema migrations automatically. If migrations fail, startup is halted
+        with a clear error message.
+        
+        Raises:
+            RuntimeError: If schema migration fails (prevents startup)
+        """
         try:
             database_url = os.environ.get("DATABASE_URL")
             if database_url:
@@ -239,19 +247,27 @@ class AppState:
                     self.backend._get_connection().close()
                     self._persistence_available = True
                     logger.info(f"PostgreSQL backend initialized (host={host})")
-                    
-                    # Ensure schema exists
+
+                    # Ensure schema exists and run migrations
+                    logger.info("Starting schema migration check...")
                     if self.backend.ensure_schema():
                         self._schema_ready = True
                         logger.info("Database schema verified and ready")
                     else:
                         self._schema_ready = False
+                        error_msg = (
+                            "SCHEMA MIGRATION FAILED: Database schema could not be initialized. "
+                            "The database may be in an inconsistent state or migrations failed to apply. "
+                            "Check the logs above for details about the failed migration."
+                        )
+                        logger.error(error_msg)
                         self.record_persistence_error(
-                            "Schema initialization failed - tables may not exist",
+                            "Schema initialization failed - migrations could not be applied",
                             "ensure_schema"
                         )
-                        logger.error("Database schema could not be verified. Persistence may be degraded.")
-                    
+                        # Raise error to halt startup
+                        raise RuntimeError(error_msg)
+
                     return True
                 else:
                     logger.warning(f"Could not parse DATABASE_URL: {database_url}")
@@ -267,6 +283,9 @@ class AppState:
                 self._persistence_available = False
                 self._schema_ready = False
                 return True
+        except RuntimeError:
+            # Re-raise RuntimeError to halt startup
+            raise
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL backend: {e}")
             self.record_persistence_error(str(e), "initialize_backend")
@@ -275,7 +294,7 @@ class AppState:
             self._persistence_available = False
             self._schema_ready = False
             return True
-    
+
     def initialize_ingestion(self):
         """Initialize the Librarian ingestion engine and parser registry."""
         self.parser_registry = registry
