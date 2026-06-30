@@ -20,6 +20,11 @@ class JobType:
     GENERATE_EMBEDDINGS = 'generate_embeddings'
     OCR = 'ocr'
     PLUGIN_PROCESSING = 'plugin_processing'
+    EXTRACT_PHOTO_METADATA = 'extract_photo_metadata'
+
+
+# Image extensions for photo metadata extraction (Phase 1A: Evidence Timeline)
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif'}
 
 
 # Job status
@@ -710,8 +715,13 @@ class PostgresBackend(StorageBackend):
             # Step 2: Create jobs (if any)
             job_ids = []
             if job_types is None:
-                job_types = [JobType.EXTRACT_TEXT, JobType.EXTRACT_ENTITIES,
-                            JobType.EXTRACT_EVENTS, JobType.EXTRACT_LOCATIONS]
+                # Use default job types based on document type
+                job_types = self._get_default_job_types(document)
+            
+            # Phase 1A: Add photo metadata extraction for images
+            if self._should_queue_photo_metadata_job(document):
+                if JobType.EXTRACT_PHOTO_METADATA not in job_types:
+                    job_types.append(JobType.EXTRACT_PHOTO_METADATA)
             
             for job_type in job_types:
                 cur.execute(
@@ -740,6 +750,38 @@ class PostgresBackend(StorageBackend):
             if conn:
                 conn.rollback()
             return (None, [])
+    
+    def _is_image_extension(self, extension: str) -> bool:
+        """Check if extension is a supported image type for photo metadata extraction."""
+        if not extension:
+            return False
+        ext = extension.lower()
+        if not ext.startswith('.'):
+            ext = '.' + ext
+        return ext in IMAGE_EXTENSIONS
+    
+    def _should_queue_photo_metadata_job(self, document: dict) -> bool:
+        """
+        Determine if a photo metadata extraction job should be queued.
+        
+        Phase 1A: Queue job for images with supported extensions.
+        """
+        extension = document.get('extension', '')
+        return self._is_image_extension(extension)
+    
+    def _get_default_job_types(self, document: dict = None) -> list:
+        """
+        Get default job types for a document.
+        
+        Phase 1A: For images, also include extract_photo_metadata job.
+        """
+        job_types = [JobType.EXTRACT_TEXT, JobType.EXTRACT_ENTITIES,
+                    JobType.EXTRACT_EVENTS, JobType.EXTRACT_LOCATIONS]
+        
+        if document and self._should_queue_photo_metadata_job(document):
+            job_types.append(JobType.EXTRACT_PHOTO_METADATA)
+        
+        return job_types
     
     def save_content(self, document_id: int, content: str, extraction_method: str = 'textract') -> bool:
         """Save extracted content for a document (Phase 3A: content extraction).
@@ -785,6 +827,427 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error saving content: {e}")
             return False
+
+    def save_photo_metadata(self, document_id: int, metadata: dict) -> bool:
+        """Save photo metadata for a document (Phase 1A: Evidence Timeline).
+        
+        Args:
+            document_id: ID of the document (must be an image)
+            metadata: Dict containing extracted EXIF data:
+                - timestamp_original: When photo was taken
+                - timestamp_digitized: When photo was digitized
+                - timestamp_metadata: File metadata timestamp
+                - gps_latitude: GPS latitude in decimal degrees
+                - gps_longitude: GPS longitude in decimal degrees
+                - gps_altitude: GPS altitude in meters
+                - camera_make: Camera manufacturer
+                - camera_model: Camera model
+                - lens_model: Lens model
+                - width: Image width in pixels
+                - height: Image height in pixels
+                - orientation: Image orientation
+                - file_format: Image format (JPEG, PNG, etc.)
+                - raw_exif: Raw EXIF data as dict
+                
+        Returns:
+            True if save succeeded
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            extracted_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            
+            # Convert timestamps
+            ts_original = _to_postgres_timestamp(metadata.get('timestamp_original'))
+            ts_digitized = _to_postgres_timestamp(metadata.get('timestamp_digitized'))
+            ts_metadata = _to_postgres_timestamp(metadata.get('timestamp_metadata'))
+            
+            cur.execute(
+                """
+                INSERT INTO photo_metadata (
+                    document_id,
+                    timestamp_original,
+                    timestamp_digitized,
+                    timestamp_metadata,
+                    gps_latitude,
+                    gps_longitude,
+                    gps_altitude,
+                    camera_make,
+                    camera_model,
+                    lens_model,
+                    width,
+                    height,
+                    orientation,
+                    file_format,
+                    extraction_method,
+                    extraction_version,
+                    raw_exif,
+                    extracted_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (document_id) DO UPDATE SET
+                    timestamp_original = EXCLUDED.timestamp_original,
+                    timestamp_digitized = EXCLUDED.timestamp_digitized,
+                    timestamp_metadata = EXCLUDED.timestamp_metadata,
+                    gps_latitude = EXCLUDED.gps_latitude,
+                    gps_longitude = EXCLUDED.gps_longitude,
+                    gps_altitude = EXCLUDED.gps_altitude,
+                    camera_make = EXCLUDED.camera_make,
+                    camera_model = EXCLUDED.camera_model,
+                    lens_model = EXCLUDED.lens_model,
+                    width = EXCLUDED.width,
+                    height = EXCLUDED.height,
+                    orientation = EXCLUDED.orientation,
+                    file_format = EXCLUDED.file_format,
+                    raw_exif = EXCLUDED.raw_exif,
+                    extracted_at = EXCLUDED.extracted_at
+                """,
+                (
+                    document_id,
+                    ts_original,
+                    ts_digitized,
+                    ts_metadata,
+                    metadata.get('gps_latitude'),
+                    metadata.get('gps_longitude'),
+                    metadata.get('gps_altitude'),
+                    metadata.get('camera_make'),
+                    metadata.get('camera_model'),
+                    metadata.get('lens_model'),
+                    metadata.get('width'),
+                    metadata.get('height'),
+                    metadata.get('orientation'),
+                    metadata.get('file_format'),
+                    'exif',
+                    '1.0.0',
+                    psycopg.types.json.Jsonb(metadata.get('raw_exif', {})) if metadata.get('raw_exif') else None,
+                    extracted_at
+                )
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Saved photo metadata for document {document_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving photo metadata: {e}")
+            return False
+
+    def get_photo_metadata(self, document_id: int) -> dict:
+        """Get photo metadata for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            Dict with photo metadata, or None if not found
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                """
+                SELECT id, document_id, timestamp_original, timestamp_digitized,
+                       gps_latitude, gps_longitude, gps_altitude,
+                       camera_make, camera_model, lens_model,
+                       width, height, orientation, file_format,
+                       extraction_method, extraction_version, extracted_at,
+                       raw_exif
+                FROM photo_metadata
+                WHERE document_id = %s
+                """,
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if not row:
+                return None
+            
+            return {
+                'id': row[0],
+                'document_id': row[1],
+                'timestamp_original': row[2],
+                'timestamp_digitized': row[3],
+                'gps_latitude': row[4],
+                'gps_longitude': row[5],
+                'gps_altitude': row[6],
+                'camera_make': row[7],
+                'camera_model': row[8],
+                'lens_model': row[9],
+                'width': row[10],
+                'height': row[11],
+                'orientation': row[12],
+                'file_format': row[13],
+                'extraction_method': row[14],
+                'extraction_version': row[15],
+                'extracted_at': row[16],
+                'raw_exif': row[17]
+            }
+        except Exception as e:
+            logger.error(f"Error getting photo metadata: {e}")
+            return None
+
+    def get_timeline_stats(self) -> dict:
+        """
+        Get statistics for the Evidence Timeline.
+        
+        Returns counts and date ranges for photo metadata.
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Get total photos
+            cur.execute("SELECT COUNT(*) FROM photo_metadata")
+            photos_total = cur.fetchone()[0] or 0
+            
+            # Get GPS tagged count
+            cur.execute("""
+                SELECT COUNT(*) FROM photo_metadata 
+                WHERE gps_latitude IS NOT NULL AND gps_longitude IS NOT NULL
+            """)
+            gps_tagged = cur.fetchone()[0] or 0
+            
+            # Get unique cameras
+            cur.execute("""
+                SELECT COUNT(DISTINCT (camera_make, camera_model)) 
+                FROM photo_metadata 
+                WHERE camera_make IS NOT NULL AND camera_model IS NOT NULL
+            """)
+            unique_cameras = cur.fetchone()[0] or 0
+            
+            # Get first photo timestamp
+            cur.execute("""
+                SELECT MIN(timestamp_original) FROM photo_metadata 
+                WHERE timestamp_original IS NOT NULL
+            """)
+            first_photo = cur.fetchone()[0]
+            
+            # Get last photo timestamp
+            cur.execute("""
+                SELECT MAX(timestamp_original) FROM photo_metadata 
+                WHERE timestamp_original IS NOT NULL
+            """)
+            last_photo = cur.fetchone()[0]
+            
+            cur.close()
+            conn.close()
+            
+            return {
+                'photos_total': photos_total,
+                'gps_tagged': gps_tagged,
+                'unique_cameras': unique_cameras,
+                'first_photo_timestamp': first_photo.isoformat() + 'Z' if first_photo else None,
+                'last_photo_timestamp': last_photo.isoformat() + 'Z' if last_photo else None
+            }
+        except Exception as e:
+            logger.error(f"Error getting timeline stats: {e}")
+            return {
+                'photos_total': 0,
+                'gps_tagged': 0,
+                'unique_cameras': 0,
+                'first_photo_timestamp': None,
+                'last_photo_timestamp': None
+            }
+
+    def search_photo_metadata(
+        self,
+        camera_make: str = None,
+        camera_model: str = None,
+        gps_only: bool = False,
+        start_date: str = None,
+        end_date: str = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple:
+        """
+        Search photo metadata with filters.
+        
+        Args:
+            camera_make: Filter by camera manufacturer
+            camera_model: Filter by camera model
+            gps_only: Only return photos with GPS coordinates
+            start_date: Filter photos after this date (ISO format)
+            end_date: Filter photos before this date (ISO format)
+            limit: Maximum results
+            offset: Offset for pagination
+            
+        Returns:
+            Tuple of (list of results, total count)
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Build query with filters
+            conditions = []
+            params = []
+            
+            if camera_make:
+                conditions.append("pm.camera_make ILIKE %s")
+                params.append(f"%{camera_make}%")
+            
+            if camera_model:
+                conditions.append("pm.camera_model ILIKE %s")
+                params.append(f"%{camera_model}%")
+            
+            if gps_only:
+                conditions.append("pm.gps_latitude IS NOT NULL AND pm.gps_longitude IS NOT NULL")
+            
+            if start_date:
+                conditions.append("pm.timestamp_original >= %s")
+                params.append(start_date)
+            
+            if end_date:
+                conditions.append("pm.timestamp_original <= %s")
+                params.append(end_date)
+            
+            where_sql = " AND ".join(conditions) if conditions else "1=1"
+            
+            # Get total count
+            count_sql = f"""
+                SELECT COUNT(*) FROM photo_metadata pm WHERE {where_sql}
+            """
+            cur.execute(count_sql, params)
+            total = cur.fetchone()[0] or 0
+            
+            # Get results with document info
+            query_sql = f"""
+                SELECT 
+                    pm.document_id,
+                    d.path as filename,
+                    pm.timestamp_original,
+                    pm.gps_latitude,
+                    pm.gps_longitude,
+                    pm.camera_make,
+                    pm.camera_model,
+                    pm.width,
+                    pm.height
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE {where_sql}
+                ORDER BY pm.timestamp_original DESC NULLS LAST
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, offset])
+            cur.execute(query_sql, params)
+            
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    'document_id': row[0],
+                    'filename': row[1],
+                    'timestamp': row[2].isoformat() + 'Z' if row[2] else None,
+                    'gps_latitude': row[3],
+                    'gps_longitude': row[4],
+                    'camera_make': row[5],
+                    'camera_model': row[6],
+                    'width': row[7],
+                    'height': row[8]
+                })
+            
+            cur.close()
+            conn.close()
+            
+            return (results, total)
+        except Exception as e:
+            logger.error(f"Error searching photo metadata: {e}")
+            return ([], 0)
+
+    def get_photos_with_gps(self, limit: int = 1000, offset: int = 0) -> list:
+        """
+        Get all photos with GPS coordinates for map display.
+        
+        Args:
+            limit: Maximum results
+            offset: Offset for pagination
+            
+        Returns:
+            List of photo metadata with GPS coordinates
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT 
+                    pm.document_id,
+                    pm.gps_latitude,
+                    pm.gps_longitude,
+                    pm.timestamp_original,
+                    pm.camera_make,
+                    pm.camera_model,
+                    d.path as filename
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE pm.gps_latitude IS NOT NULL AND pm.gps_longitude IS NOT NULL
+                ORDER BY pm.timestamp_original DESC
+                LIMIT %s OFFSET %s
+            """, (limit, offset))
+            
+            results = []
+            for row in cur.fetchall():
+                # Combine camera make and model
+                camera = f"{row[4] or ''} {row[5] or ''}".strip()
+                
+                results.append({
+                    'document_id': row[0],
+                    'latitude': row[1],
+                    'longitude': row[2],
+                    'timestamp': row[3].isoformat() + 'Z' if row[3] else None,
+                    'camera': camera or None,
+                    'filename': row[6]
+                })
+            
+            cur.close()
+            conn.close()
+            
+            return results
+        except Exception as e:
+            logger.error(f"Error getting photos with GPS: {e}")
+            return []
+
+    def get_document_for_photo(self, document_id: int) -> dict:
+        """
+        Get document info needed for timeline photo response.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            Dict with document info or None
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                "SELECT id, path, extension, modified_time FROM documents WHERE id = %s",
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if not row:
+                return None
+            
+            # Extract filename from path
+            path = row[1]
+            filename = path.split('/')[-1] if path else None
+            
+            return {
+                'document_id': row[0],
+                'filename': filename,
+                'extension': row[2],
+                'modified_time': row[3].isoformat() + 'Z' if row[3] else None
+            }
+        except Exception as e:
+            logger.error(f"Error getting document for photo: {e}")
+            return None
     
     def get_content(self, document_id: int) -> dict:
         """Get extracted content for a document.
