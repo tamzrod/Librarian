@@ -25,6 +25,12 @@ Librarian/
 │   │   └── types/        # TypeScript types
 │   ├── Dockerfile        # Production container
 │   └── nginx.conf        # Production nginx config
+├── ingestion/              # File watching and ingestion
+│   └── collection_watcher.py
+├── parsers/                # Artifact parsers
+│   └── image_parser.py    # Image ingestion (Phase 1)
+├── registry/               # Parser registration
+│   └── register_parsers.py
 ├── storage/              # Database layer
 │   └── postgres_backend.py
 ├── workers/              # Background job processors
@@ -33,6 +39,43 @@ Librarian/
 └── docs/
     └── api-contract/     # API contract documentation
 ```
+
+## Parser vs Worker Responsibilities
+
+Librarian distinguishes between **Parsers** (ingestion) and **Workers** (enrichment):
+
+### Parsers (`parsers/`)
+
+Parsers create the initial artifact record:
+- Validate file format
+- Extract basic metadata (dimensions, MIME type)
+- Create document record in database
+- Return lightweight artifact metadata
+
+Example: `ImageParser` validates an image file, extracts dimensions, and creates a document record.
+
+### Workers (`workers/`)
+
+Workers enrich artifacts with derived information:
+- May fail independently without invalidating the artifact
+- Reference the same `document_id`
+- Can run in parallel
+
+Example: `PhotoMetadataExtractor` extracts EXIF data from images after ingestion.
+
+### Architecture Principle
+
+```
+Parser (fast, lightweight)
+    ↓
+Document created (valid)
+
+Worker (slower, may fail)
+    ↓
+Enrichment added (optional)
+```
+
+An artifact remains valid even if one or more workers fail. Each worker independently contributes to the artifact's enrichment.
 
 ## Dashboard vs Backend
 
