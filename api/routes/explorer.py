@@ -58,6 +58,13 @@ class FolderContentsResponse(BaseModel):
     total_items: int = Field(description="Total items (folders + documents)")
 
 
+class ProcessingStatus(BaseModel):
+    """Processing status for a document."""
+    job_type: str = Field(description="Type of processing job")
+    status: str = Field(description="Status: QUEUED, IN_PROGRESS, COMPLETED, FAILED, CANCELLED")
+    label: str = Field(description="Human-readable label")
+
+
 class DocumentDetail(BaseModel):
     """Detailed document information for metadata panel."""
     id: int = Field(description="Document ID")
@@ -71,7 +78,14 @@ class DocumentDetail(BaseModel):
     indexed_at: Optional[str] = Field(default=None, description="When document was indexed")
     status: str = Field(description="Indexing status")
     character_count: Optional[int] = Field(default=None, description="Character count if text")
-    sha256: Optional[str] = Field(default=None, description="File hash")
+    # File hashes
+    md5: Optional[str] = Field(default=None, description="MD5 hash")
+    sha1: Optional[str] = Field(default=None, description="SHA1 hash")
+    sha256: Optional[str] = Field(default=None, description="SHA256 hash")
+    # Artifact type classification
+    artifact_type: Optional[str] = Field(default=None, description="Artifact type: Image, Document, Video, Audio, Archive, Structured Data")
+    # Processing status from jobs
+    processing_status: list[ProcessingStatus] = Field(default_factory=list, description="Enrichment processing status")
 
 
 class DocumentDetailResponse(BaseModel):
@@ -408,6 +422,60 @@ async def get_folder_contents(
     )
 
 
+def _determine_artifact_type(extension: str | None, mime_type: str | None) -> str:
+    """Determine artifact type from extension and MIME type."""
+    ext = (extension or '').lower()
+    
+    # Image types
+    image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff', '.tif', '.heic', '.heif'}
+    if ext in image_exts or (mime_type and mime_type.startswith('image/')):
+        return 'Image'
+    
+    # Video types
+    video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm'}
+    if ext in video_exts or (mime_type and mime_type.startswith('video/')):
+        return 'Video'
+    
+    # Audio types
+    audio_exts = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma'}
+    if ext in audio_exts or (mime_type and mime_type.startswith('audio/')):
+        return 'Audio'
+    
+    # Archive types
+    archive_exts = {'.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz'}
+    if ext in archive_exts:
+        return 'Archive'
+    
+    # Structured data types
+    structured_exts = {'.json', '.xml', '.yaml', '.yml', '.csv', '.tsv', '.toml'}
+    if ext in structured_exts:
+        return 'Structured Data'
+    
+    # Document types
+    doc_exts = {'.pdf', '.doc', '.docx', '.odt', '.rtf', '.txt', '.md', '.rst'}
+    if ext in doc_exts or (mime_type and mime_type.startswith('text/')):
+        return 'Document'
+    
+    # Default to Document for text-like content
+    if mime_type and mime_type.startswith('text/'):
+        return 'Document'
+    
+    return 'Unknown'
+
+
+# Job type to human-readable label mapping
+JOB_TYPE_LABELS = {
+    'extract_text': 'Text Extraction',
+    'extract_entities': 'Entity Extraction',
+    'extract_events': 'Event Extraction',
+    'extract_locations': 'Location Extraction',
+    'generate_embeddings': 'Embeddings Generation',
+    'ocr': 'OCR Processing',
+    'extract_photo_metadata': 'Photo Metadata Extraction',
+    'plugin_processing': 'Plugin Processing',
+}
+
+
 @router.get(
     "/documents/{document_id}",
     response_model=DocumentDetailResponse,
@@ -429,6 +497,7 @@ async def get_document_details(
             conn = backend._get_connection()
             cur = conn.cursor()
             
+            # Get document details
             cur.execute("""
                 SELECT id, path, extension, file_size, mime_type, modified_time,
                        created_at, indexed_at, status, character_count, sha256
@@ -440,6 +509,26 @@ async def get_document_details(
             if row:
                 doc_id, doc_path, ext, size, mime, modified, created, indexed, status, char_count, sha = row
                 filename = doc_path.rsplit('/', 1)[-1] if '/' in doc_path else doc_path
+                
+                # Determine artifact type
+                artifact_type = _determine_artifact_type(ext, mime)
+                
+                # Get processing status from jobs
+                cur.execute("""
+                    SELECT job_type, status
+                    FROM document_jobs
+                    WHERE document_id = %s
+                    ORDER BY created_at DESC
+                """, (document_id,))
+                
+                processing_status = []
+                for job_row in cur.fetchall():
+                    job_type, job_status = job_row
+                    processing_status.append(ProcessingStatus(
+                        job_type=job_type,
+                        status=job_status,
+                        label=JOB_TYPE_LABELS.get(job_type, job_type.replace('_', ' ').title())
+                    ))
                 
                 document = DocumentDetail(
                     id=doc_id,
@@ -453,7 +542,9 @@ async def get_document_details(
                     indexed_at=indexed.isoformat() + "Z" if indexed else None,
                     status=status or "UNKNOWN",
                     character_count=char_count,
-                    sha256=sha
+                    sha256=sha,
+                    artifact_type=artifact_type,
+                    processing_status=processing_status
                 )
             
             cur.close()

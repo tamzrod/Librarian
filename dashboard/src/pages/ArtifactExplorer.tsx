@@ -451,6 +451,44 @@ function ArtifactExplorer() {
     )
   }
 
+  // Render processing status badge
+  const renderProcessingBadge = (status: string) => {
+    const statusClass = status.toLowerCase().replace('_', '-')
+    let icon = '⚙️'
+    let text = status
+    
+    switch (status) {
+      case 'COMPLETED':
+        icon = '✓'
+        text = 'Done'
+        break
+      case 'IN_PROGRESS':
+        icon = '⟳'
+        text = 'Running'
+        break
+      case 'QUEUED':
+        icon = '⏳'
+        text = 'Pending'
+        break
+      case 'FAILED':
+      case 'FAILED_PERMANENT':
+        icon = '⚠'
+        text = 'Failed'
+        break
+      case 'CANCELLED':
+        icon = '✗'
+        text = 'Cancelled'
+        break
+    }
+    
+    return (
+      <span className={`processing-badge ${statusClass}`}>
+        <span className="processing-badge-icon">{icon}</span>
+        <span className="processing-badge-text">{text}</span>
+      </span>
+    )
+  }
+
   // Render metadata panel
   const renderMetadataPanel = () => {
     if (!documentDetail) {
@@ -465,67 +503,127 @@ function ArtifactExplorer() {
 
     return (
       <div className="metadata-details">
+        {/* Section 1: Core Metadata */}
         <div className="metadata-section">
-          <div className="metadata-section-title">File</div>
+          <div className="metadata-section-title">
+            <span className="section-icon">📄</span>
+            Core Metadata
+          </div>
           <div className="metadata-row">
-            <span className="metadata-label">Name</span>
-            <span className="metadata-value">{documentDetail.name}</span>
+            <span className="metadata-label">Document ID</span>
+            <span className="metadata-value metadata-id">#{documentDetail.id}</span>
+          </div>
+          <div className="metadata-row metadata-row-filename">
+            <span className="metadata-label">Filename</span>
+            <span className="metadata-value metadata-filename" title={documentDetail.name}>
+              {documentDetail.name}
+            </span>
+          </div>
+          <div className="metadata-row">
+            <span className="metadata-label">Path</span>
+            <span className="metadata-value metadata-path-value" title={documentDetail.path}>
+              {documentDetail.path}
+            </span>
           </div>
           <div className="metadata-row">
             <span className="metadata-label">Extension</span>
-            <span className="metadata-value">{documentDetail.extension || '—'}</span>
+            <span className="metadata-value">
+              {documentDetail.extension ? documentDetail.extension.toUpperCase() : '—'}
+            </span>
           </div>
           <div className="metadata-row">
-            <span className="metadata-label">Size</span>
+            <span className="metadata-label">MIME Type</span>
+            <span className="metadata-value metadata-mime">
+              {documentDetail.mime_type || '—'}
+            </span>
+          </div>
+          <div className="metadata-row">
+            <span className="metadata-label">File Size</span>
             <span className="metadata-value">{formatFileSize(documentDetail.file_size)}</span>
+          </div>
+          <div className="metadata-row">
+            <span className="metadata-label">Created</span>
+            <span className="metadata-value">{formatDate(documentDetail.created_at)}</span>
           </div>
           <div className="metadata-row">
             <span className="metadata-label">Modified</span>
             <span className="metadata-value">{formatDate(documentDetail.modified_time)}</span>
           </div>
-        </div>
-
-        <div className="metadata-section">
-          <div className="metadata-section-title">Location</div>
-          <div className="metadata-path">
-            <code>{documentDetail.path}</code>
-          </div>
-        </div>
-
-        <div className="metadata-section">
-          <div className="metadata-section-title">Document</div>
-          <div className="metadata-row">
-            <span className="metadata-label">ID</span>
-            <span className="metadata-value">{documentDetail.id}</span>
-          </div>
-          <div className="metadata-row">
-            <span className="metadata-label">Status</span>
-            <span className={`metadata-status ${documentDetail.status.toLowerCase()}`}>
-              {documentDetail.status}
-            </span>
-          </div>
           <div className="metadata-row">
             <span className="metadata-label">Indexed</span>
             <span className="metadata-value">{formatDate(documentDetail.indexed_at)}</span>
           </div>
-          {documentDetail.character_count != null && (
-            <div className="metadata-row">
-              <span className="metadata-label">Characters</span>
-              <span className="metadata-value">{documentDetail.character_count.toLocaleString()}</span>
+        </div>
+
+        {/* Section 2: Processing Status */}
+        <div className="metadata-section">
+          <div className="metadata-section-title">
+            <span className="section-icon">⚙️</span>
+            Processing Status
+          </div>
+          {documentDetail.processing_status.length === 0 ? (
+            <div className="processing-empty">
+              No processing jobs found
+            </div>
+          ) : (
+            <div className="processing-list">
+              {documentDetail.processing_status.map((job, index) => (
+                <div key={index} className="processing-item">
+                  <span className="processing-label">{job.label}</span>
+                  {renderProcessingBadge(job.status)}
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {documentDetail.sha256 && (
-          <div className="metadata-section">
-            <div className="metadata-section-title">Checksum</div>
-            <div className="metadata-path">
-              <code title={documentDetail.sha256}>
-                {documentDetail.sha256.substring(0, 16)}...{documentDetail.sha256.substring(documentDetail.sha256.length - 8)}
-              </code>
-            </div>
+        {/* Section 3: File Hashes */}
+        <div className="metadata-section">
+          <div className="metadata-section-title">
+            <span className="section-icon">🔐</span>
+            File Hashes
           </div>
-        )}
+          {documentDetail.md5 && (
+            <div className="hash-row">
+              <span className="hash-label">MD5</span>
+              <span className="hash-value" title={documentDetail.md5}>
+                {documentDetail.md5.substring(0, 16)}...
+              </span>
+            </div>
+          )}
+          {documentDetail.sha1 && (
+            <div className="hash-row">
+              <span className="hash-label">SHA1</span>
+              <span className="hash-value" title={documentDetail.sha1}>
+                {documentDetail.sha1.substring(0, 16)}...
+              </span>
+            </div>
+          )}
+          {documentDetail.sha256 && (
+            <div className="hash-row">
+              <span className="hash-label">SHA256</span>
+              <span className="hash-value" title={documentDetail.sha256}>
+                {documentDetail.sha256.substring(0, 16)}...
+              </span>
+            </div>
+          )}
+          {!documentDetail.md5 && !documentDetail.sha1 && !documentDetail.sha256 && (
+            <div className="hash-empty">No hashes available</div>
+          )}
+        </div>
+
+        {/* Section 4: Artifact Type */}
+        <div className="metadata-section">
+          <div className="metadata-section-title">
+            <span className="section-icon">🏷️</span>
+            Artifact Type
+          </div>
+          <div className="artifact-type-row">
+            <span className={`artifact-type-badge artifact-type-${(documentDetail.artifact_type || 'unknown').toLowerCase().replace(' ', '-')}`}>
+              {documentDetail.artifact_type || 'Unknown'}
+            </span>
+          </div>
+        </div>
       </div>
     )
   }
