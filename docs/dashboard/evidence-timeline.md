@@ -13,9 +13,57 @@ This document establishes product direction and tracks implementation phases.
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1A | ✅ Complete | Photo metadata extraction from EXIF |
-| Phase 1B | Pending | Timeline visualization UI |
+| Phase 1B | ✅ Complete | REST API Exposure |
+| Phase 1C | Pending | Timeline visualization UI |
 | Phase 2 | Pending | Additional artifact types (PDF, video) |
 | Future | Backlog | AI inference, reverse geocoding |
+
+---
+
+## Phase 1B: Completed (REST API Exposure)
+
+**Goal:** Expose photo metadata through versioned REST APIs for dashboard consumption.
+
+### What Was Implemented
+
+1. **API Endpoints**
+   - `GET /api/v1/timeline/stats` - Timeline statistics
+   - `GET /api/v1/timeline/photos` - List photos with filters
+   - `GET /api/v1/timeline/map` - GPS markers for maps
+   - `GET /api/v1/timeline/photo/{document_id}` - Full photo metadata
+
+2. **Backend Query Methods**
+   - `get_timeline_stats()` - Aggregate statistics
+   - `search_photo_metadata()` - Filtered search with pagination
+   - `get_photos_with_gps()` - Map marker data
+   - `get_photo_metadata()` - Single photo detail
+
+3. **Filtering Support**
+   - Camera make/model (partial match)
+   - GPS coordinates present
+   - Date range (start_date, end_date)
+   - Pagination (limit, offset)
+
+### Files Changed
+
+- `api/routes/timeline.py` - New router with 4 endpoints
+- `api/app.py` - Registered timeline router
+- `storage/postgres_backend.py` - Added query methods
+- `docs/api-contract/timeline-v1.md` - API documentation
+- `tests/test_timeline_api.py` - 14 tests
+
+### Example API Usage
+
+```javascript
+// Get map markers
+const { markers } = await fetch('/api/v1/timeline/map');
+
+// Filter by camera
+const { data } = await fetch('/api/v1/timeline/photos?camera=iPhone&gps_only=true');
+
+// Get stats
+const stats = await fetch('/api/v1/timeline/stats');
+```
 
 ---
 

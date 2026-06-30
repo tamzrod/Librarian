@@ -136,13 +136,16 @@ _Changes to be documented when v2.0 is released._
 | GET | `/api/v1/operations/documents/{id}/extractions` | Document extractions |
 | GET | `/api/v1/timeline` | Event timeline |
 
-### Evidence Timeline Endpoints (Phase 1A)
+### Evidence Timeline Endpoints (Phase 1B)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/photos/{document_id}/metadata` | Get photo metadata |
-| GET | `/api/v1/photos/timeline` | Timeline of photos by date |
-| GET | `/api/v1/photos/map` | Photos with GPS coordinates |
+| GET | `/api/v1/timeline/stats` | Timeline statistics |
+| GET | `/api/v1/timeline/photos` | List photos with filters |
+| GET | `/api/v1/timeline/map` | GPS markers for map display |
+| GET | `/api/v1/timeline/photo/{document_id}` | Full photo metadata |
+
+See [timeline-v1.md](./timeline-v1.md) for full API documentation.
 
 ### Question/Answer Endpoints
 

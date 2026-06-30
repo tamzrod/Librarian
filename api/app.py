@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uuid
 
-from api.routes import questions, collections, pipeline, operations
+from api.routes import questions, collections, pipeline, operations, timeline
 from api.dependencies import get_storage_backend, MockBackend
 from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
@@ -80,6 +80,7 @@ app.include_router(questions.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")
 app.include_router(pipeline.router, prefix="/api/v1")
 app.include_router(operations.router, prefix="/api/v1")
+app.include_router(timeline.router, prefix="/api/v1")
 
 
 @app.get("/")
