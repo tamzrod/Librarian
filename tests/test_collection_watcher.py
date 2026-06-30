@@ -144,22 +144,24 @@ def test_artifact_discovery_unknown_extension():
         test_file = collection_path / "weird.xyz"
         test_file.write_text("This file has an unknown extension")
         
-        # Process the file
+        # Process the file (note: paths are now absolute)
         print("\nProcessing file with unknown extension (.xyz)...")
         watcher._process_file("weird.xyz")
         
-        # Verify artifact was discovered
-        assert "weird.xyz" in backend.documents, "Artifact should be discovered even without parser"
-        assert backend.documents["weird.xyz"]["status"] == "DISCOVERED", "Status should be DISCOVERED"
-        assert backend.documents["weird.xyz"]["artifact_type"] == "unknown", "Artifact type should be unknown"
-        assert backend.documents["weird.xyz"]["exists_on_disk"] == True, "Should exist on disk"
+        # Verify artifact was discovered with absolute path
+        expected_path = str(test_file)  # Full absolute path
+        assert expected_path in backend.documents, f"Artifact should be discovered even without parser at {expected_path}"
+        assert backend.documents[expected_path]["status"] == "DISCOVERED", "Status should be DISCOVERED"
+        assert backend.documents[expected_path]["artifact_type"] == "unknown", "Artifact type should be unknown"
+        assert backend.documents[expected_path]["exists_on_disk"] == True, "Should exist on disk"
         
         # Verify NO jobs were created (no parser = no jobs)
         # The artifact was discovered but not enriched
         
         print("\n✓ Artifact with unknown extension was discovered")
-        print(f"✓ Status: {backend.documents['weird.xyz']['status']}")
-        print(f"✓ Artifact type: {backend.documents['weird.xyz']['artifact_type']}")
+        print(f"✓ Path: {expected_path}")
+        print(f"✓ Status: {backend.documents[expected_path]['status']}")
+        print(f"✓ Artifact type: {backend.documents[expected_path]['artifact_type']}")
 
 
 def test_artifact_discovery_supported_extension():
@@ -184,17 +186,19 @@ def test_artifact_discovery_supported_extension():
         test_file = collection_path / "document.txt"
         test_file.write_text("This is a supported document")
         
-        # Process the file
+        # Process the file (note: paths are now absolute)
         print("\nProcessing file with supported extension (.txt)...")
         watcher._process_file("document.txt")
         
-        # Verify artifact was discovered
-        assert "document.txt" in backend.documents, "Artifact should be discovered"
-        assert backend.documents["document.txt"]["status"] == "METADATA_INDEXED", "Status should be METADATA_INDEXED"
-        assert backend.documents["document.txt"]["exists_on_disk"] == True, "Should exist on disk"
+        # Verify artifact was discovered with absolute path
+        expected_path = str(test_file)
+        assert expected_path in backend.documents, f"Artifact should be discovered at {expected_path}"
+        assert backend.documents[expected_path]["status"] == "METADATA_INDEXED", "Status should be METADATA_INDEXED"
+        assert backend.documents[expected_path]["exists_on_disk"] == True, "Should exist on disk"
         
         print("\n✓ Artifact with supported extension was discovered and enriched")
-        print(f"✓ Status: {backend.documents['document.txt']['status']}")
+        print(f"✓ Path: {expected_path}")
+        print(f"✓ Status: {backend.documents[expected_path]['status']}")
 
 
 def test_artifact_discovery_encrypted_file():
@@ -218,15 +222,16 @@ def test_artifact_discovery_encrypted_file():
         test_file = collection_path / "secrets.db"
         test_file.write_text("encrypted content")
         
-        # Process the file
+        # Process the file (note: paths are now absolute)
         print("\nProcessing encrypted file (.db)...")
         watcher._process_file("secrets.db")
         
-        # Verify artifact was discovered
-        assert "secrets.db" in backend.documents, "Artifact should be discovered"
-        # .db might be classified as 'structured' or 'unknown' depending on classifier
+        # Verify artifact was discovered with absolute path
+        expected_path = str(test_file)
+        assert expected_path in backend.documents, f"Artifact should be discovered at {expected_path}"
         print(f"\n✓ Encrypted file was discovered")
-        print(f"✓ Artifact type: {backend.documents['secrets.db'].get('artifact_type', 'unknown')}")
+        print(f"✓ Path: {expected_path}")
+        print(f"✓ Artifact type: {backend.documents[expected_path].get('artifact_type', 'unknown')}")
 
 
 def test_soft_delete():
@@ -252,25 +257,26 @@ def test_soft_delete():
         test_file.write_text("This file will be deleted")
         watcher._process_file("to_delete.txt")
         
-        # Verify artifact exists
-        assert "to_delete.txt" in backend.documents
-        assert backend.documents["to_delete.txt"]["exists_on_disk"] == True
+        # Verify artifact exists with absolute path
+        expected_path = str(test_file)
+        assert expected_path in backend.documents
+        assert backend.documents[expected_path]["exists_on_disk"] == True
         
         # Delete the file (simulate)
         test_file.unlink()
         
-        # Mark as deleted
+        # Mark as deleted (note: paths are now absolute)
         print("\nMarking file as deleted...")
         watcher._mark_deleted("to_delete.txt")
         
-        # Verify artifact is soft-deleted
-        assert backend.documents["to_delete.txt"]["exists_on_disk"] == False, "Should not exist on disk"
-        assert backend.documents["to_delete.txt"].get("deleted_at") is not None, "Should have deleted_at timestamp"
-        assert "to_delete.txt" in backend.deleted_artifacts, "Should be in deleted artifacts list"
+        # Verify artifact is soft-deleted with absolute path
+        assert backend.documents[expected_path]["exists_on_disk"] == False, "Should not exist on disk"
+        assert backend.documents[expected_path].get("deleted_at") is not None, "Should have deleted_at timestamp"
+        assert expected_path in backend.deleted_artifacts, "Should be in deleted artifacts list"
         
         print("\n✓ Deleted file was soft-deleted")
-        print(f"✓ exists_on_disk: {backend.documents['to_delete.txt']['exists_on_disk']}")
-        print(f"✓ deleted_at: {backend.documents['to_delete.txt']['deleted_at']}")
+        print(f"✓ exists_on_disk: {backend.documents[expected_path]['exists_on_disk']}")
+        print(f"✓ deleted_at: {backend.documents[expected_path]['deleted_at']}")
 
 
 def test_multiple_unknown_extensions():
@@ -293,7 +299,7 @@ def test_multiple_unknown_extensions():
         parser_registry = MockParserRegistry()
         watcher = CollectionWatcher(str(collection_path), backend, parser_registry)
         
-        # Create files with various extensions
+        # Create files with various extensions (note: paths are now absolute)
         test_files = {
             "IMG_001.jpg": "fake image",
             "archive.zip": "fake zip",
@@ -301,26 +307,29 @@ def test_multiple_unknown_extensions():
             "weird.xyz": "fake weird",
         }
         
+        expected_paths = {}
         for filename, content in test_files.items():
             test_file = collection_path / filename
             test_file.write_text(content)
+            expected_paths[filename] = str(test_file)
         
         # Process all files
         print("\nProcessing files...")
         for filename in test_files.keys():
             watcher._process_file(filename)
         
-        # Verify all artifacts were discovered
+        # Verify all artifacts were discovered with absolute paths
         print("\nVerifying all artifacts discovered:")
         for filename in test_files.keys():
-            assert filename in backend.documents, f"{filename} should be discovered"
-            doc = backend.documents[filename]
-            print(f"  ✓ {filename}: status={doc['status']}, type={doc.get('artifact_type', 'N/A')}")
+            expected_path = expected_paths[filename]
+            assert expected_path in backend.documents, f"{filename} should be discovered at {expected_path}"
+            doc = backend.documents[expected_path]
+            print(f"  ✓ {expected_path}: status={doc['status']}, type={doc.get('artifact_type', 'N/A')}")
         
         # Verify correct artifact types
-        assert backend.documents["IMG_001.jpg"]["artifact_type"] == "image"
-        assert backend.documents["archive.zip"]["artifact_type"] == "archive"
-        assert backend.documents["encrypted.db"]["artifact_type"] in ["structured", "unknown"]
+        assert backend.documents[expected_paths["IMG_001.jpg"]]["artifact_type"] == "image"
+        assert backend.documents[expected_paths["archive.zip"]]["artifact_type"] == "archive"
+        assert backend.documents[expected_paths["encrypted.db"]]["artifact_type"] in ["structured", "unknown"]
         
         print("\n✓ All artifacts with various extensions were discovered")
 
@@ -355,16 +364,18 @@ def test_parser_failure_still_creates_artifact():
         test_file = collection_path / "failing.txt"
         test_file.write_text("This will cause parser failure")
         
-        # Process the file
+        # Process the file (note: paths are now absolute)
         print("\nProcessing file with failing parser...")
         watcher._process_file("failing.txt")
         
-        # Verify artifact was still discovered
-        assert "failing.txt" in backend.documents, "Artifact should be discovered despite parser failure"
-        assert backend.documents["failing.txt"]["status"] == "DISCOVERED", "Status should be DISCOVERED (parser failed)"
+        # Verify artifact was still discovered with absolute path
+        expected_path = str(test_file)
+        assert expected_path in backend.documents, f"Artifact should be discovered despite parser failure at {expected_path}"
+        assert backend.documents[expected_path]["status"] == "DISCOVERED", "Status should be DISCOVERED (parser failed)"
         
         print("\n✓ Artifact was created despite parser failure")
-        print(f"✓ Status: {backend.documents['failing.txt']['status']}")
+        print(f"✓ Path: {expected_path}")
+        print(f"✓ Status: {backend.documents[expected_path]['status']}")
 
 
 def test_collection_watcher():

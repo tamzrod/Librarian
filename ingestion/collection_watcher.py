@@ -139,6 +139,13 @@ class CollectionWatcher:
         """
         full_path = self.path / filepath
         
+        # Build the artifact path with library root prefix
+        # self.path is the library root (e.g., /library)
+        # filepath is relative to library root (e.g., documents/sample.txt)
+        # artifact_path must be absolute (e.g., /library/documents/sample.txt)
+        # This ensures paths match what Explorer expects
+        artifact_path = str(full_path)
+        
         # Step 1: Discover artifact immediately (no parser required)
         # ARTIFACT INVENTORY MODEL: Discovery precedes understanding
         try:
@@ -148,29 +155,29 @@ class CollectionWatcher:
             if hasattr(self.backend, 'discover_artifact'):
                 # Use new discover_artifact method for immediate creation
                 doc_id = self.backend.discover_artifact(
-                    path=str(filepath),
+                    path=artifact_path,
                     extension=full_path.suffix,
                     file_size=stat.st_size,
                     modified_time=datetime.fromtimestamp(stat.st_mtime)
                 )
-                print(f"[CollectionWatcher] Discovered artifact {filepath} -> id:{doc_id}")
+                print(f"[CollectionWatcher] Discovered artifact {artifact_path} -> id:{doc_id}")
             elif hasattr(self.backend, 'save_document'):
                 # Fallback to save_document for backends without discover_artifact
                 document = {
-                    'path': str(filepath),
+                    'path': artifact_path,
                     'extension': full_path.suffix,
                     'file_size': stat.st_size,
                     'modified_time': datetime.fromtimestamp(stat.st_mtime),
                     'status': 'DISCOVERED'
                 }
                 doc_id = self.backend.save_document(document)
-                print(f"[CollectionWatcher] Discovered artifact (fallback) {filepath} -> id:{doc_id}")
+                print(f"[CollectionWatcher] Discovered artifact (fallback) {artifact_path} -> id:{doc_id}")
             else:
                 print(f"[CollectionWatcher] Backend has no discover_artifact or save_document method: {type(self.backend)}")
                 return
             
         except Exception as e:
-            print(f"[CollectionWatcher] Error discovering artifact {filepath}: {e}")
+            print(f"[CollectionWatcher] Error discovering artifact {artifact_path}: {e}")
             return
         
         # Step 2: Attempt parser lookup (enrichment phase)
@@ -182,11 +189,11 @@ class CollectionWatcher:
             try:
                 parsed = parser.parse(full_path)
                 if parsed:
-                    print(f"[CollectionWatcher] Parsed {filepath}: {parsed.get('character_count', 0)} chars")
+                    print(f"[CollectionWatcher] Parsed {artifact_path}: {parsed.get('character_count', 0)} chars")
                     
                     # Build full document metadata
                     document = {
-                        'path': str(filepath),
+                        'path': artifact_path,
                         'extension': full_path.suffix,
                         'modified_time': datetime.fromtimestamp(stat.st_mtime),
                         'file_size': stat.st_size,
@@ -198,22 +205,22 @@ class CollectionWatcher:
                     # Update document with parsed data
                     if hasattr(self.backend, 'save_document'):
                         self.backend.save_document(document)
-                        print(f"[CollectionWatcher] Updated document {filepath} with parsed data")
+                        print(f"[CollectionWatcher] Updated document {artifact_path} with parsed data")
                     
                     # Create processing jobs for enrichment
                     if doc_id and hasattr(self.backend, 'create_jobs_for_document'):
                         job_ids = self.backend.create_jobs_for_document(doc_id)
                         print(f"[CollectionWatcher] Created {len(job_ids)} jobs for document {doc_id}")
                 else:
-                    print(f"[CollectionWatcher] Parser returned None for {filepath}")
+                    print(f"[CollectionWatcher] Parser returned None for {artifact_path}")
                     
             except Exception as e:
-                print(f"[CollectionWatcher] Error parsing {filepath}: {e}")
+                print(f"[CollectionWatcher] Error parsing {artifact_path}: {e}")
                 # Parser failure does not remove artifact - it remains in discovered state
         else:
             # No parser exists - artifact remains in discovered state
             # This is expected behavior - understanding is optional
-            print(f"[CollectionWatcher] No parser for {filepath} - artifact remains discovered")
+            print(f"[CollectionWatcher] No parser for {artifact_path} - artifact remains discovered")
     
     def _mark_deleted(self, filepath):
         """Mark a deleted file in the database.
@@ -222,19 +229,20 @@ class CollectionWatcher:
         Deleted files are marked, not deleted. Records are preserved for auditability.
         """
         full_path = self.path / filepath
+        artifact_path = str(full_path)
         
         if hasattr(self.backend, 'mark_deleted'):
-            self.backend.mark_deleted(str(filepath))
+            self.backend.mark_deleted(artifact_path)
         elif hasattr(self.backend, 'save_document'):
             # Fallback: update exists_on_disk via save_document
             document = {
-                'path': str(filepath),
+                'path': artifact_path,
                 'exists_on_disk': False
             }
             try:
                 self.backend.save_document(document)
             except Exception as e:
-                print(f"[CollectionWatcher] Error marking deleted {filepath}: {e}")
+                print(f"[CollectionWatcher] Error marking deleted {artifact_path}: {e}")
     
     def get_events(self):
         """Get recent events."""
