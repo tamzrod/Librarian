@@ -21,6 +21,65 @@ class JobType:
     OCR = 'ocr'
     PLUGIN_PROCESSING = 'plugin_processing'
     EXTRACT_PHOTO_METADATA = 'extract_photo_metadata'
+    EXTRACT_EXIF = 'extract_exif'
+    EXTRACT_GPS = 'extract_gps'
+    GENERATE_THUMBNAIL = 'generate_thumbnail'
+    RUN_OCR = 'run_ocr'
+    OBJECT_DETECTION = 'object_detection'
+    TRANSCRIPTION = 'transcription'
+    INVENTORY = 'inventory'
+
+
+# Artifact type to job types mapping
+# Each artifact type only gets jobs appropriate for its format
+ARTIFACT_TYPE_JOBS = {
+    'text': [
+        JobType.EXTRACT_TEXT,
+        JobType.EXTRACT_ENTITIES,
+        JobType.EXTRACT_EVENTS,
+        JobType.EXTRACT_LOCATIONS,
+        JobType.GENERATE_EMBEDDINGS,
+    ],
+    'document': [
+        JobType.EXTRACT_TEXT,
+        JobType.EXTRACT_ENTITIES,
+        JobType.EXTRACT_EVENTS,
+        JobType.EXTRACT_LOCATIONS,
+        JobType.GENERATE_EMBEDDINGS,
+    ],
+    'structured': [
+        JobType.EXTRACT_TEXT,
+        JobType.EXTRACT_ENTITIES,
+        JobType.EXTRACT_EVENTS,
+        JobType.EXTRACT_LOCATIONS,
+        JobType.GENERATE_EMBEDDINGS,
+    ],
+    'image': [
+        JobType.EXTRACT_PHOTO_METADATA,
+        JobType.GENERATE_THUMBNAIL,
+        JobType.RUN_OCR,
+        JobType.OBJECT_DETECTION,
+    ],
+    'video': [
+        JobType.EXTRACT_PHOTO_METADATA,
+        JobType.GENERATE_THUMBNAIL,
+        JobType.TRANSCRIPTION,
+    ],
+    'audio': [
+        JobType.TRANSCRIPTION,
+        JobType.GENERATE_EMBEDDINGS,
+    ],
+    'archive': [
+        JobType.INVENTORY,
+    ],
+    'executable': [
+        JobType.INVENTORY,
+    ],
+    'unknown': [
+        # Default for unknown types - minimal processing
+        JobType.INVENTORY,
+    ],
+}
 
 
 # Image extensions for photo metadata extraction (Phase 1A: Evidence Timeline)
@@ -416,6 +475,36 @@ class PostgresBackend(StorageBackend):
         
         # Default to unknown - artifacts exist before classification
         return 'unknown'
+    
+    def _get_document_artifact_type(self, document_id: int) -> str:
+        """Get the artifact_type for a document by its ID.
+        
+        Used by create_jobs_for_document to determine which jobs to create
+        based on the document's artifact type.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            artifact_type string, or 'unknown' if not found
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT artifact_type FROM documents WHERE id = %s",
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if row and row[0]:
+                return row[0]
+            return 'unknown'
+        except Exception as e:
+            logger.error(f"Error getting artifact_type for document {document_id}: {e}")
+            return 'unknown'
     
     def discover_artifact(self, path: str, extension: str = None, file_size: int = None, modified_time = None) -> int:
         """Create an artifact record immediately upon discovery.
@@ -1356,18 +1445,33 @@ class PostgresBackend(StorageBackend):
             return None
     
     def create_jobs_for_document(self, document_id: int, job_types: list = None) -> list:
-        """Create multiple jobs for a document (Phase 3F: atomic transaction).
+        """Create multiple jobs for a document based on artifact_type.
+        
+        ARCHITECTURE REQUIREMENT: Job scheduling must depend on artifact_type.
+        
+        If job_types is None, the document's artifact_type is looked up and
+        the appropriate jobs are created based on the ARTIFACT_TYPE_JOBS mapping.
+        
+        This prevents binary artifacts (images, videos, archives, executables)
+        from entering the text extraction pipeline, which causes:
+        - "No content found for document XXX"
+        - "PostgreSQL text fields cannot contain NUL bytes"
         
         Args:
             document_id: ID of the document
-            job_types: List of job types to create. If None, creates default set.
+            job_types: List of job types to create. If None, uses artifact_type mapping.
             
         Returns:
             List of created job IDs
         """
+        # If job_types is not specified, determine based on artifact_type
         if job_types is None:
-            job_types = [JobType.EXTRACT_TEXT, JobType.EXTRACT_ENTITIES, 
-                        JobType.EXTRACT_EVENTS, JobType.EXTRACT_LOCATIONS]
+            artifact_type = self._get_document_artifact_type(document_id)
+            job_types = ARTIFACT_TYPE_JOBS.get(
+                artifact_type, 
+                ARTIFACT_TYPE_JOBS.get('unknown', [JobType.INVENTORY])
+            )
+            logger.info(f"Creating jobs for document {document_id} based on artifact_type '{artifact_type}': {job_types}")
         
         try:
             conn = self._get_connection()

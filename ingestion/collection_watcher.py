@@ -192,6 +192,8 @@ class CollectionWatcher:
                     print(f"[CollectionWatcher] Parsed {artifact_path}: {parsed.get('character_count', 0)} chars")
                     
                     # Build full document metadata
+                    # Include artifact_type to ensure correct job scheduling
+                    artifact_type = self.parser_registry.get_artifact_type(full_path)
                     document = {
                         'path': artifact_path,
                         'extension': full_path.suffix,
@@ -199,6 +201,7 @@ class CollectionWatcher:
                         'file_size': stat.st_size,
                         'character_count': parsed.get('character_count'),
                         'parser': parsed.get('parser', full_path.suffix[1:] if full_path.suffix else 'text'),
+                        'artifact_type': artifact_type,
                         'status': 'METADATA_INDEXED'
                     }
                     
