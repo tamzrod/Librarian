@@ -26,6 +26,31 @@ Librarian stores artifacts once and exposes them through multiple views.
 
 ---
 
+## Workspaces
+
+The dashboard is organized into two workspaces:
+
+### Investigation Workspace
+
+The primary workspace for browsing and analyzing evidence.
+
+- [Artifact Explorer](./artifact-explorer.md) - Primary file browsing interface
+- Timeline - Events organized chronologically
+- Map - Geographic visualization
+- Entities - Named things and references
+- Relationships - Connections between artifacts
+
+### Operations Workspace
+
+Administrative views for monitoring and maintenance.
+
+- Overview - System status and metrics
+- Queue - Job queue monitoring
+- Activity - Recent operations feed
+- Extraction - Document enrichment status
+
+---
+
 ## Artifact Model
 
 The central object in Librarian is an **artifact**.
@@ -83,70 +108,6 @@ Workers enrich artifacts.
 
 ---
 
-## Dashboard Sections
-
-### Investigation Workspace
-
-- Artifact Explorer
-- Evidence Timeline
-- Map View
-- Entity View
-- Relationship View
-
-### Operational Workspace
-
-- System Overview
-- Queue Monitor
-- Activity Feed
-- Extraction Viewer
-- Worker Status
-
----
-
-## Investigation Views
-
-### Artifact Explorer
-
-| Aspect | Description |
-|--------|-------------|
-| **Primary Organization** | file and folder hierarchy |
-| **Purpose** | Answer: "What files exist?" |
-| **Features** | folder tree, list view, grid view, preview pane, metadata pane, enrichment status |
-
-> Artifact Explorer becomes the primary user workspace.
-
-### Evidence Timeline
-
-| Aspect | Description |
-|--------|-------------|
-| **Primary Organization** | time |
-| **Purpose** | Answer: "What happened and when?" |
-| **Sources** | EXIF timestamps, file timestamps, email timestamps, event timestamps, log timestamps |
-
-### Map View
-
-| Aspect | Description |
-|--------|-------------|
-| **Primary Organization** | location |
-| **Purpose** | Answer: "Where did things happen?" |
-| **Sources** | GPS EXIF, extracted locations, future geospatial metadata |
-
-### Entity View
-
-| Aspect | Description |
-|--------|-------------|
-| **Primary Organization** | entity |
-| **Purpose** | Answer: "What references this thing?" |
-
-### Relationship View
-
-| Aspect | Description |
-|--------|-------------|
-| **Primary Organization** | graph relationships |
-| **Purpose** | Answer: "How are artifacts connected?" |
-
----
-
 ## Dashboard Design Principles
 
 1. One artifact, many views.
@@ -178,7 +139,7 @@ The dashboard should feel closer to:
 
 - VSCode
 - Obsidian
-- Notion
+- Finder
 - modern forensic workspaces
 
 and less like:
