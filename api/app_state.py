@@ -370,9 +370,11 @@ class AppState:
                                     job_ids = self.backend.create_jobs_for_document(document_id)
                                     jobs_created += len(job_ids)
                             except Exception as e:
+                                import traceback
+                                tb = traceback.format_exc()
                                 failed_count += 1
                                 self.record_persistence_error(
-                                    f"Failed to save document {doc.get('path')}: {e}",
+                                    f"Failed to save document {doc.get('path')}: {e}\n{tb}",
                                     "save_document"
                                 )
                         
@@ -384,7 +386,10 @@ class AppState:
                     logger.warning(f"Library path does not exist for initial scan: {library_path}")
                     
             except Exception as e:
+                import traceback
+                tb = traceback.format_exc()
                 logger.error(f"Error during initial scan: {e}")
+                logger.error(f"Full traceback:\n{tb}")
                 self.record_persistence_error(str(e), "initial_scan")
             finally:
                 self._initial_scan_complete = True
