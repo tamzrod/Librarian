@@ -7,6 +7,7 @@
   --text-muted: #64748b;
   --border-color: #334155;
   --accent-primary: #6366f1;
+  --accent-primary-light: rgba(99, 102, 241, 0.15);
   --accent-secondary: #818cf8;
   --accent-success: #22c55e;
   --accent-warning: #f59e0b;

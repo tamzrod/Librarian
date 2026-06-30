@@ -20,6 +20,9 @@ import type {
   RootResponse,
   ActivityEvent,
   JobRecord,
+  FolderTreeResponse,
+  FolderContentsResponse,
+  DocumentDetailResponse,
 } from '../types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -328,6 +331,80 @@ class LibrarianApiClient {
     if (diffHour < 24) return `${diffHour}h ago`
     if (diffDay < 7) return `${diffDay}d ago`
     return date.toLocaleDateString()
+  }
+
+  // =========================================================================
+  // Artifact Explorer API
+  // =========================================================================
+
+  /**
+   * Get the folder hierarchy tree.
+   * Used to populate the left pane of Artifact Explorer.
+   */
+  async getFolderTree(): Promise<FolderTreeResponse> {
+    return this.get<FolderTreeResponse>('/api/v1/explorer/tree')
+  }
+
+  /**
+   * Get subfolders and documents within a folder.
+   * @param folderPath - The folder path (e.g., "/library/photos")
+   */
+  async getFolderContents(folderPath: string): Promise<FolderContentsResponse> {
+    // URL-encode the path for safety
+    const encodedPath = encodeURIComponent(folderPath)
+    return this.get<FolderContentsResponse>(`/api/v1/explorer/folders/${encodedPath}`)
+  }
+
+  /**
+   * Get detailed information about a specific document.
+   * Used to populate the metadata panel.
+   * @param documentId - The document ID
+   */
+  async getDocumentDetails(documentId: number): Promise<DocumentDetailResponse> {
+    return this.get<DocumentDetailResponse>(`/api/v1/explorer/documents/${documentId}`)
+  }
+
+  /**
+   * Get a preview URL for a document.
+   * @param documentId - The document ID
+   * @returns URL to fetch the preview
+   */
+  getPreviewUrl(documentId: number): string {
+    return `${this.client.defaults.baseURL}/api/v1/explorer/documents/${documentId}/preview`
+  }
+
+  /**
+   * Get the raw file URL for a document.
+   * @param documentId - The document ID
+   * @returns URL to fetch the raw file
+   */
+  getRawFileUrl(documentId: number): string {
+    return `${this.client.defaults.baseURL}/api/v1/explorer/documents/${documentId}/raw`
+  }
+
+  /**
+   * Check if a file extension is previewable as text.
+   */
+  isTextPreviewable(extension: string | null | undefined): boolean {
+    if (!extension) return false
+    const ext = extension.toLowerCase()
+    const textExtensions = [
+      '.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.xml',
+      '.py', '.log', '.ini', '.cfg', '.conf', '.env', '.java',
+      '.c', '.cpp', '.h', '.js', '.ts', '.jsx', '.tsx', '.css',
+      '.html', '.rst'
+    ]
+    return textExtensions.includes(ext)
+  }
+
+  /**
+   * Check if a file extension is previewable as an image.
+   */
+  isImagePreviewable(extension: string | null | undefined): boolean {
+    if (!extension) return false
+    const ext = extension.toLowerCase()
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg']
+    return imageExtensions.includes(ext)
   }
 }
 

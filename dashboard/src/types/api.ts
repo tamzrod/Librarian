@@ -364,3 +364,55 @@ export interface TimelineMapResponse {
   markers: PhotoMapMarker[]
   count: number
 }
+
+// Artifact Explorer Types (Phase 2)
+
+export interface FolderNode {
+  id: string
+  name: string
+  path: string
+  has_children: boolean
+}
+
+export interface FolderTreeResponse {
+  root: FolderNode
+  total_folders: number
+}
+
+export interface ExplorerDocument {
+  id: number
+  name: string
+  path: string
+  extension: string | null
+  file_size: number | null
+  mime_type: string | null
+  modified_time: string | null
+  indexed_at: string | null
+  status: string
+}
+
+export interface FolderContentsResponse {
+  folder: FolderNode
+  folders: FolderNode[]
+  documents: ExplorerDocument[]
+  total_items: number
+}
+
+export interface DocumentDetail {
+  id: number
+  name: string
+  path: string
+  extension: string | null
+  file_size: number | null
+  mime_type: string | null
+  modified_time: string | null
+  created_at: string | null
+  indexed_at: string | null
+  status: string
+  character_count: number | null
+  sha256: string | null
+}
+
+export interface DocumentDetailResponse {
+  document: DocumentDetail
+}
