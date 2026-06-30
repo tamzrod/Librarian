@@ -402,28 +402,65 @@ class PostgresBackend(StorageBackend):
     def ensure_schema(self) -> bool:
         """
         Ensure database schema exists, creating it if necessary.
-        
-        Uses migration tracking to prevent duplicate execution and
-        support future schema upgrades.
-        
+
+        Uses the MigrationManager for proper version tracking and automatic
+        upgrades from older schema versions (e.g., V2 to V5).
+
+        Required columns added in schema version 5:
+        - artifact_type, exists_on_disk, deleted_at, lifecycle_state
+
+        For backward compatibility, databases created before these columns
+        existed will be automatically upgraded on first startup.
+
         Returns:
             True if schema is ready, False on failure
         """
         if self._schema_verified:
             return True
+
+        try:
+            # Import here to avoid circular imports
+            from storage.migration_manager import MigrationManager, run_migrations_for_backend
+            
+            # Use MigrationManager for proper migration handling
+            result = run_migrations_for_backend(self)
+            
+            if result.success:
+                logger.info(f"Schema migration complete: version {result.current_version} (target: {result.target_version})")
+                self._schema_verified = True
+                return True
+            else:
+                logger.error(f"Schema migration failed: {result.error_message}")
+                if result.failed_migration:
+                    logger.error(f"Failed migration: {result.failed_migration}")
+                return False
+
+        except ImportError:
+            # Fallback to old behavior if MigrationManager not available
+            logger.warning("MigrationManager not available, using legacy schema initialization")
+            return self._ensure_schema_legacy()
+        except Exception as e:
+            logger.error(f"Error during schema initialization: {e}")
+            return False
+    
+    def _ensure_schema_legacy(self) -> bool:
+        """
+        Legacy schema initialization for backward compatibility.
         
+        This method is used as a fallback when MigrationManager is not available.
+        """
         try:
             # First, ensure migrations table exists
             self._ensure_migrations_table()
-            
+
             # Check for existing initial migration
             applied = self._get_applied_migrations()
-            
+
             # Check if tables already exist
             if self._check_tables_exist():
                 # Tables exist - run any pending migrations
                 self._run_schema_migrations()
-                
+
                 # Check if we have migration record
                 if '001_initial' not in applied:
                     # Tables exist but no migration record - record it
@@ -431,22 +468,22 @@ class PostgresBackend(StorageBackend):
                 logger.info("Database schema already exists")
                 self._schema_verified = True
                 return True
-            
+
             # Schema doesn't exist, create it
             logger.warning("Database schema not found, creating...")
-            
+
             schema_path = self._get_schema_path()
             if not os.path.exists(schema_path):
                 logger.error(f"Schema file not found at: {schema_path}")
                 return False
-            
+
             # Read and execute schema
             with open(schema_path, 'r') as f:
                 schema_sql = f.read()
-            
+
             conn = self._get_connection()
             cur = conn.cursor()
-            
+
             # Execute each statement separately
             statements = []
             current_stmt = []
@@ -459,7 +496,7 @@ class PostgresBackend(StorageBackend):
                 if stripped.endswith(';'):
                     statements.append('\n'.join(current_stmt))
                     current_stmt = []
-            
+
             # Execute each statement
             for stmt in statements:
                 stmt = stmt.strip()
@@ -469,14 +506,14 @@ class PostgresBackend(StorageBackend):
                     except Exception as e:
                         # Log but continue - some statements might fail on re-run
                         logger.debug(f"Statement execution note: {e}")
-            
+
             conn.commit()
             cur.close()
             conn.close()
-            
+
             # Run any additional migrations after initial schema creation
             self._run_schema_migrations()
-            
+
             # Verify schema was created
             if self._check_tables_exist():
                 logger.info("Database schema created successfully")
@@ -487,9 +524,9 @@ class PostgresBackend(StorageBackend):
             else:
                 logger.error("Schema creation failed - tables still don't exist")
                 return False
-                
+
         except Exception as e:
-            logger.error(f"Error ensuring schema: {e}")
+            logger.error(f"Error ensuring schema (legacy): {e}")
             return False
 
     def save_document(self, document):
