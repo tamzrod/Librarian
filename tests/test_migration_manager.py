@@ -438,6 +438,43 @@ class TestMigrationFiles:
         assert "INSERT INTO schema_migrations" in content
 
 
+class TestDollarQuotedBlocks:
+    """Test that dollar-quoted blocks are correctly supported."""
+    
+    def test_005_contains_dollar_quoted_do_block(self):
+        """Migration 005_artifact_inventory.sql contains DO $$...$$ block."""
+        migration_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'storage',
+            'migrations',
+            '005_artifact_inventory.sql'
+        )
+        
+        with open(migration_path, 'r') as f:
+            content = f.read()
+        
+        # Should contain dollar-quoted DO block
+        assert 'DO $$' in content, "Migration should contain DO $$ block"
+        assert 'END $$' in content, "DO block should have matching END $$"
+    
+    def test_migration_manager_executes_entire_sql(self):
+        """MigrationManager executes entire migration SQL at once (not split on semicolons)."""
+        from storage.migration_manager import MigrationManager
+        import inspect
+        
+        # Get the source code of _execute_migration_sql
+        source = inspect.getsource(MigrationManager._execute_migration_sql)
+        
+        # Should NOT split on semicolons
+        assert '.split(' not in source or "';\')" not in source, \
+            "MigrationManager should not split SQL on semicolons"
+        
+        # Should execute entire migration at once
+        assert 'cur.execute(migration.sql)' in source, \
+            "MigrationManager should execute entire migration SQL at once"
+
+
 class TestBackendIntegration:
     """Test that PostgresBackend uses MigrationManager as only initialization path."""
     

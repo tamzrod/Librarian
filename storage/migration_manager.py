@@ -326,6 +326,12 @@ class MigrationManager:
         """
         Execute the SQL statements in a migration file.
         
+        This method executes the entire migration SQL at once, letting PostgreSQL's
+        native parser handle statement splitting. This correctly supports:
+        - Dollar-quoted strings (DO $$ ... $$)
+        - Semicolons inside quoted strings
+        - Multiple statements in one file
+        
         Args:
             migration: MigrationInfo containing the SQL to execute
             
@@ -336,33 +342,11 @@ class MigrationManager:
             conn = self.backend._get_connection()
             cur = conn.cursor()
             
-            # Split by semicolons
-            raw_statements = migration.sql.split(';')
-            
-            for raw_stmt in raw_statements:
-                # Split into lines and filter out comments
-                lines = []
-                for line in raw_stmt.split('\n'):
-                    stripped = line.strip()
-                    if not stripped or stripped.startswith('--'):
-                        continue
-                    lines.append(line)
-                
-                stmt = '\n'.join(lines).strip()
-                
-                # Skip empty statements
-                if not stmt:
-                    continue
-                
-                try:
-                    cur.execute(stmt)
-                except Exception as e:
-                    error_msg = f"SQL error in {migration.name}: {e}"
-                    logger.error(error_msg)
-                    conn.rollback()
-                    cur.close()
-                    conn.close()
-                    return False, error_msg
+            # Execute the entire migration SQL at once.
+            # PostgreSQL's native parser handles dollar-quoted blocks (DO $$...$$),
+            # semicolons inside quoted strings, and multi-statement files correctly.
+            # This is the correct approach for PostgreSQL migrations.
+            cur.execute(migration.sql)
             
             conn.commit()
             cur.close()
@@ -370,8 +354,13 @@ class MigrationManager:
             return True, ""
             
         except Exception as e:
-            error_msg = f"Error executing migration {migration.name}: {e}"
+            error_msg = f"SQL error in {migration.name}: {e}"
             logger.error(error_msg)
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
             return False, error_msg
     
     def run_migrations(self) -> MigrationResult:
