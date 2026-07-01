@@ -1,179 +1,244 @@
 # Operation EXIF - Implementation Waves
 
-## Wave Overview
+## Status: Updated Priority Order
 
-This document defines implementation waves for Operation EXIF, prioritizing high-value fixes and parallelizing independent work.
+**Last Updated:** 2026-07-01
 
 ---
 
-## Wave 1: Critical Data Loss Prevention
+## Wave Overview
 
-**Priority:** Critical
-**Time Estimate:** 22-35 hours
-**Parallelizable:** Yes (except E1 → E2 dependency)
+This document defines the revised implementation waves for Operation EXIF, based on the re-prioritization that separates **Architectural Priority** from **Implementation Order**.
+
+### Key Changes from Original Plan
+
+1. **E3 CANCELLED** - Replaced by E8 Map Aggregation Layer
+2. **E4 and E10 moved to Phase 0** - Documentation tasks with no dependencies
+3. **E7 made parallel with E2** - Independent feature
+4. **E5 and E6 moved to Phase 2** - Feature completion
+
+---
+
+## Wave 0: Zero-Dependency Foundation
+
+**Priority:** Critical  
+**Time Estimate:** 6-10 hours  
+**Parallelizable:** Yes (3 parallel tracks)  
+**Risk:** Low
 
 ### Tasks
 
 | Task | Time | Risk | Priority |
 |------|------|------|----------|
 | E1: mime_type Not Persisted | 2-4h | Low | 1 |
-| E5: Thumbnail Persistence | 4-6h | Low | 2 |
-| E6: OCR Persistence | 8-12h | Medium | 3 |
-| E7: Embedding Storage | 6-10h | Medium | 4 |
-| E10: State Confusion | 2-3h | Low | 5 |
+| E4: Metadata Ownership | 2-3h | None | 2 |
+| E10: State Confusion | 2-3h | None | 3 |
 
 ### Rationale
 
-E1 is the most critical - it prevents permanent data loss. E5, E6, E7, and E10 are independent and can run in parallel.
+E1 is the most critical - it prevents permanent data loss. E4 and E10 are documentation-only and can run in parallel with E1 or each other.
 
-### Dependencies in Wave 1
+### Parallel Tracks
 
 ```
-E1 ────► E2 (in Wave 2)
-   │
-   └──► E5, E6, E7, E10 (parallel)
+Track A: E1 (mime_type) - 2-4 hours
+Track B: E4 (ownership docs) - 2-3 hours
+Track C: E10 (state docs) - 2-3 hours
 ```
 
-### Definition of Done for Wave 1
+### Definition of Done for Wave 0
 
 - [ ] `documents.mime_type` is populated for all new documents
-- [ ] Thumbnails can be stored and served
-- [ ] OCR text is persisted
-- [ ] Embeddings are stored and retrievable
-- [ ] Document states are documented
+- [ ] Backfill strategy documented
+- [ ] Metadata ownership policy documented
+- [ ] Document lifecycle states documented
+
+### Dependencies in Wave 0
+
+```
+None - all tasks are independent
+```
 
 ---
 
-## Wave 2: Data Flow Fixes
+## Wave 1: Contract Establishment
 
-**Priority:** High
-**Time Estimate:** 10-18 hours
-**Parallelizable:** No (sequential)
+**Priority:** High  
+**Time Estimate:** 10-18 hours  
+**Parallelizable:** Partial (E7 independent, E2 sequential)
 
 ### Tasks
 
 | Task | Time | Risk | Priority |
 |------|------|------|----------|
 | E2: structured_data Dropped | 4-8h | Medium | 1 |
-| E3: GPS Not Copied to locations | 2-4h | Low | 2 |
-| E8: Location/EXIF Disconnect | 4-6h | Medium | 3 |
+| E7: Embedding Storage | 6-10h | Medium | 2 |
 
 ### Rationale
 
-E2 must complete before E3. E3 must complete before E8. These are sequential dependencies.
+E2 must complete before E8 (Wave 3). E7 is independent and can run in parallel.
 
-### Dependencies in Wave 2
+### Parallel Tracks
 
 ```
-E2 ────► E3 ────► E8
+Track A: E2 (structured_data) - 4-8 hours [Depends on E1]
+Track B: E7 (embeddings) - 6-10 hours [Independent]
 ```
 
-### Definition of Done for Wave 2
+### Definition of Done for Wave 1
 
-- [ ] structured_data is handled (either persisted or extracted)
-- [ ] GPS coordinates are stored in locations table
-- [ ] LocationExtractor can use photo_metadata GPS data
+- [ ] Decision made: Persist structured_data OR explicitly document it's dropped
+- [ ] Image dimensions stored in photo_metadata (if persisting)
+- [ ] Embedding storage verified complete
+- [ ] Embedding retrieval API functional
+
+### Dependencies in Wave 1
+
+```
+E1 (Wave 0) ──► E2
+                │
+                └──► E7 (parallel)
+```
 
 ---
 
-## Wave 3: Architectural Clarity
+## Wave 2: Feature Completion
 
-**Priority:** Medium
-**Time Estimate:** 6-9 hours
-**Parallelizable:** Partial
+**Priority:** Medium  
+**Time Estimate:** 12-18 hours  
+**Parallelizable:** Yes
 
 ### Tasks
 
 | Task | Time | Risk | Priority |
 |------|------|------|----------|
-| E4: Metadata Ownership | 2-3h | Low | 1 |
+| E5: Thumbnail Persistence | 4-6h | Low | 1 |
+| E6: OCR Persistence | 8-12h | Medium | 2 |
+
+### Rationale
+
+E5 and E6 are independent features. Both are queued but unimplemented. Run in parallel for efficiency.
+
+### Parallel Tracks
+
+```
+Track A: E5 (thumbnails) - 4-6 hours
+Track B: E6 (OCR) - 8-12 hours
+```
+
+### Definition of Done for Wave 2
+
+- [ ] `generate_thumbnail` job has worker handler
+- [ ] Thumbnails stored persistently
+- [ ] `run_ocr` job has worker handler
+- [ ] OCR text stored persistently
+- [ ] OCR text searchable via document_content
+
+### Dependencies in Wave 2
+
+```
+None - both tasks are independent
+```
+
+---
+
+## Wave 3: Integration
+
+**Priority:** High  
+**Time Estimate:** 8-12 hours  
+**Parallelizable:** No (sequential)
+
+### Tasks
+
+| Task | Time | Risk | Priority |
+|------|------|------|----------|
+| E8: Map Aggregation Layer | 4-6h | Medium | 1 |
 | E9: API/UI Metadata Gaps | 4-6h | Low | 2 |
 
 ### Rationale
 
-E4 is documentation-only and can run anytime. E9 depends on E1, E3, and E7.
+E8 must complete before E9. E9 depends on E1, E7, and E8.
 
-### Dependencies in Wave 3
+### Sequential Tracks
 
 ```
-E4: No dependencies
-E9: E1, E3, E7 (Wave 1 + Wave 2)
+Track A: E8 (Map Aggregation) - 4-6 hours [Depends on E2]
+         │
+         └──► E9 (API/UI) - 4-6 hours [Depends on E1, E7, E8]
 ```
 
 ### Definition of Done for Wave 3
 
-- [ ] Metadata ownership policy documented
-- [ ] API exposes all available metadata
-- [ ] Dashboard uses available metadata
+- [ ] Unified location API returns GPS from photo_metadata AND semantic from locations
+- [ ] Explorer API exposes mime_type, photo metadata
+- [ ] Timeline API exposes location names
+- [ ] Dashboard filters work
+
+### Dependencies in Wave 3
+
+```
+E2 (Wave 1) ──► E8 ──► E9
+                        ↑
+E1 (Wave 0) ────────────┤
+                        │
+E7 (Wave 1) ────────────┘
+```
 
 ---
 
 ## Summary Timeline
 
 ```
-Month 1:
-├── Week 1-2: Wave 1 (E1, E5, E6, E7, E10)
-├── Week 3-4: Wave 2 (E2, E3, E8)
+Week 1: Wave 0 (E1, E4, E10) - 6 parallel tracks
+Week 2: Wave 1 (E2, E7) - 2 parallel tracks
+Week 3: Wave 2 (E5, E6) - 2 parallel tracks
+Week 4: Wave 3 (E8, E9) - sequential
 
-Month 2:
-├── Week 1-2: Wave 3 (E4, E9)
-└── Week 3-4: Testing and stabilization
+Total: 4 weeks
+Total Effort: 36-58 hours
+```
+
+---
+
+## Critical Path
+
+```
+E1 (2-4h) → E2 (4-8h) → E8 (4-6h) → E9 (4-6h)
+────────────────────────────────────────────────
+Total Critical Path: 14-24 hours
 ```
 
 ---
 
 ## Parallelization Strategy
 
-### Week 1: E1 + E5 + E10 (3 parallel tracks)
+### Maximum Parallel Tracks (Week 1)
 
-**Track A (E1 - mime_type):**
-- 2-4 hours
-- Low risk
-- Start first
+```
+Track A: E1 (mime_type)
+Track B: E4 (ownership docs)
+Track C: E10 (state docs)
+Track D: E7 (embeddings - independent)
+Track E: E5 (thumbnails - independent)
+Track F: E6 (OCR - independent)
+```
 
-**Track B (E5 - Thumbnails):**
-- 4-6 hours
-- Independent
+**Note:** 6 parallel tracks possible from Day 1!
 
-**Track C (E10 - State docs):**
-- 2-3 hours
-- Documentation only
+### Week 2
 
-### Week 2: E6 + E7 (2 parallel tracks)
+```
+Track A: E2 (sequential after E1)
+Track B: E7 (already started or new)
+```
 
-**Track A (E6 - OCR):**
-- 8-12 hours
-- Requires OCR library setup
+### Week 3-4
 
-**Track B (E7 - Embeddings):**
-- 6-10 hours
-- Requires embedding model setup
-
-### Week 3: E2 (sequential)
-
-**Track A (E2 - structured_data):**
-- 4-8 hours
-- Depends on E1
-
-### Week 4: E3 + E8 (sequential)
-
-**Track A (E3 - GPS):**
-- 2-4 hours
-- Depends on E2
-
-**Track B (E8 - Location/EXIF):**
-- 4-6 hours
-- Depends on E3
-
-### Week 5-6: E4 + E9 (parallel)
-
-**Track A (E4 - Ownership docs):**
-- 2-3 hours
-- No dependencies
-
-**Track B (E9 - API/UI):**
-- 4-6 hours
-- Depends on E1, E3, E7
+```
+Track A: E5 + E6 (parallel)
+Track B: E8 (sequential after E2)
+         └──► E9 (sequential after E8)
+```
 
 ---
 
@@ -194,10 +259,13 @@ Month 2:
 |------|----------|
 | E1 | Remove column from INSERT (non-breaking) |
 | E2 | Revert if Option A chosen |
-| E3 | Delete location records (no side effects) |
+| E4 | N/A (documentation) |
 | E5 | Remove thumbnail table |
 | E6 | Remove OCR storage |
-| E7 | Remove embedding records |
+| E7 | Mark embedding records as unused |
+| E8 | Remove aggregation layer |
+| E9 | Remove API fields |
+| E10 | N/A (documentation) |
 
 ---
 
@@ -205,24 +273,25 @@ Month 2:
 
 ### Unit Tests
 
-Each task should have unit tests:
-- E1: Test mime_type in save_document
-- E2: Test structured_data handling per parser
-- E3: Test GPS location creation
-- E5: Test thumbnail generation/storage
-- E6: Test OCR text storage
-- E7: Test embedding storage/retrieval
-- E8: Test location queries with GPS
-- E9: Test API responses
-- E10: N/A (documentation)
+| Task | Test Coverage |
+|------|---------------|
+| E1 | Test mime_type in save_document |
+| E2 | Test structured_data handling per parser |
+| E4 | N/A (documentation) |
+| E5 | Test thumbnail generation/storage |
+| E6 | Test OCR text storage |
+| E7 | Test embedding storage/retrieval |
+| E8 | Test unified location queries |
+| E9 | Test API responses |
+| E10 | N/A (documentation) |
 
 ### Integration Tests
 
 | Test | Covers |
 |------|--------|
 | Full pipeline test | E1, E2 |
-| Image metadata test | E1, E2, E3 |
-| Location query test | E3, E8 |
+| Image metadata test | E1, E2 |
+| Location query test | E8 |
 | OCR pipeline test | E6 |
 | Embedding pipeline test | E7 |
 
@@ -238,8 +307,72 @@ Each task should have unit tests:
 
 | Category | Tasks | Time |
 |----------|-------|------|
-| Data Loss Prevention | E1, E2 | 6-12h |
-| Feature Completion | E5, E6, E7 | 18-28h |
-| Integration | E3, E8, E9 | 10-16h |
+| Foundation | E1 | 2-4h |
 | Documentation | E4, E10 | 4-6h |
-| **Total** | All | **38-62h** |
+| Contract | E2 | 4-8h |
+| Features | E5, E6, E7 | 18-28h |
+| Integration | E8, E9 | 8-12h |
+| **Total** | All | **36-58h** |
+
+---
+
+## Wave Dependencies Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         WAVE 0 (Parallel)                        │
+│                                                                   │
+│   E1 ───────────────────────────────────────────────────────────┐ │
+│   mime_type (2-4h)                                              │ │
+│                                                                 │ │
+│   E4 ──────────────────────────────────────────────────────────┼─┤
+│   Ownership (2-3h)                                               │ │
+│                                                                 │ │
+│   E10 ─────────────────────────────────────────────────────────┼─┤
+│   State (2-3h)                                                  │ │
+│                                                                 │ │
+└─────────────────────────────────────────────────────────────────┼─┘
+                                                                  │
+                                                                  │
+                                                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                         WAVE 1 (Partial Parallel)                 │
+│                                                                   │
+│   E2 ───────────────────────────────────────────────────────────┼─┐
+│   structured_data (4-8h)                                        │ │
+│   [Depends on E1]                                                │ │
+│                                                                 │ │
+│   E7 ───────────────────────────────────────────────────────────┼─┤
+│   Embeddings (6-10h)                                             │ │
+│   [Independent]                                                  │ │
+│                                                                 │ │
+└─────────────────────────────────────────────────────────────────┼─┘
+                                                                  │
+                                                                  │
+                                                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                         WAVE 2 (Parallel)                         │
+│                                                                   │
+│   E5 ───────────────────────────────────────────────────────────┐ │
+│   Thumbnails (4-6h)                                              │ │
+│                                                                 │ │
+│   E6 ───────────────────────────────────────────────────────────┤ │
+│   OCR (8-12h)                                                   │ │
+│                                                                 │ │
+└─────────────────────────────────────────────────────────────────┘
+                                                                  │
+                                                                  │
+                                                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                         WAVE 3 (Sequential)                       │
+│                                                                   │
+│   E8 ───────────────────────────────────────────────────────────┐ │
+│   Map Aggregation (4-6h)                                         │ │
+│   [Depends on E2]                                                │ │
+│                                                                 │ │
+│   E9 ───────────────────────────────────────────────────────────┤ │
+│   API/UI (4-6h)                                                 │ │
+│   [Depends on E1, E7, E8]                                       │ │
+│                                                                 │ │
+└─────────────────────────────────────────────────────────────────┘
+```

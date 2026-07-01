@@ -1,209 +1,251 @@
 # Operation EXIF - Dependency Graph
 
+## Status: Updated for New Priority Order
+
+**Last Updated:** 2026-07-01
+
+---
+
 ## Dependency Overview
 
 ```
-E1 ────────────────────────────────┬─────────────────────────────────► E4
-mime_type persistence               │                                 Metadata
-                                  │                                 Ownership
-                                  │
-                                  ├─────────────────────────────────► E2
-                                  │                                 structured_data
-                                  │                                 Dropped
-                                  │
-                                  └─────────────────────────────────► E3
-                                                                        GPS to
-                                                                        locations
-                                                                         │
-                                                                         ▼
-E8 ◄───────────────────────────────────────────────────────────────── E9
-Location/                                                                 API/UI
-EXIF                                                                    Gaps
-Disconnect                                                               
-                                                                         │
-                                                                         ▼
-E7 ◄───────────────────────────────────────────────────────────────── E6
-Embeddings ◄────────────────────────────────────────────────────────── OCR
-             │                                                            │
-             │                                                            ▼
-             └─────────────────────────────────────────────────────────► E5
-             Thumbnail                                                    Thumbnail
-             Persistence                                                  Persistence
-                                                                          │
-                                                                          ▼
-                                                                         E10
-                                                                         State
-                                                                         Confusion
+┌──────────────────────────────────────────────────────────────────┐
+│                    PHASE 0 (Parallel)                             │
+│                                                                   │
+│   E1 ──────────────────────────────────────────┐                │
+│   mime_type (2-4h)                              │                │
+│                                                 │                │
+│   E4 ──────────────────────────────────────────┼─────────────┐ │
+│   Ownership (2-3h)                               │             │ │
+│                                                 │             │ │
+│   E10 ──────────────────────────────────────────┼─────────────┼─┤
+│   State docs (2-3h)                              │             │ │
+│                                                 │             │ │
+└─────────────────────────────────────────────────┼─────────────┼─┘ │
+                                                  │             │   │
+                                                  │             │   │
+                                                  ▼             │   │
+┌─────────────────────────────────────────────────┐             │   │
+│                   PHASE 1                       │             │   │
+│                                                  │             │   │
+│   E2 ───────────────────────────────────────────┼─────────────┘   │
+│   structured_data (4-8h)                         │                 │
+│   [Depends on E1]                                 │                 │
+│                                                  │                 │
+│   E7 ───────────────────────────────────────────┼─────────────────┘
+│   Embeddings (6-10h)                              │
+│   [Independent]                                   │
+│                                                  │
+└──────────────────────────────────────────────────┘
+                          │
+                          │
+                          ▼
+┌──────────────────────────────────────────────────┐
+│                   PHASE 2 (Parallel)              │
+│                                                   │
+│   E5 ────────────────────────────────────────────┤
+│   Thumbnails (4-6h)                               │
+│                                                   │
+│   E6 ────────────────────────────────────────────┤
+│   OCR (8-12h)                                     │
+│                                                   │
+└──────────────────────────────────────────────────┘
+                          │
+                          │
+                          ▼
+┌──────────────────────────────────────────────────┐
+│                   PHASE 3 (Sequential)           │
+│                                                   │
+│   E8 ────────────────────────────────────────────┤
+│   Map Aggregation (4-6h)                          │
+│   [Depends on E2]                                 │
+│                                                   │
+│   E9 ────────────────────────────────────────────┤
+│   API/UI (4-6h)                                   │
+│   [Depends on E1, E7, E8]                        │
+│                                                   │
+└──────────────────────────────────────────────────┘
 ```
 
-## Detailed Dependencies
+---
 
-### E1: mime_type Not Persisted
+## Updated Dependency Table
 
-**Prerequisites:** None
-**Enables:**
-- E2 (structured_data can include mime_type)
-- E4 (metadata ownership clear)
-- E9 (API can expose mime_type)
+### Hard Dependencies (Must Complete First)
 
-**Can parallelize with:** All other tasks
+| Task | Hard Prerequisites | Enables |
+|------|-------------------|---------|
+| E1 | None | E2 |
+| E2 | **E1** | E8 |
+| E4 | None | E9 (soft) |
+| E5 | None | - |
+| E6 | None | - |
+| E7 | None | E9 |
+| E8 | **E2** | E9 |
+| E9 | **E1, E7, E8** | - |
+| E10 | None | - |
 
-### E2: structured_data Dropped
+### Can Parallelize With
 
-**Prerequisites:** E1 (mime_type)
-**Enables:**
-- E3 (can extract dimensions to photo_metadata)
-- E4 (metadata ownership clear)
-- E5 (can include dimensions in thumbnail)
+| Task | Can Parallel With | Notes |
+|------|-------------------|-------|
+| E1 | E4, E5, E6, E7, E10 | Foundation task |
+| E2 | None | Sequential (depends on E1) |
+| E4 | E1, E10 | Documentation |
+| E5 | E1, E6, E7, E10 | Independent feature |
+| E6 | E1, E5, E7, E10 | Independent feature |
+| E7 | E1, E5, E6, E10 | Independent feature |
+| E8 | None | Sequential (depends on E2) |
+| E9 | None | Sequential (depends on E1, E7, E8) |
+| E10 | E1, E4, E5, E6, E7 | Documentation |
+| ~~E3~~ | **CANCELLED** | - |
 
-**Cannot parallelize with:** E1
+---
 
-### E3: GPS Not Copied to locations
+## Implementation Sequence
 
-**Prerequisites:** E2 (structured_data handling)
-**Enables:**
-- E8 (unified location queries)
-- E9 (API can show GPS locations)
+### Phase 0: Foundation (Parallel)
 
-**Cannot parallelize with:** E2
+```
+E1, E4, E10 ──► All can start immediately
+```
 
-### E4: Inconsistent Metadata Ownership
+### Phase 1: Contract (Partial Parallel)
 
-**Prerequisites:** E1, E2, E3
-**Enables:** E9
-**Complexity:** Documentation only
+```
+E1 ──► E2 (sequential)
+   │
+   └──► E7 (parallel)
+```
 
-**Can parallelize with:** After prerequisites met
+### Phase 2: Features (Parallel)
 
-### E5: Thumbnail Persistence Missing
+```
+E5, E6 ──► Parallel, no dependencies
+```
 
-**Prerequisites:** None
-**Enables:** E9
+### Phase 3: Integration (Sequential)
 
-**Can parallelize with:** All other tasks
+```
+E2 ──► E8 ──► E9
+```
 
-### E6: OCR Output Not Persisted
+---
 
-**Prerequisites:** None
-**Enables:** E9
+## Critical Path
 
-**Can parallelize with:** All other tasks
+```
+E1 ──► E2 ──► E8 ──► E9
+(2-4h)  (4-8h)  (4-6h)  (4-6h)
+─────────────────────────────
+Total Critical Path: 14-24 hours
+```
 
-### E7: Embedding Storage Incomplete
+---
 
-**Prerequisites:** None
-**Enables:** E9
+## Parallelization Opportunities
 
-**Can parallelize with:** All other tasks
+### Maximum Parallelization (Week 1)
 
-### E8: Location/EXIF Disconnect
+```
+Track A: E1 (mime_type)
+Track B: E4 (ownership docs)
+Track C: E10 (state docs)
+Track D: E7 (embeddings - independent)
+Track E: E5 (thumbnails - independent)
+Track F: E6 (OCR - independent)
+```
 
-**Prerequisites:** E3
-**Enables:** E9
+**Note:** 6 parallel tracks possible in Week 1!
 
-**Cannot parallelize with:** E3
+### After E1 Complete
 
-### E9: API/UI Metadata Gaps
+```
+E2 (sequential) ──► E8 (sequential) ──► E9 (sequential)
+```
 
-**Prerequisites:** E1, E3, E7
-**Complexity:** API additions only
+### Safe Parallel Combinations
 
-**Cannot parallelize with:** E1, E3, E7 (partially)
-
-### E10: State Confusion
-
-**Prerequisites:** None
-**Complexity:** Documentation only
-
-**Can parallelize with:** All other tasks
-
-## Hard Dependencies Summary
-
-| Task | Hard Prerequisites |
-|------|-------------------|
-| E1 | None |
-| E2 | E1 |
-| E3 | E2 |
-| E4 | E1, E2, E3 |
-| E5 | None |
-| E6 | None |
-| E7 | None |
-| E8 | E3 |
-| E9 | E1, E3, E7 |
-| E10 | None |
-
-## Parallelizable Tasks
-
-The following tasks can be implemented in parallel:
-
-| Task Group | Tasks | Reason |
+| Combination | Safe? | Reason |
 |------------|-------|--------|
-| Wave 1A | E1, E5, E6, E7, E10 | Independent, no prerequisites |
-| Wave 1B | E2 | Depends on E1 |
-| Wave 2A | E3, E8 | E3 depends on E2, E8 depends on E3 |
-| Wave 2B | E4 | Depends on E1, E2, E3 |
-| Wave 3 | E9 | Depends on E1, E3, E7 |
+| E1 + E4 + E10 | ✓ Yes | Different files, no conflicts |
+| E1 + E5 + E6 + E7 | ✓ Yes | Different files |
+| E2 + E7 | ✓ Yes | E7 is independent |
+| E5 + E6 | ✓ Yes | Both independent |
+| E8 + E9 | ✗ No | E9 depends on E8 |
+| E1 + E2 | ✗ No | E2 depends on E1 |
+
+---
 
 ## Dangerous Combinations
 
-### E1 + E2 Concurrently
+### D1: E1 + E2 in Same PR
 
-**Risk:** Race condition if both modify save_document() simultaneously
-**Mitigation:** Implement E1 first, then E2
+**Risk:** Both modify `save_document()` and `_process_file()`.
+**Mitigation:** Separate PRs.
+**Blast Radius:** Medium.
 
-### E3 + E8 Concurrently
+### D2: E2 + E8 in Same PR
 
-**Risk:** E8 assumes E3 structure exists
-**Mitigation:** Implement E3 first, then E8
+**Risk:** E2 changes structured_data handling, E8 assumes E2 structure.
+**Mitigation:** Separate PRs.
+**Blast Radius:** Medium.
 
-### E5 + E6 + E7 + E10
+### D3: E8 + E9 in Same PR
 
-**Risk:** Low - all independent
-**Benefit:** Can implement all in parallel
+**Risk:** E9 assumes E8 structure exists.
+**Mitigation:** Separate PRs.
+**Blast Radius:** Medium.
 
-## Implementation Order Recommendation
+---
+
+## Recommended PR Sequence
+
+| PR # | Tasks | Phase | Notes |
+|------|-------|-------|-------|
+| #1 | E1 | 0 | Foundation |
+| #2 | E4 + E10 | 0 | Documentation |
+| #3 | E7 | 1 | Independent |
+| #4 | E2 | 1 | Sequential (after #1) |
+| #5 | E5 | 2 | Independent |
+| #6 | E6 | 2 | Independent |
+| #7 | E8 | 3 | Sequential (after #4) |
+| #8 | E9 | 3 | Sequential (after #7) |
+
+---
+
+## E3 Cancellation Impact
+
+### Before (Old Order)
 
 ```
-Phase 1: Independent Fixes
-├── E1 (mime_type) - 2-4 hours
-├── E5 (thumbnails) - 4-6 hours
-├── E6 (OCR) - 8-12 hours
-├── E7 (embeddings) - 6-10 hours
-└── E10 (state) - 2-3 hours
-
-Phase 2: Sequential Fixes
-├── E2 (structured_data) - 4-8 hours
-│   └── Must complete before E3
-├── E3 (GPS to locations) - 2-4 hours
-│   └── Must complete before E8
-└── E8 (Location/EXIF) - 4-6 hours
-    └── Can parallelize with E4, E9
-
-Phase 3: Dependent Fixes
-├── E4 (ownership) - 2-3 hours
-└── E9 (API/UI) - 4-6 hours
+E1 → E2 → E3 → E8 → E9
 ```
 
-## Total Effort
+### After (New Order)
 
-| Phase | Tasks | Time |
-|-------|-------|------|
-| Phase 1 | E1, E5, E6, E7, E10 | 22-35 hours |
-| Phase 2 | E2, E3, E8 | 10-18 hours |
-| Phase 3 | E4, E9 | 6-9 hours |
-| **Total** | All | **38-62 hours** |
+```
+E1 → E2 → E8 → E9
+     ↑
+     E7 (parallel)
+```
+
+**Benefit:** Removed unnecessary data duplication step. E3 was going to copy GPS from `photo_metadata` to `locations` table, but this creates dual ownership and sync issues.
+
+**New Approach:** E8 creates a Map Aggregation Layer that queries both `photo_metadata` (for GPS) and `locations` (for semantic names) and returns unified results.
+
+---
 
 ## Risk Levels
 
 | Task | Risk | Reason |
 |------|------|--------|
-| E1 | Low | Schema exists |
-| E2 | Medium | Schema change possible |
-| E3 | Low | Simple DB inserts |
-| E4 | Low | Documentation |
+| E1 | Low | Schema column exists |
+| E2 | Medium | May require schema decision |
+| E4 | None | Documentation only |
 | E5 | Low | New storage |
-| E6 | Medium | New dependency |
+| E6 | Medium | New dependency (OCR library) |
 | E7 | Medium | External service |
-| E8 | Medium | Coordination |
+| E8 | Medium | API changes |
 | E9 | Low | API additions |
-| E10 | Low | Documentation |
+| E10 | None | Documentation only |

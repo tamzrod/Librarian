@@ -26,24 +26,28 @@ Approved plans not yet started.
 
 **Audit Date:** 2026-07-01
 **Priority:** Critical
-**Status:** Audit Complete
+**Status:** Re-prioritization Complete
 
 Following the EXIF investigation, a second architectural layer was identified: metadata ownership, persistence, lifecycle, and presentation. This audit examines these gaps.
 
+### Key Architectural Decision
+
+**E3 has been CANCELLED.** GPS coordinates should remain in `photo_metadata`, semantic locations in `locations` table. E8 now implements a Map Aggregation Layer that queries both sources.
+
 ### Findings Summary
 
-| ID | Finding | Severity | Status |
-|----|---------|----------|--------|
-| E1 | mime_type Not Persisted | Critical | Open |
-| E2 | structured_data Dropped | Critical | Open |
-| E3 | GPS Not Copied to locations | High | Open |
-| E4 | Inconsistent Metadata Ownership | High | Open |
-| E5 | Thumbnail Persistence Missing | Medium | Open |
-| E6 | OCR Output Not Persisted | Medium | Open |
-| E7 | Embedding Storage Incomplete | Medium | Open |
-| E8 | Location/EXIF Disconnect | High | Open |
-| E9 | API/UI Metadata Gaps | Medium | Open |
-| E10 | State Confusion | Low | Open |
+| ID | Finding | Severity | Status | Priority |
+|----|---------|----------|--------|----------|
+| E1 | mime_type Not Persisted | Critical | Planned | 1 |
+| E2 | structured_data Dropped | Critical | Planned | 3 |
+| ~~E3~~ | GPS Not Copied to locations | High | **Cancelled** | N/A |
+| E4 | Inconsistent Metadata Ownership | High | Planned | 2 |
+| E5 | Thumbnail Persistence Missing | Medium | Planned | 5 |
+| E6 | OCR Output Not Persisted | Medium | Planned | 6 |
+| E7 | Embedding Storage Incomplete | Medium | Planned | 4 |
+| E8 | Location/EXIF → Map Aggregation | High | Planned | 7 |
+| E9 | API/UI Metadata Gaps | Medium | Planned | 8 |
+| E10 | State Confusion | Low | Planned | 2a |
 
 ### Quick Links
 
@@ -51,33 +55,43 @@ Following the EXIF investigation, a second architectural layer was identified: m
 - [Dependency Graph](./operation-exif/DEPENDENCIES.md)
 - [Implementation Waves](./operation-exif/WAVES.md)
 
-### Implementation Order
+### Implementation Order (Updated)
 
-1. **Wave 1:** E1 (mime_type), E5 (thumbnails), E6 (OCR), E7 (embeddings), E10 (state) - parallelizable
-2. **Wave 2:** E2 (structured_data), E3 (GPS), E8 (Location/EXIF) - sequential
-3. **Wave 3:** E4 (ownership), E9 (API/UI) - dependent
+1. **Phase 0 (Week 1):** E1 (mime_type), E4 (ownership), E10 (state) - parallelizable, zero dependencies
+2. **Phase 1 (Week 2):** E2 (structured_data), E7 (embeddings) - E2 depends on E1
+3. **Phase 2 (Week 3-4):** E5 (thumbnails), E6 (OCR) - parallelizable
+4. **Phase 3 (Week 5):** E8 (Map Aggregation), E9 (API/UI) - sequential
 
 ### Estimated Effort
 
-- Wave 1: 22-35 hours
-- Wave 2: 10-18 hours
-- Wave 3: 6-9 hours
-- **Total: 38-62 hours**
+- Phase 0: 6-10 hours
+- Phase 1: 10-18 hours
+- Phase 2: 12-18 hours
+- Phase 3: 8-12 hours
+- **Total: 36-58 hours**
+
+### Critical Path
+
+```
+E1 (2-4h) → E2 (4-8h) → E8 (4-6h) → E9 (4-6h)
+────────────────────────────────────────────────
+Total: 14-24 hours
+```
 
 ### Individual Findings
 
-| Document | Description |
-|----------|-------------|
-| [E1: mime_type](./operation-exif/E1-mime-type-not-persisted.md) | Critical - schema exists but never populated |
-| [E2: structured_data](./operation-exif/E2-structured-data-dropped.md) | Critical - parser output dropped |
-| [E3: GPS to locations](./operation-exif/E3-gps-not-copied-to-locations.md) | High - photo_metadata GPS never copied |
-| [E4: Metadata Ownership](./operation-exif/E4-inconsistent-metadata-ownership.md) | High - unclear ownership model |
-| [E5: Thumbnails](./operation-exif/E5-thumbnail-persistence-missing.md) | Medium - job queued but not implemented |
-| [E6: OCR](./operation-exif/E6-ocr-output-not-persisted.md) | Medium - job queued but not implemented |
-| [E7: Embeddings](./operation-exif/E7-embedding-storage-incomplete.md) | Medium - table exists but storage incomplete |
-| [E8: Location/EXIF](./operation-exif/E8-location-exif-disconnect.md) | High - two separate location systems |
-| [E9: API/UI Gaps](./operation-exif/E9-api-ui-metadata-gaps.md) | Medium - available data not exposed |
-| [E10: State Confusion](./operation-exif/E10-state-confusion.md) | Low - documentation needed |
+| Document | Description | Status |
+|----------|-------------|--------|
+| [E1: mime_type](./operation-exif/E1-mime-type-not-persisted.md) | Critical - schema exists but never populated | Planned |
+| [E2: structured_data](./operation-exif/E2-structured-data-dropped.md) | Critical - parser output dropped | Planned |
+| [E3: GPS to locations](./operation-exif/E3-gps-not-copied-to-locations.md) | **Cancelled** - Replaced by E8 Map Aggregation | Cancelled |
+| [E4: Metadata Ownership](./operation-exif/E4-inconsistent-metadata-ownership.md) | High - unclear ownership model | Planned |
+| [E5: Thumbnails](./operation-exif/E5-thumbnail-persistence-missing.md) | Medium - job queued but not implemented | Planned |
+| [E6: OCR](./operation-exif/E6-ocr-output-not-persisted.md) | Medium - job queued but not implemented | Planned |
+| [E7: Embeddings](./operation-exif/E7-embedding-storage-incomplete.md) | Medium - table exists but storage incomplete | Planned |
+| [E8: Location/EXIF](./operation-exif/E8-location-exif-disconnect.md) | High - **Now: Map Aggregation Layer** | Planned |
+| [E9: API/UI Gaps](./operation-exif/E9-api-ui-metadata-gaps.md) | Medium - available data not exposed | Planned |
+| [E10: State Confusion](./operation-exif/E10-state-confusion.md) | Low - documentation needed | Planned |
 
 ---
 
