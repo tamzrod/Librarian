@@ -132,23 +132,26 @@ def normalize_path_relative(path: str, collection_root: str) -> str:
 
 def resolve_folder_path(folder_path: str, collection_root: str) -> tuple[str, str]:
     """Resolve request folder path to a full absolute path and relative path."""
-    decoded_path = unquote(folder_path or "").strip("/")
+    decoded_path = unquote(folder_path or "").strip()
     normalized_root = collection_root.rstrip("/")
+    root_no_leading_slash = normalized_root.lstrip("/")
 
-    if not decoded_path:
+    if not decoded_path or decoded_path == "/":
         return normalized_root, ""
 
-    if decoded_path == normalized_root.lstrip("/"):
+    if decoded_path in {normalized_root, root_no_leading_slash}:
         return normalized_root, ""
 
     if decoded_path.startswith(f"{normalized_root}/"):
         relative_path = decoded_path[len(normalized_root):].strip("/")
         return f"{normalized_root}/{relative_path}", relative_path
 
-    if decoded_path == normalized_root:
-        return normalized_root, ""
+    if decoded_path.startswith(f"{root_no_leading_slash}/"):
+        relative_path = decoded_path[len(root_no_leading_slash):].strip("/")
+        return f"{normalized_root}/{relative_path}", relative_path
 
-    return f"{normalized_root}/{decoded_path}", decoded_path
+    relative_path = decoded_path.strip("/")
+    return f"{normalized_root}/{relative_path}", relative_path
 
 
 def _extract_folder_paths(conn, collection_root: str) -> list[str]:
