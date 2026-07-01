@@ -71,6 +71,7 @@ class Worker:
         self._running = False
         self._current_job = None
         self._lease_renewal_thread = None
+        self._worker_thread = None
         self._stop_event = threading.Event()
         
         # Metrics
@@ -94,7 +95,7 @@ class Worker:
         logger.info(f"Registered handler for job type: {job_type}")
     
     def start(self):
-        """Start the worker loop."""
+        """Start the worker loop in a background thread."""
         if self._running:
             logger.warning("Worker already running")
             return
@@ -103,6 +104,13 @@ class Worker:
         self._stop_event.clear()
         logger.info(f"Worker {self.worker_id} starting...")
         
+        # Run worker loop in a daemon thread so it doesn't block startup
+        self._worker_thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._worker_thread.start()
+        logger.info(f"Worker {self.worker_id} running...")
+    
+    def _run_loop(self):
+        """The worker loop runs in a background thread."""
         while self._running:
             try:
                 # Phase 3B: Recover expired leases
@@ -145,6 +153,11 @@ class Worker:
         if self._current_job:
             self.backend.release_lease(self._current_job['id'])
             logger.info(f"Released lease for job {self._current_job['id']}")
+        
+        # Wait for worker thread to finish
+        if self._worker_thread:
+            self._worker_thread.join(timeout=5)
+            self._worker_thread = None
     
     def _handle_shutdown(self, signum, frame):
         """Handle shutdown signals."""
