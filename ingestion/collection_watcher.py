@@ -231,22 +231,16 @@ class CollectionWatcher:
         
         ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
         Deleted files are marked, not deleted. Records are preserved for auditability.
+        
+        P8 Fix: Removed fallback logic. This method now requires the backend to
+        implement mark_deleted(). The exists_on_disk column is guaranteed by
+        schema migration 005_artifact_inventory.sql.
         """
         full_path = self.path / filepath
         artifact_path = str(full_path)
         
-        if hasattr(self.backend, 'mark_deleted'):
-            self.backend.mark_deleted(artifact_path)
-        elif hasattr(self.backend, 'save_document'):
-            # Fallback: update exists_on_disk via save_document
-            document = {
-                'path': artifact_path,
-                'exists_on_disk': False
-            }
-            try:
-                self.backend.save_document(document)
-            except Exception as e:
-                print(f"[CollectionWatcher] Error marking deleted {artifact_path}: {e}")
+        # P8: Fallback removed - backend MUST implement mark_deleted()
+        self.backend.mark_deleted(artifact_path)
     
     def scan_collection(self, collection_id=None, worker_version=None):
         """Perform an idempotent scan of the collection directory.

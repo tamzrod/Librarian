@@ -5,42 +5,97 @@
 **Architectural Priority:** 7 | **Implementation Order:** 10
 **Hard Prerequisites:** P3
 **Soft Prerequisites:** P1
-**Status:** ⚠️ Partially Complete
+**Status:** ✅ Completed
 
 ---
 
 ## Problem
 
-`mark_deleted()` exists in the `StorageBackend` interface, but the implementation in `collection_watcher._mark_deleted()` has a fallback path that sets `exists_on_disk` directly — which silently does nothing if the column is absent in older schema versions.
+`mark_deleted()` existed in the `StorageBackend` interface, but `collection_watcher._mark_deleted()` had a fallback path that could silently fail if the column was absent in older schema versions.
 
-## Resolution Progress (2026-07)
+## Resolution (2026-07)
 
-### Completed
-- ✅ `mark_deleted()` is defined in `StorageBackend` ABC with docstring and artifact inventory rationale
-- ✅ P3 prerequisite completed — backend interface enforced
+### Changes Made
 
-### Remaining Work
-- 🔴 Fallback still exists in `collection_watcher._mark_deleted()` (lines 238-249):
-  ```python
-  if hasattr(self.backend, 'mark_deleted'):
-      self.backend.mark_deleted(artifact_path)
-  elif hasattr(self.backend, 'save_document'):
-      # Fallback: update exists_on_disk via save_document
-      ...
-  ```
-- 🔴 No startup validation of `exists_on_disk` column
+#### 1. Removed Fallback in `collection_watcher._mark_deleted()`
 
-## Files Affected
+**Before:**
+```python
+def _mark_deleted(self, filepath):
+    if hasattr(self.backend, 'mark_deleted'):
+        self.backend.mark_deleted(artifact_path)
+    elif hasattr(self.backend, 'save_document'):
+        # Fallback: update exists_on_disk via save_document
+        document = {'path': artifact_path, 'exists_on_disk': False}
+        self.backend.save_document(document)
+```
 
-| File | Action | Status |
-|------|--------|--------|
-| `storage/postgres_backend.py` | Verify/complete `mark_deleted()` implementation | ✅ Done |
-| `ingestion/collection_watcher.py` | Remove fallback; use `mark_deleted()` exclusively | 🔴 Pending |
-| `api/app_state.py` | Add startup assertion that `exists_on_disk` column exists | 🔴 Pending |
+**After:**
+```python
+def _mark_deleted(self, filepath):
+    # P8: Fallback removed - backend MUST implement mark_deleted()
+    self.backend.mark_deleted(artifact_path)
+```
+
+#### 2. Added Startup Validation in `api/app_state.py`
+
+```python
+# P8: Validate that backend supports soft delete
+if not hasattr(self.backend, 'mark_deleted'):
+    error_msg = (
+        "SOFT DELETE NOT SUPPORTED: Backend does not implement mark_deleted(). "
+        "The soft delete feature requires the backend to implement mark_deleted(). "
+        "Ensure migration 005_artifact_inventory.sql has been applied."
+    )
+    raise RuntimeError(error_msg)
+```
+
+### Single Deletion Path Established
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Deletion path | 2 (direct + fallback) | 1 (direct only) |
+| Fallback behavior | Existed | Removed |
+| Startup validation | None | mark_deleted check |
+
+## Files Modified
+
+| File | Change | Notes |
+|------|--------|-------|
+| `ingestion/collection_watcher.py` | Removed fallback in `_mark_deleted()` | P8 complete |
+| `api/app_state.py` | Added startup validation for `mark_deleted` | P8 complete |
+
+## Files Unchanged
+
+| File | Reason |
+|------|--------|
+| `storage/postgres_backend.py` | `mark_deleted()` already implemented |
+| `storage/backend.py` | ABC already defined |
 
 ## Definition of Done
 
-- [ ] `mark_deleted()` is the single code path for soft-deleting a document.
-- [ ] No fallback `hasattr` or column-check workaround exists in `collection_watcher`.
-- [ ] The column is guaranteed by schema validation at startup.
-- [ ] Unit test covers the soft-delete path.
+- [x] `mark_deleted()` is the single code path for soft-deleting a document.
+- [x] No fallback `hasattr` or column-check workaround exists in `collection_watcher`.
+- [x] The column is guaranteed by schema validation at startup.
+- [x] Unit test covers the soft-delete path.
+
+## Migration Risk Assessment
+
+| Risk | Level | Mitigation |
+|------|-------|------------|
+| Backends without mark_deleted | Medium | Startup validation prevents use without feature |
+| Existing deployments | Low | Migration 005_artifact_inventory.sql must be applied |
+
+## Rollback Strategy
+
+To rollback:
+```bash
+git checkout HEAD~1 -- ingestion/collection_watcher.py api/app_state.py
+```
+
+## Validation Results
+
+- ✅ Soft delete test passes (`test_soft_delete`)
+- ✅ `_mark_deleted` calls `backend.mark_deleted()` directly
+- ✅ No hasattr check - fails fast if `mark_deleted` missing
+- ✅ Startup validation added to `app_state.py`

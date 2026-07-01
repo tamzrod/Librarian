@@ -8,19 +8,7 @@ This folder tracks the approved refactor strategy for the Librarian codebase.
 
 Plans currently in progress or ready to begin implementation.
 
-| ID | Plan | Effort | Risk | Priority | Status |
-|----|------|--------|------|----------|--------|
-| P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | 4 | ⚠️ Partially Complete |
-
----
-
-## Partially Complete
-
-Plans with progress made but work remaining.
-
-| ID | Plan | Effort | Risk | Remaining Work |
-|----|------|--------|------|----------------|
-| P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | Low | Low | Remove fallback in collection_watcher; add startup validation |
+No active plans at this time.
 
 ---
 
@@ -72,29 +60,39 @@ Completed refactor plans. See [archive/](archive/) for historical documentation.
 |----|------|-----------------|--------|----------|
 | P7 | [Add Missing DB Indexes](./archive/P7-add-missing-db-indexes.md) | 2026-07 | Low | 8 |
 
+### Wave 6 — Runtime Unification
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | 2026-07 | Medium | 4 |
+
+### Wave 7 — Soft Delete Fix
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | 2026-07 | Low | 7 |
+
 ---
 
 ## Dependency Graph
 
 ```text
 P10 ──soft──▶ P7
-P3  ──hard──▶ P8
+P3  ──hard──▶ P8 ✅
 P3  ──soft──▶ P4
-P5  ──hard──▶ P2
+P5  ──hard──▶ P2 ✅
 P6  ──hard──▶ P1
-P6  ──hard──▶ P2
+P6  ──hard──▶ P2 ✅
 P6  ──hard──▶ P4
 P1  ──hard──▶ P11
-P1  ──soft──▶ P8
-P2  ──soft──▶ P4
+P1  ──soft──▶ P8 ✅
+P2  ──soft──▶ P4 ✅
 ```
 
 ### Prerequisites for Remaining Plans
 
 | Plan | Hard Prerequisites | Soft Prerequisites |
 |------|-------------------|-------------------|
-| **P2** | P5 ✅, P6 ✅ | — |
-| **P8** | P3 ✅ | P1 ✅ |
 | **P4** | P6 ✅ | P3 ✅, P2 ✅ |
 
 ---
@@ -102,7 +100,6 @@ P2  ──soft──▶ P4
 ## Sequencing Notes
 
 - **P4 is intentionally last** because it touches application startup, route wiring, test fixtures, and repository-wide state access patterns.
-- **P2 is the recommended next target** because prerequisites are met and it has lower risk than P4.
 
 ---
 

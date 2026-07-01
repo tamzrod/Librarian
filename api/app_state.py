@@ -6,9 +6,8 @@ Manages global state for storage backend, ingestion engine, file watcher, and jo
 import os
 import logging
 import threading
-import time
 from datetime import datetime
-from typing import Optional, Callable, Dict, Any
+from typing import Optional
 
 from storage.backend import validate_backend_instance
 from storage.postgres_backend import PostgresBackend
@@ -21,36 +20,46 @@ logger = logging.getLogger(__name__)
 
 
 class BackgroundJobProcessor:
-    """Background processor that polls and executes queued jobs.
+    """
+    Background processor that polls and executes queued jobs.
     
-    This enables automatic job processing within the API server,
-    so the pipeline works without requiring a separate worker container.
+    P2 Convergence: This class now delegates to the canonical Worker runtime
+    from workers/worker.py instead of duplicating the implementation. This
+    ensures consistent job execution lifecycle, retry behavior, and failure
+    handling across all worker contexts.
+    
+    The BackgroundJobProcessor provides the same interface as Worker but
+    uses the Worker's thread-based architecture within the API server context.
     """
 
     def __init__(self, backend, poll_interval: float = 1.0):
-        """Initialize the job processor.
+        """
+        Initialize the job processor.
         
         Args:
             backend: Storage backend instance
             poll_interval: Seconds between job polls
         """
-        self.backend = backend
-        self.poll_interval = poll_interval
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
-        self._handlers: Dict[str, Callable] = {}
-        self.worker_id = f"api-processor-{os.getpid()}"
+        from workers.worker import Worker
+        from workers.base import WorkerRuntime
         
-        # Metrics
-        self.jobs_processed = 0
-        self.jobs_succeeded = 0
-        self.jobs_failed = 0
+        # Delegate to canonical Worker runtime
+        self._worker = Worker(backend, poll_interval=poll_interval)
+        self.backend = backend
+        
+        # Expose worker_id for compatibility
+        self.worker_id = self._worker.worker_id
+        
+        # Track running state through worker
+        self._running = False
 
-    def register_handler(self, job_type: str, handler: Callable[[dict], Any]):
-        """Register a handler for a job type."""
-        self._handlers[job_type] = handler
-        logger.info(f"Registered job handler: {job_type}")
+    def register_handler(self, job_type: str, handler):
+        """
+        Register a handler for a job type.
+        
+        Delegates to the canonical Worker implementation.
+        """
+        self._worker.register_handler(job_type, handler)
 
     def start(self):
         """Start the background job processor."""
@@ -59,9 +68,7 @@ class BackgroundJobProcessor:
             return
         
         self._running = True
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="JobProcessor")
-        self._thread.start()
+        self._worker.start()
         logger.info(f"Background job processor started (worker_id={self.worker_id})")
 
     def stop(self):
@@ -70,77 +77,17 @@ class BackgroundJobProcessor:
             return
         
         logger.info("Stopping background job processor...")
+        self._worker.stop()
         self._running = False
-        self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=5)
         logger.info("Background job processor stopped")
 
-    def _run_loop(self):
-        """Main processing loop."""
-        while not self._stop_event.is_set():
-            try:
-                # Recover expired leases first
-                recovered = self.backend.recover_expired_leases()
-                if recovered > 0:
-                    logger.debug(f"Recovered {recovered} expired jobs")
-
-                # Claim a job
-                job = self.backend.claim_job(self.worker_id)
-                
-                if job is None:
-                    # No jobs available, wait
-                    self._stop_event.wait(self.poll_interval)
-                    continue
-
-                # Execute the job
-                self._execute_job(job)
-
-            except Exception as e:
-                logger.error(f"Error in job processor loop: {e}")
-                self._stop_event.wait(5)  # Back off on error
-
-        logger.info("Job processor loop ended")
-
-    def _execute_job(self, job: dict):
-        """Execute a single job."""
-        job_id = job['id']
-        job_type = job['job_type']
-        document_id = job['document_id']
-
-        logger.info(f"Processing job {job_id}: {job_type} for document {document_id}")
-
-        handler = self._handlers.get(job_type)
-        if not handler:
-            logger.warning(f"No handler for job type: {job_type}")
-            self.backend.complete_job(job_id, success=False, error_message=f"No handler for {job_type}")
-            self.jobs_failed += 1
-            self.jobs_processed += 1
-            return
-
-        try:
-            result = handler(job)
-            self.backend.complete_job(job_id, success=True)
-            self.jobs_succeeded += 1
-            self.jobs_processed += 1
-            logger.info(f"Job {job_id} completed successfully")
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e)}"
-            logger.error(f"Job {job_id} failed: {error_msg}")
-            self.backend.complete_job(job_id, success=False, error_message=error_msg)
-            self.jobs_failed += 1
-            self.jobs_processed += 1
-
     def get_stats(self) -> dict:
-        """Get processor statistics."""
-        return {
-            'running': self._running,
-            'worker_id': self.worker_id,
-            'jobs_processed': self.jobs_processed,
-            'jobs_succeeded': self.jobs_succeeded,
-            'jobs_failed': self.jobs_failed,
-            'registered_handlers': list(self._handlers.keys())
-        }
+        """Get processor statistics from the delegated Worker."""
+        stats = self._worker.get_stats()
+        # Include registered handlers if available
+        if hasattr(self._worker, '_handlers'):
+            stats['registered_handlers'] = list(self._worker._handlers.keys())
+        return stats
 
 
 class AppState:
@@ -268,6 +215,22 @@ class AppState:
                         )
                         # Raise error to halt startup
                         raise RuntimeError(error_msg)
+
+                    # P8: Validate that backend supports soft delete
+                    # The exists_on_disk column is required for soft delete to work
+                    if not hasattr(self.backend, 'mark_deleted'):
+                        error_msg = (
+                            "SOFT DELETE NOT SUPPORTED: Backend does not implement mark_deleted(). "
+                            "The soft delete feature requires the backend to implement mark_deleted(). "
+                            "Ensure migration 005_artifact_inventory.sql has been applied."
+                        )
+                        logger.error(error_msg)
+                        self.record_persistence_error(
+                            "Soft delete not supported by backend",
+                            "mark_deleted"
+                        )
+                        raise RuntimeError(error_msg)
+                    logger.info("Soft delete support verified (mark_deleted available)")
 
                     return True
                 else:
