@@ -14,7 +14,7 @@ class _MockBackend:
         self.artifacts = {}
         self.job_calls = []
 
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         doc_id = len(self.artifacts) + 1
         self.artifacts[path] = {
             'id': doc_id,
@@ -23,6 +23,7 @@ class _MockBackend:
             'file_size': file_size,
             'modified_time': modified_time,
             'status': 'DISCOVERED',
+            'mime_type': mime_type,
         }
         return doc_id
 

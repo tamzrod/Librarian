@@ -59,7 +59,7 @@ class StorageBackend(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         """Create an artifact record immediately upon discovery.
         
         ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
@@ -73,6 +73,9 @@ class StorageBackend(ABC):
             extension: File extension (e.g., '.jpg')
             file_size: File size in bytes
             modified_time: Last modified timestamp
+            mime_type: MIME type of the artifact (e.g., 'image/jpeg')
+                       Determined from extension during discovery, persisted as
+                       Discovery Metadata - no worker or parser dependency.
             
         Returns:
             Document ID if created, None on failure

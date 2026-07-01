@@ -430,7 +430,7 @@ None - all remaining tasks are in scope.
 
 ### What's Broken ✗
 
-1. **mime_type**: Schema exists, never populated
+1. ~~**mime_type**: Schema exists, never populated~~ ✅ **FIXED (E1)**
 2. **structured_data**: Produced by parsers, dropped at ingestion
 3. **Thumbnails**: Job queued, not implemented
 4. **OCR**: Job queued, output not persisted
@@ -443,7 +443,7 @@ None - all remaining tasks are in scope.
 
 | Task | Status | Started | Completed | Notes |
 |------|--------|---------|-----------|-------|
-| E1 | Planned | - | - | mime_type persistence |
+| E1 | **Completed** | 2026-07-01 | 2026-07-01 | mime_type persistence |
 | E2 | Planned | - | - | structured_data handling |
 | ~~E3~~ | **Cancelled** | - | - | Replaced by E8 Map Aggregation Layer |
 | E4 | Planned | - | - | Metadata ownership |
@@ -456,13 +456,88 @@ None - all remaining tasks are in scope.
 
 ---
 
+## E1 Implementation Details (Completed)
+
+### Problem
+`mime_type` was produced by parsers (e.g., `parsers/image_parser.py`) but dropped during ingestion. The `discover_artifact()` method in `collection_watcher.py` did not accept or persist `mime_type`, causing all documents to have `NULL` values.
+
+### Solution
+`mime_type` is now determined from the file extension immediately upon artifact discovery, before any parsing or worker processing.
+
+### Architecture
+```
+filesystem → extension → MIME_TYPE_MAPPING → discover_artifact() → documents.mime_type
+```
+
+### Files Modified
+
+| File | Lines | Change |
+|------|-------|--------|
+| `registry/register_parsers.py` | 24-124 | Added `MIME_TYPE_MAPPING` dict and `get_mime_type_from_extension()` function |
+| `storage/backend.py` | 62 | Added `mime_type` parameter to `discover_artifact()` abstract method |
+| `storage/postgres_backend.py` | 561-625 | Added `mime_type` parameter, added to INSERT and ON CONFLICT UPDATE |
+| `ingestion/collection_watcher.py` | 150-170, 302-314 | Import and pass `mime_type` from `get_mime_type_from_extension()` |
+| `api/dependencies.py` | 68-89 | Updated `MockBackend.discover_artifact()` signature |
+| `tests/conftest.py` | 46 | Updated `InMemoryBackend.discover_artifact()` signature |
+| `tests/test_collection_watcher.py` | 30 | Updated `MockBackend.discover_artifact()` signature |
+| `tests/test_initial_scan.py` | 17 | Updated `_MockBackend.discover_artifact()` signature |
+| `tests/test_storage_backend.py` | 41, 76 | Updated `ConcreteBackend` and `PartialBackend` signatures |
+
+### Key Changes
+
+1. **registry/register_parsers.py**: Added comprehensive `MIME_TYPE_MAPPING` with 74 file extensions and helper function
+2. **storage/postgres_backend.py**: `discover_artifact()` now accepts `mime_type` parameter and persists it to `documents.mime_type` column
+3. **ingestion/collection_watcher.py**: Both `_process_file()` and `scan_collection()` now call `get_mime_type_from_extension()` and pass the result
+
+### Migration Requirements
+None required. Migration `008_document_fields.sql` already added the `mime_type` column.
+
+### Rollback Strategy
+To rollback E1:
+```sql
+-- Option 1: Set mime_type back to NULL (safe, non-breaking)
+UPDATE documents SET mime_type = NULL WHERE mime_type IS NOT NULL;
+
+-- Option 2: Remove mime_type from INSERT (code change)
+-- Remove mime_type from discover_artifact() parameters in:
+--   - storage/backend.py (line 62)
+--   - storage/postgres_backend.py (line 561)
+--   - ingestion/collection_watcher.py (lines 157-169)
+```
+
+### Verification Commands
+```sql
+-- Verify mime_type is populated
+SELECT COUNT(*) as total, 
+       SUM(CASE WHEN mime_type IS NOT NULL THEN 1 ELSE 0 END) as with_mime
+FROM documents;
+
+-- Sample mime_type values
+SELECT DISTINCT mime_type, COUNT(*) 
+FROM documents 
+WHERE mime_type IS NOT NULL 
+GROUP BY mime_type 
+ORDER BY COUNT(*) DESC;
+```
+
+### Expected Results After E1
+```
+.jpg → image/jpeg
+.png → image/png
+.mp4 → video/mp4
+.pdf → application/pdf
+.md  → text/markdown
+```
+
+---
+
 ## Affected Files Reference
 
 ### Core Ingestion
 
 | File | Role |
 |------|------|
-| `ingestion/collection_watcher.py` | Metadata drops here |
+| `ingestion/collection_watcher.py` | ✅ **FIXED (E1)**: Now persists mime_type during discovery |
 | `ingestion/scanner.py` | Discovery metadata source |
 | `ingestion/indexer.py` | Indexing logic |
 
@@ -470,8 +545,8 @@ None - all remaining tasks are in scope.
 
 | File | Role |
 |------|------|
-| `storage/postgres_backend.py` | Document persistence |
-| `storage/migrations/*.sql` | Schema definitions |
+| `storage/postgres_backend.py` | ✅ **FIXED (E1)**: Now accepts and persists mime_type in discover_artifact() |
+| `storage/migrations/*.sql` | Schema definitions (mime_type column already exists) |
 
 ### Workers
 
@@ -486,7 +561,7 @@ None - all remaining tasks are in scope.
 
 | File | Role |
 |------|------|
-| `api/routes/explorer.py` | Document queries |
+| `api/routes/explorer.py` | Document queries (already queries mime_type) |
 | `api/routes/timeline.py` | Photo metadata queries |
 | `api/routes/operations.py` | System stats |
 
@@ -494,7 +569,7 @@ None - all remaining tasks are in scope.
 
 | File | Role |
 |------|------|
-| `parsers/image_parser.py` | Image metadata extraction |
+| `parsers/image_parser.py` | Image metadata extraction (still produces mime_type for structured_data) |
 | `parsers/csv_parser.py` | Structured data parsing |
 | `parsers/json_parser.py` | JSON parsing |
 

@@ -558,7 +558,7 @@ class PostgresBackend(StorageBackend):
         conn.close()
         return collection_id
     
-    def discover_artifact(self, path: str, extension: str = None, file_size: int = None, modified_time = None) -> int:
+    def discover_artifact(self, path: str, extension: str = None, file_size: int = None, modified_time = None, mime_type: str = None) -> int:
         """Create an artifact record immediately upon discovery.
         
         ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
@@ -572,6 +572,9 @@ class PostgresBackend(StorageBackend):
             extension: File extension (e.g., '.jpg')
             file_size: File size in bytes
             modified_time: Last modified timestamp
+            mime_type: MIME type of the artifact (e.g., 'image/jpeg')
+                       Persisted as Discovery Metadata - determined from extension
+                       during discovery, no worker or parser dependency.
             
         Returns:
             Document ID if created, None on failure
@@ -595,26 +598,27 @@ class PostgresBackend(StorageBackend):
                 INSERT INTO documents (
                     path, extension, file_size, modified_time, 
                     status, status_updated_at, artifact_type, 
-                    exists_on_disk, lifecycle_state
+                    exists_on_disk, lifecycle_state, mime_type
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (path) DO UPDATE SET
                     extension = EXCLUDED.extension,
                     file_size = EXCLUDED.file_size,
                     modified_time = EXCLUDED.modified_time,
                     exists_on_disk = TRUE,
                     deleted_at = NULL,
-                    artifact_type = EXCLUDED.artifact_type
+                    artifact_type = EXCLUDED.artifact_type,
+                    mime_type = EXCLUDED.mime_type
                 RETURNING id
                 """,
-                (path, extension, file_size, mod_time, status, status_updated_at, artifact_type, True, 'discovered')
+                (path, extension, file_size, mod_time, status, status_updated_at, artifact_type, True, 'discovered', mime_type)
             )
             document_id = cur.fetchone()[0]
             conn.commit()
             cur.close()
             conn.close()
             
-            logger.info(f"Discovered artifact: {path} -> id:{document_id}")
+            logger.info(f"Discovered artifact: {path} -> id:{document_id}, mime_type:{mime_type}")
             return document_id
         except Exception as e:
             logger.error(f"Error discovering artifact {path}: {e}")
