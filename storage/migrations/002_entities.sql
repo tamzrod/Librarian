@@ -1,5 +1,9 @@
 -- Migration: 002_entities.sql
 -- Purpose: Entity extraction and relationship tracking
+-- Upgrade: Adds entities, relationships, document_entities, and evidence_lineage tables plus supporting indexes.
+-- Downgrade: No automated downgrade path exists. Restore from backup or reset/rebuild the disposable catalog.
+-- Live DB Safety: Safe on a live database because it only creates new tables and indexes, although brief metadata locks may occur.
+-- Manual Steps: None.
 -- 
 -- This migration adds tables for:
 -- - Entity storage and classification

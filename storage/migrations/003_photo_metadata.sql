@@ -1,6 +1,10 @@
 -- Migration: 003_photo_metadata.sql
 -- Phase 1A: Photo Metadata Extraction
 -- Purpose: Store extracted EXIF metadata from image files for Evidence Timeline
+-- Upgrade: Adds the photo_metadata table, documentation comments, and indexes used by timeline/photo metadata queries.
+-- Downgrade: No automated downgrade path exists. Restore from backup or reset/rebuild the disposable catalog.
+-- Live DB Safety: Safe on a live database because it only creates a new table and indexes, though a short metadata lock is still expected.
+-- Manual Steps: None.
 
 -- Photo metadata table
 -- Stores deterministic metadata extracted from image EXIF data
