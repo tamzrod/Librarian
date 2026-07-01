@@ -12,7 +12,6 @@ from typing import Optional, Callable, Dict, Any
 
 from storage.backend import validate_backend_instance
 from storage.postgres_backend import PostgresBackend
-from ingestion.librarian import Librarian
 from ingestion.collection_watcher import CollectionWatcher, WATCHDOG_AVAILABLE
 from registry.parser_registry import ParserRegistry
 from registry.register_parsers import registry
@@ -150,7 +149,6 @@ class AppState:
     def __init__(self):
         self.backend: Optional[PostgresBackend] = None
         self.watcher: Optional[CollectionWatcher] = None
-        self.librarian: Optional[Librarian] = None
         self.parser_registry: Optional[ParserRegistry] = None
         self.job_processor: Optional[BackgroundJobProcessor] = None
         self.library_root: str = get_library_root(DEFAULT_LIBRARY_ROOT)
@@ -299,10 +297,9 @@ class AppState:
             return True
 
     def initialize_ingestion(self):
-        """Initialize the Librarian ingestion engine and parser registry."""
+        """Initialize the parser registry."""
         self.parser_registry = registry
-        self.librarian = Librarian()
-        logger.info("Librarian ingestion engine initialized")
+        logger.info("Parser registry initialized")
     
     def start_watcher(self):
         """Start the collection watcher if not already running."""
@@ -335,7 +332,11 @@ class AppState:
             self.watcher = None
     
     def run_initial_scan(self):
-        """Run initial scan of the library in a background thread."""
+        """Run initial scan of the library in a background thread.
+        
+        Uses CollectionWatcher.scan_collection() — the artifact inventory path —
+        so every file is discovered via PostgreSQL regardless of parser availability.
+        """
         if self._initial_scan_complete:
             logger.info("Initial scan already complete")
             return
@@ -343,51 +344,16 @@ class AppState:
         def scan():
             try:
                 logger.info("Starting initial library scan...")
-                library_path = get_library_root(self.library_root)
+                if self.watcher is None:
+                    logger.warning("Watcher not initialised, skipping initial scan")
+                    return
                 
-                if os.path.exists(library_path):
-                    self.librarian.ingest(library_path)
-                    self._last_scan = datetime.utcnow()
-                    logger.info(f"Initial scan complete. Indexed {len(self.librarian.index)} documents.")
-                    
-                    # Index documents into backend and create jobs
-                    if self.backend and hasattr(self.backend, 'save_document'):
-                        saved_count = 0
-                        failed_count = 0
-                        jobs_created = 0
-                        for doc in self.librarian.index:
-                            try:
-                                document_id = self.backend.save_document({
-                                    'path': doc.get('path'),
-                                    'extension': doc.get('extension'),
-                                    'sha256': doc.get('sha256_hash'),
-                                    'modified_time': doc.get('modified_time'),
-                                    'file_size': doc.get('file_size'),
-                                    'character_count': doc.get('character_count'),
-                                    'parser': doc.get('parser')
-                                })
-                                saved_count += 1
-                                
-                                # Create processing jobs for this document
-                                if self.backend and hasattr(self.backend, 'create_jobs_for_document'):
-                                    job_ids = self.backend.create_jobs_for_document(document_id)
-                                    jobs_created += len(job_ids)
-                            except Exception as e:
-                                import traceback
-                                tb = traceback.format_exc()
-                                failed_count += 1
-                                self.record_persistence_error(
-                                    f"Failed to save document {doc.get('path')}: {e}\n{tb}",
-                                    "save_document"
-                                )
-                        
-                        if failed_count > 0:
-                            logger.error(f"Initial scan: saved {saved_count} documents, {jobs_created} jobs created, {failed_count} failed")
-                        else:
-                            logger.info(f"Initial scan: all {saved_count} documents persisted, {jobs_created} jobs queued")
-                else:
-                    logger.warning(f"Library path does not exist for initial scan: {library_path}")
-                    
+                stats = self.watcher.scan_collection()
+                self._last_scan = datetime.utcnow()
+                logger.info(
+                    f"Initial scan complete: {stats['new_jobs']} new jobs, "
+                    f"{stats['skipped']} skipped, {stats['errors']} errors"
+                )
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()

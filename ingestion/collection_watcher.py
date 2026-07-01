@@ -1,4 +1,5 @@
 import os
+import hashlib
 import time
 import threading
 from pathlib import Path
@@ -267,12 +268,15 @@ class CollectionWatcher:
         Returns:
             Dict with scan statistics: {'new_jobs': int, 'skipped': int, 'errors': int}
         """
-        import hashlib
         stats = {'new_jobs': 0, 'skipped': 0, 'errors': 0}
         
         for root, dirs, files in os.walk(self.path):
-            # Skip hidden directories
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            # Skip hidden and common non-library directories
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith('.')
+                and d not in {'__pycache__', '.venv', 'node_modules'}
+            ]
             
             for filename in files:
                 if filename.startswith('.'):

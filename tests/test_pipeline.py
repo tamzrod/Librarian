@@ -2,7 +2,6 @@ import os
 from ingestion.scanner import parse_file
 from ingestion.chunker import chunk_text
 from ingestion.indexer import index_document
-from ingestion.persistence import save_index, load_index
 from ingestion.retriever import search_documents
 
 
@@ -29,16 +28,10 @@ def test_pipeline():
     parsed_files = len(indexed_docs)
     indexed_files = len(indexed_docs)
     
-    # 5. Save index
-    save_index(indexed_docs, 'samples/test_index.json')
-    
-    # 6. Reload index
-    reloaded_index = load_index('samples/test_index.json')
-    
-    # 7. Search for json, xml, yaml
-    json_results = search_documents(reloaded_index, 'json')
-    xml_results = search_documents(reloaded_index, 'xml')
-    yaml_results = search_documents(reloaded_index, 'yaml')
+    # 5. Search in-memory (JSON persistence is deprecated; search directly)
+    json_results = search_documents(indexed_docs, 'json')
+    xml_results = search_documents(indexed_docs, 'xml')
+    yaml_results = search_documents(indexed_docs, 'yaml')
     
     print(f"Number of scanned files: {scanned_files}")
     print(f"Number of parsed files: {parsed_files}")
