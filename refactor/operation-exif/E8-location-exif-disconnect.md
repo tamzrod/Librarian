@@ -1,8 +1,40 @@
-# E8: Location/EXIF Disconnect
+# E8: Location/EXIF Disconnect → Map Aggregation Layer
 
 **Status:** Open  
 **Severity:** High  
-**Classification:** Open
+**Classification:** Open  
+**Priority:** 7
+
+## Updated Approach: Map Aggregation Layer
+
+**E3 has been CANCELLED.** This task now implements a Map Aggregation Layer that combines GPS from `photo_metadata` with semantic locations from the `locations` table.
+
+### Key Design Decision
+
+GPS coordinates should **NOT** be copied to the `locations` table. Instead, the API should aggregate both sources:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Map Aggregation Layer                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  GET /api/locations?document_id=123                         │
+│       │                                                      │
+│       ├──► photo_metadata.gps_* ──► GPS Locations            │
+│       │                                                      │
+│       └──► locations table ─────► Semantic Locations          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Rationale
+
+1. **Discovery vs Enrichment:** GPS is Discovery metadata (immediately available from EXIF), semantic locations are Enrichment metadata (require reverse geocoding - not implemented)
+2. **Ownership clarity:** `photo_metadata` owns GPS, `locations` owns semantic names
+3. **No duplication:** GPS doesn't need to be copied
+4. **Simpler sync:** No dual ownership to keep in sync
+
+---
 
 ## Problem Statement
 
@@ -23,11 +55,11 @@ Location extraction and EXIF extraction operate in isolation:
 
 | File | Issue |
 |------|-------|
-| `workers/location_extractor.py` | Only reads text, not photo_metadata |
-| `workers/photo_metadata_extractor.py` | Doesn't save to locations |
-| `extractors/location_extractor.py` | Doesn't read photo_metadata |
-| `api/routes/explorer.py` | Different query path than timeline |
-| `api/routes/timeline.py` | Different query path than explorer |
+| `workers/location_extractor.py` | Extracts text locations |
+| `workers/photo_metadata_extractor.py` | Extracts GPS to photo_metadata |
+| `storage/postgres_backend.py` | Needs unified location query |
+| `api/routes/explorer.py` | Needs to query both sources |
+| `api/routes/timeline.py` | Currently queries photo_metadata only |
 
 ## Current Architecture
 
@@ -45,81 +77,107 @@ Location extraction and EXIF extraction operate in isolation:
 │ PhotoMetadataExtractor                                      │
 │ - Reads: image files                                       │
 │ - Extracts: GPS, EXIF, camera                             │
-│ - Saves to: photo_metadata table (NOT locations)           │
+│ - Saves to: photo_metadata table (GPS stays here)          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Required Changes
 
-### 1. Unified Location Data
-
-```
-GPS Coordinates (from photo_metadata)
-    │
-    ├─→ Reverse geocode (future)
-    │
-    └─→ Save to locations table (E3)
-            │
-            └─→ link_location_to_document(doc_id, location_id)
-                    │
-                    └─→ Available in location queries
-```
-
-### 2. Cross-Reference Locations
+### 1. Backend: Unified Location Query
 
 ```python
-# When photo has GPS coordinates:
-# 1. Extract GPS to photo_metadata (done)
-# 2. Create location record (E3)
-# 3. Link document to location
-# 4. Future: reverse geocode for city/state/country
+# storage/postgres_backend.py
 
-# Then LocationExtractor can:
-# - Query photo_metadata for GPS
-# - Find nearby text-extracted locations
-# - Match or suggest location names
-```
-
-### 3. Timeline + Explorer Integration
-
-```python
-# Get locations for a document
-def get_document_locations(document_id):
+def get_document_locations(self, document_id: int) -> list:
+    """
+    Get all locations for a document from both sources.
+    Returns GPS from photo_metadata AND semantic locations from locations table.
+    """
     locations = []
     
-    # 1. Text-extracted locations
-    text_locations = backend.get_locations_for_document(document_id)
-    locations.extend(text_locations)
-    
-    # 2. GPS locations
-    photo_meta = backend.get_photo_metadata(document_id)
+    # 1. GPS from photo_metadata
+    photo_meta = self.get_photo_metadata(document_id)
     if photo_meta and photo_meta.get('gps_latitude'):
-        gps_location = {
+        locations.append({
             'type': 'GPS',
             'latitude': photo_meta['gps_latitude'],
-            'longitude': photo_meta['gps_longitude']
-        }
-        locations.append(gps_location)
+            'longitude': photo_meta['gps_longitude'],
+            'source': 'photo_metadata'
+        })
+    
+    # 2. Semantic locations from locations table
+    semantic = self.get_locations_for_document(document_id)
+    for loc in semantic:
+        loc['source'] = 'locations_table'
+        locations.append(loc)
     
     return locations
 ```
 
+### 2. API: Unified Location Endpoint
+
+```python
+# api/routes/locations.py (new or update existing)
+
+@router.get("/documents/{document_id}/locations")
+async def get_document_locations(document_id: int):
+    """
+    Returns all locations for a document:
+    - GPS coordinates from photo_metadata
+    - Semantic locations from locations table
+    """
+    locations = backend.get_document_locations(document_id)
+    return {"document_id": document_id, "locations": locations}
+```
+
+### 3. API: Location Search (Optional Enhancement)
+
+```python
+# Find all photos near a GPS coordinate OR containing a location name
+
+@router.get("/documents/by-location")
+async def find_documents_by_location(
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    location_name: Optional[str] = None,
+    radius_km: float = 10.0
+):
+    """
+    Find documents by GPS proximity OR location name.
+    """
+    results = []
+    
+    # By GPS proximity
+    if lat is not None and lon is not None:
+        gps_docs = backend.find_documents_by_gps(lat, lon, radius_km)
+        results.extend(gps_docs)
+    
+    # By location name
+    if location_name:
+        named_docs = backend.find_documents_by_location_name(location_name)
+        results.extend(named_docs)
+    
+    # Deduplicate
+    return {"documents": list(set(results))}
+```
+
 ## Definition of Done
 
-- [ ] GPS locations queryable via location API
-- [ ] Explorer shows GPS locations for photos
-- [ ] Timeline shows text locations for photos
-- [ ] Location deduplication works across sources
+- [ ] `get_document_locations()` returns GPS from photo_metadata AND semantic from locations
+- [ ] API endpoint returns unified location data
+- [ ] Explorer can query both sources
+- [ ] Timeline can query both sources
+- [ ] GPS coordinates searchable via location queries
 
 ## Dependencies
 
-- E3 (GPS to locations)
+- **Hard:** E2 (structured_data handling)
 
 ## Risk Assessment
 
-- **Medium Risk:** Requires coordinating two systems
+- **Medium Risk:** Requires API changes, no schema changes
 - **Impact:** Unified location experience
-- **Testing:** Test location queries with GPS photos
+- **Testing:** Test location queries with GPS photos and text locations
 
 ## Effort Estimate
 

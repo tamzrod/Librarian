@@ -1,10 +1,41 @@
 # E3: GPS Not Copied to locations Table
 
-**Status:** Open  
+**Status:** CANCELLED  
 **Severity:** High  
-**Classification:** Open
+**Classification:** Superseded
 
-## Problem Statement
+---
+
+## Status Note
+
+**This task has been CANCELLED and replaced by E8 (Map Aggregation Layer).**
+
+### Rationale
+
+GPS coordinates should remain in `photo_metadata`, not be copied to `locations` table.
+
+**Reasons:**
+1. **Discovery vs Enrichment:** GPS is Discovery metadata (immediately available from EXIF parsing), semantic locations are Enrichment metadata (require reverse geocoding - not implemented)
+2. **Ownership clarity:** `photo_metadata` owns GPS, `locations` owns semantic names
+3. **No duplication:** GPS doesn't need to be copied
+4. **Simpler sync:** No dual ownership to keep in sync
+
+### New Approach (see E8)
+
+Instead of copying GPS to locations, implement a **Map Aggregation Layer** in E8 that:
+- Queries `photo_metadata` for GPS coordinates
+- Queries `locations` table for semantic locations
+- Returns unified results via a single API
+
+---
+
+## Original Task (Archived)
+
+The original task description is preserved below for historical context.
+
+**Superseded by:** E8 - Map Aggregation Layer
+
+### Original Problem Statement
 
 GPS coordinates extracted from image EXIF data are stored in `photo_metadata` table but are **never copied to the `locations` table**. This causes:
 
@@ -14,13 +45,13 @@ GPS coordinates extracted from image EXIF data are stored in `photo_metadata` ta
 4. **BUT:** Reverse geocoding cannot be applied to GPS locations
 5. **BUT:** Location deduplication doesn't include GPS coordinates
 
-## Impact
+### Original Impact
 
 - **User Impact:** GPS coordinates not searchable via location queries
 - **Developer Impact:** Two different code paths for location data
 - **Data Impact:** GPS locations not benefiting from location deduplication
 
-## Affected Files
+### Original Affected Files
 
 | File | Issue |
 |------|-------|
@@ -29,7 +60,7 @@ GPS coordinates extracted from image EXIF data are stored in `photo_metadata` ta
 | `storage/postgres_backend.py` | No method to link photo_metadata GPS to locations |
 | `extractors/location_extractor.py` | Doesn't read photo_metadata |
 
-## Current Flow
+### Original Current Flow
 
 ```
 Image File
@@ -52,92 +83,34 @@ VALUES (..., 14.635186, 121.092547, ...)
 NO LINK TO locations table
 ```
 
-## Required Changes
+### Original Required Changes
 
-### Option A: Add Job to Extract GPS Locations
+**These approaches are now archived - see E8 for the new direction.**
 
-Create a new job type `extract_gps_locations` that runs after `extract_photo_metadata`:
+#### Option A: Add Job to Extract GPS Locations
 
-```python
-# workers/gps_location_extractor.py
-def process(self, job):
-    photo_metadata = backend.get_photo_metadata(job['document_id'])
-    if photo_metadata.get('gps_latitude') and photo_metadata.get('gps_longitude'):
-        location_id = backend.save_location(
-            name=f"GPS: {lat}, {lon}",
-            coordinates=(lat, lon)
-        )
-        backend.add_location_to_document(job['document_id'], location_id)
-```
+Create a new job type `extract_gps_locations` that runs after `extract_photo_metadata`.
 
-### Option B: Modify PhotoMetadataExtractor
+#### Option B: Modify PhotoMetadataExtractor
 
-Add location saving to existing `PhotoMetadataExtractor`:
+Add location saving to existing `PhotoMetadataExtractor`.
 
-```python
-# In PhotoMetadataExtractor.process()
-if metadata.get('gps_latitude') and metadata.get('gps_longitude'):
-    location_id = self.backend.save_location(
-        name=f"GPS: {metadata['gps_latitude']}, {metadata['gps_longitude']}",
-        coordinates=(metadata['gps_latitude'], metadata['gps_longitude'])
-    )
-    self.backend.add_location_to_document(document_id, location_id)
-```
+#### Option C: Create LocationSync Worker
 
-### Option C: Create LocationSync Worker
+New worker that syncs GPS data between tables.
 
-New worker that syncs GPS data between tables:
-
-```python
-# workers/location_sync_worker.py
-def sync_photo_locations():
-    photos = backend.get_all_photos_with_gps()
-    for photo in photos:
-        location_id = backend.save_location(
-            name=f"GPS: {photo['gps_latitude']}, {photo['gps_longitude']}",
-            coordinates=(photo['gps_latitude'], photo['gps_longitude'])
-        )
-        backend.add_location_to_document(photo['document_id'], location_id)
-```
-
-## Recommended Approach
-
-**Option B - Modify PhotoMetadataExtractor**
-
-1. Simpler than adding new jobs
-2. Keeps GPS and location together
-3. Single point of failure for debugging
-
-## Definition of Done
-
-- [ ] GPS coordinates stored in locations table
-- [ ] Document linked to GPS location via document_locations
-- [ ] Existing GPS-tagged photos backfilled
-- [ ] Map and location queries both work with GPS data
-
-## Dependencies
+### Original Dependencies
 
 - **Hard:** E2 (structured_data handling)
 - **Soft:** E1 (mime_type - can parallelize)
 
-## Risk Assessment
-
-- **Low Risk:** Simple database inserts
-- **Impact:** Enables GPS-based location features
-- **Testing:** Test with existing GPS-tagged images
-
-## Effort Estimate
+### Original Effort Estimate
 
 - **Time:** 2-4 hours
 - **Complexity:** Low
-- **Testing:** Medium (need backfill logic)
 
-## Existing GPS Data
+### Original Existing GPS Data
 
-Current database state:
+Current database state (at time of original analysis):
 - `photo_metadata`: 0 rows (but jobs queued)
 - `locations`: 2 rows (text-extracted, no GPS)
-
-After fix, expected:
-- `locations`: ~500+ rows (GPS-based)
-- `document_locations`: Matching count
