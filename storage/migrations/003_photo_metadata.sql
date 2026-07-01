@@ -2,7 +2,7 @@
 -- Phase 1A: Photo Metadata Extraction
 -- Purpose: Store extracted EXIF metadata from image files for Evidence Timeline
 -- Upgrade: Adds the photo_metadata table, documentation comments, and indexes used by timeline/photo metadata queries.
--- Downgrade: No automated downgrade path exists; restore from backup or reset/rebuild the disposable catalog.
+-- Downgrade: No automated downgrade path exists. Restore from backup or reset/rebuild the disposable catalog.
 -- Live DB Safety: Safe on a live database because it only creates a new table and indexes, though a short metadata lock is still expected.
 -- Manual Steps: None.
 

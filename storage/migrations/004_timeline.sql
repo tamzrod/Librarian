@@ -1,7 +1,7 @@
 -- Migration: 004_timeline.sql
 -- Purpose: Timeline and temporal data tracking
 -- Upgrade: Adds events, document_events, locations, and document_locations tables plus supporting indexes.
--- Downgrade: No automated downgrade path exists; restore from backup or reset/rebuild the disposable catalog.
+-- Downgrade: No automated downgrade path exists. Restore from backup or reset/rebuild the disposable catalog.
 -- Live DB Safety: Safe on a live database because it only creates new tables and indexes, though a short metadata lock is still expected.
 -- Manual Steps: None.
 -- 

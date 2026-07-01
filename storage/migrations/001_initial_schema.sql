@@ -1,7 +1,7 @@
 -- Migration: 001_initial_schema.sql
 -- Purpose: Core tables required for Librarian operation
 -- Upgrade: Bootstraps the schema_migrations, collections, documents, and document_jobs tables for a fresh database.
--- Downgrade: No automated downgrade path exists; restore from backup or use MigrationManager.reset_schema()/full_reset_and_rebuild() when the catalog can be regenerated.
+-- Downgrade: No automated downgrade path exists. Restore from backup or use MigrationManager.reset_schema()/full_reset_and_rebuild() when the catalog can be regenerated.
 -- Live DB Safety: Safe for first-time initialization only. Existing deployments should already have these tables before serving traffic.
 -- Manual Steps: None for a fresh install. If this file must be re-applied after corruption, stop the application and rebuild from the filesystem-backed source of truth.
 -- 

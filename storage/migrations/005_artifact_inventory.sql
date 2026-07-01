@@ -1,7 +1,7 @@
 -- Migration: 005_artifact_inventory.sql
 -- Purpose: Artifact Inventory Architecture
 -- Upgrade: Adds artifact inventory columns to documents, creates artifact_type_enum, backfills existing rows, and adds lifecycle/deletion indexes.
--- Downgrade: No automated downgrade path exists; restore from backup if the previous schema must be recovered.
+-- Downgrade: No automated downgrade path exists. Restore from backup if the previous schema must be recovered.
 -- Live DB Safety: Run during a maintenance window or low-traffic period because ALTER TABLE and backfill UPDATE statements lock and rewrite rows in documents.
 -- Manual Steps: Verify workers tolerate the new columns before rollout. No manual data backfill is required beyond the statements in this migration.
 -- 
