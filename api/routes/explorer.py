@@ -7,13 +7,13 @@ Models a familiar file-browser experience similar to VSCode, Finder, or Windows 
 import os
 from typing import Optional
 from datetime import datetime
-from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_storage_backend
 from api.app_state import get_app_state
+from api.routes.explorer_paths import resolve_folder_path
 from storage.backend import StorageBackend
 
 
@@ -128,30 +128,6 @@ def normalize_path_relative(path: str, collection_root: str) -> str:
     
     relative = normalized_path[len(normalized_root):]
     return relative.lstrip('/')
-
-
-def resolve_folder_path(folder_path: str, collection_root: str) -> tuple[str, str]:
-    """Resolve request folder path to a full absolute path and relative path."""
-    decoded_path = unquote(folder_path or "").strip()
-    normalized_root = collection_root.rstrip("/")
-    root_no_leading_slash = normalized_root.lstrip("/")
-
-    if not decoded_path or decoded_path == "/":
-        return normalized_root, ""
-
-    if decoded_path in {normalized_root, root_no_leading_slash}:
-        return normalized_root, ""
-
-    if decoded_path.startswith(f"{normalized_root}/"):
-        relative_path = decoded_path[len(normalized_root):].strip("/")
-        return f"{normalized_root}/{relative_path}", relative_path
-
-    if decoded_path.startswith(f"{root_no_leading_slash}/"):
-        relative_path = decoded_path[len(root_no_leading_slash):].strip("/")
-        return f"{normalized_root}/{relative_path}", relative_path
-
-    relative_path = decoded_path.strip("/")
-    return f"{normalized_root}/{relative_path}", relative_path
 
 
 def _extract_folder_paths(conn, collection_root: str) -> list[str]:
@@ -456,7 +432,10 @@ async def get_folder_contents(
     collection_root = app_state.library_root or "/library"
     
     # Accept both relative ("Camera") and absolute ("/library/Camera") inputs.
-    full_folder_path, relative_folder_path = resolve_folder_path(folder_path, collection_root)
+    try:
+        full_folder_path, relative_folder_path = resolve_folder_path(folder_path, collection_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     
     subfolders = []
     documents = []
