@@ -85,6 +85,8 @@ class DocumentDetail(BaseModel):
     sha256: Optional[str] = Field(default=None, description="SHA256 hash")
     # Artifact type classification
     artifact_type: Optional[str] = Field(default=None, description="Artifact type: Image, Document, Video, Audio, Archive, Structured Data")
+    # Thumbnail (E5)
+    thumbnail_path: Optional[str] = Field(default=None, description="Relative path to generated thumbnail")
     # Processing status from jobs
     processing_status: list[ProcessingStatus] = Field(default_factory=list, description="Enrichment processing status")
 
@@ -547,14 +549,15 @@ async def get_document_details(
             # Get document details
             cur.execute("""
                 SELECT id, path, extension, file_size, mime_type, modified_time,
-                       created_at, indexed_at, status, character_count, sha256
+                       created_at, indexed_at, status, character_count, sha256,
+                       thumbnail_path
                 FROM documents
                 WHERE id = %s
             """, (document_id,))
-            
+
             row = cur.fetchone()
             if row:
-                doc_id, doc_path, ext, size, mime, modified, created, indexed, status, char_count, sha = row
+                doc_id, doc_path, ext, size, mime, modified, created, indexed, status, char_count, sha, thumbnail = row
                 filename = doc_path.rsplit('/', 1)[-1] if '/' in doc_path else doc_path
                 
                 # Determine artifact type
@@ -591,6 +594,7 @@ async def get_document_details(
                     character_count=char_count,
                     sha256=sha,
                     artifact_type=artifact_type,
+                    thumbnail_path=thumbnail,  # E5: Thumbnail path
                     processing_status=processing_status
                 )
             

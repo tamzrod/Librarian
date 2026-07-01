@@ -5,13 +5,15 @@ See ADR 0005 for details.
 """
 
 import logging
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
 from fastapi import FastAPI, Request, Query, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import uuid
 
 from api.routes import questions, collections, pipeline, operations, timeline, explorer
@@ -28,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Library root from environment
 LIBRARY_ROOT = get_library_root()
 
+# Thumbnail directory (E5)
+THUMBNAIL_DIR = ".thumbnails"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,9 +42,9 @@ async def lifespan(app: FastAPI):
     logger.info("Library root: %s", LIBRARY_ROOT)
     initialize_app()
     logger.info("Librarian API initialized successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Librarian API...")
     shutdown_app()
@@ -83,6 +88,21 @@ app.include_router(pipeline.router, prefix="/api/v1")
 app.include_router(operations.router, prefix="/api/v1")
 app.include_router(timeline.router, prefix="/api/v1")
 app.include_router(explorer.router, prefix="/api/v1")
+
+
+# E5: Thumbnail serving endpoint
+@app.get("/thumbnails/{path:path}", response_class=FileResponse)
+async def get_thumbnail(path: str):
+    """
+    Serve thumbnail files.
+
+    E5: Thumbnail endpoint for serving generated thumbnails.
+    Thumbnails are stored in .thumbnails directory relative to library root.
+    """
+    thumbnail_full_path = Path(LIBRARY_ROOT) / THUMBNAIL_DIR / path
+    if thumbnail_full_path.exists():
+        return FileResponse(str(thumbnail_full_path))
+    return {"error": "Thumbnail not found"}, 404
 
 
 @app.get("/")

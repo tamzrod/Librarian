@@ -197,7 +197,26 @@ class CollectionWatcher:
                 parsed = parser.parse(full_path)
                 if parsed:
                     print(f"[CollectionWatcher] Parsed {artifact_path}: {parsed.get('character_count', 0)} chars")
-                    
+
+                    # E2: Route structured_data according to routing contract
+                    # Every parser field must have explicit outcome: persist, transform, or discard
+                    # See: refactor/operation-exif/E2-structured-data-dropped.md
+                    from .structured_data_router import route_structured_data, log_routing_summary
+                    parser_type = parsed.get('parser', 'unknown')
+                    if 'structured_data' in parsed and parsed['structured_data'] is not None:
+                        try:
+                            routing_decisions = route_structured_data(
+                                parser_type,
+                                parsed['structured_data'],
+                                log_routing=True
+                            )
+                            print(f"[CollectionWatcher] Structured data routed for {artifact_path}: {len(routing_decisions)} decisions")
+                        except ValueError as e:
+                            # E2: Fail-safe: don't silently drop unexpected fields
+                            # This catches implicit discards - fields without routing decisions
+                            print(f"[CollectionWatcher] ERROR: {e}")
+                            raise
+
                     # Build full document metadata
                     # Include artifact_type to ensure correct job scheduling
                     artifact_type = self.parser_registry.get_artifact_type(full_path)
@@ -207,16 +226,16 @@ class CollectionWatcher:
                         'modified_time': datetime.fromtimestamp(stat.st_mtime),
                         'file_size': stat.st_size,
                         'character_count': parsed.get('character_count'),
-                        'parser': parsed.get('parser', full_path.suffix[1:] if full_path.suffix else 'text'),
+                        'parser': parser_type,
                         'artifact_type': artifact_type,
                         'status': 'METADATA_INDEXED'
                     }
-                    
+
                     # Update document with parsed data
                     if hasattr(self.backend, 'save_document'):
                         self.backend.save_document(document)
                         print(f"[CollectionWatcher] Updated document {artifact_path} with parsed data")
-                    
+
                     # Create processing jobs for enrichment
                     if doc_id and hasattr(self.backend, 'create_jobs_for_document'):
                         job_ids = self.backend.create_jobs_for_document(doc_id)
