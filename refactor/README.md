@@ -1,43 +1,78 @@
 # Refactor Plans
 
-This folder tracks the approved refactor strategy.
+This folder tracks the approved refactor strategy for the Librarian codebase.
 
-- **Architectural Priority** answers: which problems matter most to solve from a system design perspective.
-- **Implementation Order** answers: which sequence should be executed to minimize risk, preserve safety nets, and reduce cross-PR blast radius.
+---
 
-These two orders are intentionally different. High architectural importance does **not** imply a plan should be implemented first.
+## Active Plans
 
-## Architectural Priority vs Implementation Order
+Plans currently in progress or ready to begin implementation.
 
-| Architectural Priority | Implementation Order | ID | Plan | Effort | Risk | Notes | Status |
-|---|---:|---|---|---|---|---|---|
-| 1 | 12 | P4 | [Replace AppState Singleton with Dependency Injection](./P4-replace-singleton-with-di.md) | High | Medium | Highest architectural value; intentionally last due to blast radius | Planned |
-| 2 | 4 | P3 | [Enforce Backend Interface](./P3-enforce-backend-interface.md) | Low | Low | Foundational backend contract before later structural changes | Completed |
-| 3 | 7 | P1 | [Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md) | Medium | Low | Removes duplicate ingestion architecture after baseline tests exist | Completed |
-| 4 | 11 | P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | Important runtime consolidation, but safer after P5 and P6 | Planned |
-| 5 | 6 | P6 | [Add Integration Tests](./P6-add-integration-tests.md) | Medium | Medium | Baseline regression suite required before larger refactors | Completed |
-| 6 | 5 | P5 | [Add Worker Abstract Base](./P5-add-worker-abstract-base.md) | Low | Low | Small enabling contract for P2 | Completed |
-| 7 | 10 | P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | Low | Low | Depends on enforced backend contract; simpler after ingestion cleanup | Planned |
-| 8 | 9 | P7 | [Add Missing DB Indexes](./P7-add-missing-db-indexes.md) | Low | Medium | Important operational improvement; scheduled after migration docs | Completed |
-| 9 | 8 | P11 | [Remove JSON Persistence Layer](./P11-remove-json-persistence.md) | Low | Low | Cleanup step that should land immediately after P1 | Completed |
-| 10 | 1 | P9 | [Standardise Environment Variables](./P9-standardise-env-vars.md) | Low | Low | Safe, low-blast-radius setup work | Completed |
-| 11 | 2 | P10 | [Document Schema Migrations](./P10-document-schema-migrations.md) | Low | Medium | Documentation-first migration hygiene before schema changes | Completed |
-| 12 | 3 | P12 | [Add ParserRegistry.get_supported_extensions()](./P12-parser-registry-extensions.md) | Low | Low | Isolated API improvement with no sequencing pressure | Completed |
+| ID | Plan | Effort | Risk | Priority | Status |
+|----|------|--------|------|----------|--------|
+| P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | 4 | ⚠️ Partially Complete |
 
-## Approved Implementation Order
+---
 
-1. [P9 — Standardise Environment Variables](./P9-standardise-env-vars.md)
-2. [P10 — Document Schema Migrations](./P10-document-schema-migrations.md)
-3. [P12 — Add ParserRegistry.get_supported_extensions()](./P12-parser-registry-extensions.md)
-4. [P3 — Enforce Backend Interface](./P3-enforce-backend-interface.md)
-5. [P5 — Add Worker Abstract Base](./P5-add-worker-abstract-base.md)
-6. [P6 — Add Integration Tests](./P6-add-integration-tests.md) — baseline regression suite
-7. [P1 — Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md)
-8. [P11 — Remove JSON Persistence Layer](./P11-remove-json-persistence.md)
-9. [P7 — Add Missing DB Indexes](./P7-add-missing-db-indexes.md)
-10. [P8 — Fix Incomplete Soft Delete](./P8-fix-soft-delete.md)
-11. [P2 — Unify Worker Runtime](./P2-unify-worker-runtime.md)
-12. [P4 — Replace AppState Singleton with Dependency Injection](./P4-replace-singleton-with-di.md)
+## Partially Complete
+
+Plans with progress made but work remaining.
+
+| ID | Plan | Effort | Risk | Remaining Work |
+|----|------|--------|------|----------------|
+| P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | Low | Low | Remove fallback in collection_watcher; add startup validation |
+
+---
+
+## Planned
+
+Approved plans not yet started.
+
+| ID | Plan | Effort | Risk | Priority | Notes |
+|----|------|--------|------|----------|-------|
+| P4 | [Replace AppState Singleton with DI](./P4-replace-singleton-with-di.md) | High | Medium | 1 | Intentionally last due to blast radius |
+
+---
+
+## Archived Plans
+
+Completed refactor plans. See [archive/](archive/) for historical documentation.
+
+### Wave 1 — Setup and Documentation
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P9 | [Standardise Environment Variables](./archive/P9-standardise-env-vars.md) | 2026-07 | Low | 10 |
+| P10 | [Document Schema Migrations](./archive/P10-document-schema-migrations.md) | 2026-07 | Low | 11 |
+| P12 | [Add ParserRegistry Extensions](./archive/P12-parser-registry-extensions.md) | 2026-07 | Low | 12 |
+
+### Wave 2 — Establish Contracts
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P3 | [Enforce Backend Interface](./archive/P3-enforce-backend-interface.md) | 2026-07 | Low | 2 |
+| P5 | [Add Worker Abstract Base](./archive/P5-add-worker-abstract-base.md) | 2026-07 | Low | 6 |
+
+### Wave 3 — Regression Coverage
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P6 | [Add Integration Tests](./archive/P6-add-integration-tests.md) | 2026-07 | Medium | 5 |
+
+### Wave 4 — Consolidate Ingestion
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P1 | [Consolidate Ingestion Paths](./archive/P1-consolidate-ingestion-paths.md) | 2026-07 | Medium | 3 |
+| P11 | [Remove JSON Persistence](./archive/P11-remove-json-persistence.md) | 2026-07 | Low | 9 |
+
+### Wave 5 — Database Improvements
+
+| ID | Plan | Completion Date | Effort | Priority |
+|----|------|-----------------|--------|----------|
+| P7 | [Add Missing DB Indexes](./archive/P7-add-missing-db-indexes.md) | 2026-07 | Low | 8 |
+
+---
 
 ## Dependency Graph
 
@@ -54,71 +89,22 @@ P1  ──soft──▶ P8
 P2  ──soft──▶ P4
 ```
 
-### Hard prerequisites
+### Prerequisites for Remaining Plans
 
-- **P6 → P1** — baseline ingestion regression coverage must exist first
-- **P6 → P2** — worker-runtime consolidation must have regression coverage first
-- **P6 → P4** — the AppState/route rewrite must have regression coverage first
-- **P5 → P2** — P2 should standardise on `BaseWorker.process()` instead of inventing a separate worker contract
-- **P3 → P8** — soft-delete cleanup assumes `mark_deleted()` is a real backend contract
-- **P1 → P11** — JSON persistence cleanup is valid only after ingestion is consolidated
+| Plan | Hard Prerequisites | Soft Prerequisites |
+|------|-------------------|-------------------|
+| **P2** | P5 ✅, P6 ✅ | — |
+| **P8** | P3 ✅ | P1 ✅ |
+| **P4** | P6 ✅ | P3 ✅, P2 ✅ |
 
-### Soft prerequisites
+---
 
-- **P3 → P4** — dependency injection is safer once backend contracts are enforced
-- **P10 → P7** — document migration behaviour before adding new schema migrations
-- **P1 → P8** — soft-delete cleanup is simpler once the ingestion path is consolidated
-- **P2 → P4** — removing duplicate worker runtime logic first narrows P4's refactor surface in `api/app_state.py`
+## Sequencing Notes
 
-### Sequencing notes
-
-- **P11 should immediately follow P1** to remove obsolete JSON persistence before it becomes stale cleanup work.
 - **P4 is intentionally last** because it touches application startup, route wiring, test fixtures, and repository-wide state access patterns.
-
-## Implementation Waves
-
-| Wave | Plans | Purpose |
-|---|---|---|
-| 1 | P9, P10, P12 | Low-risk setup and documentation work with no blocking dependencies |
-| 2 | P3, P5 | Establish backend and worker contracts |
-| 3 | P6 | Land the baseline regression suite before structural refactors |
-| 4 | P1, P11 | Consolidate ingestion, then remove JSON persistence immediately after |
-| 5 | P7, P8 | Database/schema follow-up work after contracts and ingestion cleanup |
-| 6 | P2 | Consolidate worker runtime after worker contract and regression coverage exist |
-| 7 | P4 | Final repository-wide dependency injection refactor |
-
-## Plans That Can Execute in Parallel
-
-These plans can run in parallel once all prerequisites for that wave are satisfied:
-
-- **Wave 1:** P9, P10, and P12
-- **Wave 2:** P3 and P5
-- **Wave 5:** P7 and P8
-
-Plans that should remain sequential:
-
-- **P6 before P1, P2, and P4**
-- **P1 before P11**
-- **P5 before P2**
-- **P3 before P8**
-- **P4 after all prior waves**
-
-## Plans That Must Not Be Combined into a Single PR
-
-- **P1 + P2** — both are medium-sized structural refactors and both touch `api/app_state.py`
-- **P1 + P4** — combines ingestion consolidation with repository-wide dependency injection
-- **P2 + P4** — combines worker-runtime consolidation with the broadest state-management rewrite
-- **P4 + P8** — mixes repository-wide DI churn with schema/backend soft-delete changes
-- **P7 + P8** — two migration-bearing changes should remain independently reviewable and rollbackable
-- **P3 + P4** — P3 should merge first so P4 can build on a verified backend contract
-
-Natural pairings that *can* stay together when scope remains small:
-
-- **P1 + P11** — cleanup immediately after ingestion consolidation
-- **P9 + P12** — independent, low-risk documentation/API improvements
-- **P10 + P7** — migration documentation plus the related schema update
-- **P3 + P5** — small interface-enforcement changes in separate subsystems
+- **P2 is the recommended next target** because prerequisites are met and it has lower risk than P4.
 
 ---
 
 Source: `docs/architecture/architectural-audit-2026-06.md`
+Audit: `docs/architecture/architectural-audit-2026-07.md`

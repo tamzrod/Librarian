@@ -5,6 +5,7 @@
 **Architectural Priority:** 4 | **Implementation Order:** 11
 **Hard Prerequisites:** P5, P6
 **Soft Prerequisites:** None
+**Status:** ⚠️ Partially Complete
 
 ---
 
@@ -18,36 +19,46 @@
 - Retry / exponential backoff
 - Graceful shutdown
 
-Neither is designated as the canonical implementation, so bug fixes and improvements are applied inconsistently.
+Neither was designated as the canonical implementation, so bug fixes and improvements are applied inconsistently.
 
-## Impact
+## Resolution Progress (2026-07)
 
-- Duplicate code that diverges silently over time.
-- Any change to job retry semantics must be made in two places.
-- Unclear which implementation runs in production vs. testing.
+### Completed
+- ✅ P5 (Worker Abstract Base) completed — all workers now inherit from `BaseWorker` and implement `process(job)` uniformly
+- ✅ Handler registration unified through `BaseWorker.process()` method
+
+### Remaining Work
+- 🔴 Both `BackgroundJobProcessor` and `Worker` still exist independently
+- 🔴 No `WorkerRuntime` ABC/Protocol defined yet
+- 🔴 No canonical implementation designated
+- 🔴 Duplicate code still exists
+
+## Current State
+
+Both implementations exist and use the same handler registration pattern:
+
+```python
+# BackgroundJobProcessor (app_state.py)
+self.job_processor.register_handler(
+    'extract_text', 
+    ContentExtractor(self.backend, library_root).process
+)
+
+# Worker (workers/worker.py)  
+worker.register_handler('extract_text', ContentExtractor(backend).process)
+```
 
 ## Files Affected
 
-| File | Action |
-|------|--------|
-| `api/app_state.py` | Remove or delegate `BackgroundJobProcessor` |
-| `workers/worker.py` | Promote to canonical `WorkerRuntime` |
-| `workers/*.py` | No changes expected; handler registration interface stays the same |
-
-## Steps
-
-1. Compare `BackgroundJobProcessor` and `Worker` method-by-method; document any behavioural differences.
-2. Decide on canonical implementation:
-   - **Option A:** Make `BackgroundJobProcessor` a thin wrapper that instantiates and delegates to `Worker`.
-   - **Option B:** Deprecate standalone `Worker` and fold its logic into `BackgroundJobProcessor` renamed to `WorkerRuntime`.
-3. Extract a `WorkerRuntime` ABC or `Protocol` that both honour (lease management, handler registration, start/stop).
-4. Migrate all call sites to use the chosen canonical class.
-5. Delete the non-canonical implementation.
-6. Add unit tests that cover the lease renewal and retry paths.
+| File | Action | Status |
+|------|--------|--------|
+| `api/app_state.py` | Remove or delegate `BackgroundJobProcessor` | 🔴 Pending |
+| `workers/worker.py` | Promote to canonical `WorkerRuntime` | 🔴 Pending |
+| `workers/*.py` | No changes expected | ✅ Done |
 
 ## Definition of Done
 
-- One implementation of the job-processing loop exists.
-- `WorkerRuntime` ABC/Protocol is defined with `register_handler`, `start`, and `stop` methods.
-- All existing tests pass.
-- A brief comment in the canonical file explains why the old duplicate was removed.
+- [ ] One implementation of the job-processing loop exists.
+- [ ] `WorkerRuntime` ABC/Protocol is defined with `register_handler`, `start`, and `stop` methods.
+- [ ] All existing tests pass.
+- [ ] A brief comment in the canonical file explains why the old duplicate was removed.
