@@ -5,6 +5,9 @@ from urllib.parse import unquote
 
 def resolve_folder_path(folder_path: str, collection_root: str) -> tuple[str, str]:
     """Resolve request folder path to a full absolute path and relative path."""
+    if not collection_root or not collection_root.strip("/"):
+        raise ValueError("Collection root must be non-empty")
+
     normalized_root = f"/{collection_root.strip('/')}"
     decoded_path = unquote(folder_path or "").strip()
     root_no_leading_slash = normalized_root.lstrip("/")
