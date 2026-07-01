@@ -5,7 +5,6 @@ See ADR 0005 for details.
 """
 
 import uuid
-import os
 from datetime import datetime
 from typing import Optional
 
@@ -17,9 +16,6 @@ from storage.backend import StorageBackend
 
 
 router = APIRouter(prefix="/questions", tags=["questions"])
-
-# Library root from environment
-LIBRARY_ROOT = os.environ.get("LIBRARIAN_LIBRARY_ROOT", "/library")
 
 # In-memory question store for retrieval
 _question_store: dict[str, dict] = {}

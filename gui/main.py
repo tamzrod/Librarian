@@ -6,7 +6,6 @@ This client never imports core/*, storage/*, parsers/*, or extractors/*.
 """
 
 import sys
-import os
 
 # Check for PySide6 first, fallback to tkinter
 USE_PYSIDE = False
@@ -26,6 +25,7 @@ except ImportError:
         pass
 
 from gui.api_client import LibrarianAPIClient, get_client
+from environment import get_api_url
 
 
 def main():
@@ -43,7 +43,7 @@ def main():
         sys.exit(1)
 
     # Get API URL from environment or use default
-    api_url = os.environ.get("API_URL", "http://localhost:8000")
+    api_url = get_api_url()
 
     # Initialize API client
     api_client = get_client(api_url)

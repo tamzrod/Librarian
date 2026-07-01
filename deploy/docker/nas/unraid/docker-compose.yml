@@ -32,7 +32,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_HOST_PORT:-${API_PORT:-8000}}:8000"
     volumes:
       - ${LIBRARY_PATH:-/mnt/user/documents}:/library:ro
     depends_on:

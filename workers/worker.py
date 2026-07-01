@@ -17,6 +17,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Callable, Dict, Any
+from environment import get_worker_id
 
 logger = logging.getLogger(__name__)
 
@@ -279,5 +280,5 @@ if __name__ == '__main__':
     backend = PostgresBackend()
     backend.ensure_schema()
     
-    worker_id = os.environ.get('WORKER_ID')
+    worker_id = get_worker_id()
     run_worker(backend, worker_id=worker_id)

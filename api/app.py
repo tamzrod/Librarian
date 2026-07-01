@@ -4,7 +4,6 @@ Single-library architecture: operates on configured library root.
 See ADR 0005 for details.
 """
 
-import os
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -19,6 +18,7 @@ from api.routes import questions, collections, pipeline, operations, timeline, e
 from api.dependencies import get_storage_backend, MockBackend
 from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
+from environment import get_library_root
 
 
 # Configure logging
@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Library root from environment
-LIBRARY_ROOT = os.environ.get("LIBRARIAN_LIBRARY_ROOT", "/library")
+LIBRARY_ROOT = get_library_root()
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown."""
     # Startup
     logger.info("Initializing Librarian API...")
+    logger.info("Library root: %s", LIBRARY_ROOT)
     initialize_app()
     logger.info("Librarian API initialized successfully")
     

@@ -52,7 +52,7 @@ Example `.env` configuration:
 LIBRARY_PATH=/home/user/Documents
 POSTGRES_PASSWORD=your_secure_password
 API_HOST_PORT=8001
-DASHBOARD_PORT=3100
+DASHBOARD_HOST_PORT=3100
 ```
 
 ### 4. Start Services
@@ -273,9 +273,9 @@ Change `API_HOST_PORT` in `.env`:
 API_HOST_PORT=8002
 ```
 
-Or change `DASHBOARD_PORT`:
+Or change `DASHBOARD_HOST_PORT`:
 ```env
-DASHBOARD_PORT=3101
+DASHBOARD_HOST_PORT=3101
 ```
 
 ### Permission Issues

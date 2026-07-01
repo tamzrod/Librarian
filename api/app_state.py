@@ -15,6 +15,7 @@ from ingestion.librarian import Librarian
 from ingestion.collection_watcher import CollectionWatcher, WATCHDOG_AVAILABLE
 from registry.parser_registry import ParserRegistry
 from registry.register_parsers import registry
+from environment import DEFAULT_LIBRARY_ROOT, get_database_url, get_library_root
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ class AppState:
         self.librarian: Optional[Librarian] = None
         self.parser_registry: Optional[ParserRegistry] = None
         self.job_processor: Optional[BackgroundJobProcessor] = None
-        self.library_root: str = "/library"
+        self.library_root: str = get_library_root(DEFAULT_LIBRARY_ROOT)
         self._initial_scan_complete: bool = False
         self._initial_scan_thread: Optional[threading.Thread] = None
         self._last_scan: Optional[datetime] = None
@@ -229,7 +230,7 @@ class AppState:
             RuntimeError: If schema migration fails (prevents startup)
         """
         try:
-            database_url = os.environ.get("DATABASE_URL")
+            database_url = get_database_url()
             if database_url:
                 # Parse DATABASE_URL: postgresql://user:pass@host:port/dbname
                 import re
@@ -311,7 +312,7 @@ class AppState:
             logger.error("Cannot start watcher: backend not initialized")
             return
         
-        library_path = os.environ.get("LIBRARIAN_LIBRARY_ROOT", self.library_root)
+        library_path = get_library_root(self.library_root)
         self.library_root = library_path
         
         if not os.path.exists(library_path):
@@ -340,7 +341,7 @@ class AppState:
         def scan():
             try:
                 logger.info("Starting initial library scan...")
-                library_path = os.environ.get("LIBRARIAN_LIBRARY_ROOT", self.library_root)
+                library_path = get_library_root(self.library_root)
                 
                 if os.path.exists(library_path):
                     self.librarian.ingest(library_path)
@@ -418,7 +419,7 @@ class AppState:
             from workers.location_extractor import LocationExtractor
             from workers.embedding_generator import EmbeddingGenerator
             
-            library_root = os.environ.get("LIBRARIAN_LIBRARY_ROOT", self.library_root)
+            library_root = get_library_root(self.library_root)
             
             self.job_processor.register_handler(
                 'extract_text', 

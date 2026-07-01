@@ -43,7 +43,7 @@ Example `.env` configuration:
 ```env
 LIBRARY_PATH=C:/Users/YourName/Documents
 POSTGRES_PASSWORD=your_secure_password
-API_PORT=8000
+API_HOST_PORT=8000
 ```
 
 ### 4. Start Services
@@ -148,9 +148,9 @@ Start-Service Docker
 
 ### Port Already in Use
 
-Change `API_PORT` in `.env`:
+Change `API_HOST_PORT` in `.env`:
 ```env
-API_PORT=8001
+API_HOST_PORT=8001
 ```
 
 ### Volume Mount Issues

@@ -55,7 +55,7 @@ nano .env
 Configure:
 ```env
 POSTGRES_PASSWORD=your_secure_password
-API_PORT=8000
+API_HOST_PORT=8000
 LIBRARY_PATH=/volume1/Documents
 ```
 
@@ -190,9 +190,9 @@ chmod 755 /volume1/Documents
 
 ### Port Already in Use
 
-Change `API_PORT` in `.env`:
+Change `API_HOST_PORT` in `.env`:
 ```env
-API_PORT=8001
+API_HOST_PORT=8001
 ```
 
 ### Database Connection Issues

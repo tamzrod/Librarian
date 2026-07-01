@@ -6,9 +6,9 @@ parsers/*, extractors/*, or postgres_backend.py. All communication happens
 through this client only.
 """
 
-import os
 import requests
 from typing import Optional
+from environment import get_api_url
 
 
 class LibrarianAPIClient:
@@ -19,9 +19,9 @@ class LibrarianAPIClient:
         Initialize API client.
 
         Args:
-            base_url: Base URL for API. Defaults to API_URL env var or http://localhost:8000
+            base_url: Base URL for API. Defaults to LIBRARIAN_API_URL or http://localhost:8000
         """
-        self.base_url = base_url or os.environ.get("API_URL", "http://localhost:8000")
+        self.base_url = base_url or get_api_url()
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
 
