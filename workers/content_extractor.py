@@ -11,11 +11,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 from environment import get_library_root
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class ContentExtractor:
+class ContentExtractor(BaseWorker):
     """
     Extracts text content from documents.
     
@@ -37,7 +38,7 @@ class ContentExtractor:
         self.backend = backend
         self.library_root = library_root or get_library_root()
     
-    def extract_text(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Extract text content from a document.
         

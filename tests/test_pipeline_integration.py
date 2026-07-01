@@ -225,7 +225,7 @@ class TestPipelineIntegration:
             if entity_job and entity_job['job_type'] == 'extract_entities':
                 from workers.entity_extractor import EntityExtractor
                 extractor = EntityExtractor(self.db_backend)
-                result = extractor.extract_entities(entity_job)
+                result = extractor.process(entity_job)
                 
                 # Verify entities were extracted
                 assert result['entities_extracted'] > 0
@@ -235,7 +235,7 @@ class TestPipelineIntegration:
             if location_job and location_job['job_type'] == 'extract_locations':
                 from workers.location_extractor import LocationExtractor
                 extractor = LocationExtractor(self.db_backend)
-                result = extractor.extract_locations(location_job)
+                result = extractor.process(location_job)
                 
                 # Verify locations were extracted
                 assert result['locations_extracted'] > 0 or result['locations_extracted'] == 0  # May or may not find
@@ -245,7 +245,7 @@ class TestPipelineIntegration:
             if event_job and event_job['job_type'] == 'extract_events':
                 from workers.event_extractor import EventExtractor
                 extractor = EventExtractor(self.db_backend)
-                result = extractor.extract_events(event_job)
+                result = extractor.process(event_job)
                 
                 # Verify events were extracted
                 assert result['events_extracted'] > 0

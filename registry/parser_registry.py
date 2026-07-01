@@ -43,6 +43,14 @@ class ParserRegistry:
         """Register a parser with an artifact type."""
         self.parsers[extension] = parser
 
+    def get_supported_extensions(self) -> list[str]:
+        """Return a sorted list of all file extensions registered with this registry.
+
+        Returns:
+            A sorted list of extension strings (e.g. ``[".csv", ".json", ...]``).
+        """
+        return sorted(self.parsers.keys())
+
     def get_parser(self, file_path):
         """Get parser for a file path or extension."""
         if isinstance(file_path, Path):

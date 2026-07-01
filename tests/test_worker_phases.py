@@ -8,12 +8,94 @@ Tests:
 - Phase 3D: Duplicate job prevention
 - Phase 3E: State machine enforcement
 - Phase 3F: Transaction atomicity
+- P5: BaseWorker abstract base class contract
 """
 
 import pytest
 import time
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
+
+
+class TestBaseWorkerContract:
+    """Tests for the P5 BaseWorker abstract base class."""
+
+    def test_base_worker_is_abstract(self):
+        """BaseWorker cannot be instantiated directly."""
+        from workers.base import BaseWorker
+        with pytest.raises(TypeError):
+            BaseWorker()
+
+    def test_base_worker_requires_process_method(self):
+        """A subclass without process() cannot be instantiated."""
+        from workers.base import BaseWorker
+
+        class IncompleteWorker(BaseWorker):
+            pass
+
+        with pytest.raises(TypeError):
+            IncompleteWorker()
+
+    def test_concrete_subclass_with_process_instantiates(self):
+        """A subclass that implements process() can be instantiated."""
+        from workers.base import BaseWorker
+
+        class ConcreteWorker(BaseWorker):
+            def process(self, job: dict) -> dict:
+                return {}
+
+        worker = ConcreteWorker()
+        assert isinstance(worker, BaseWorker)
+
+    def test_all_extractors_are_base_worker_subclasses(self):
+        """All worker extractor classes must be subclasses of BaseWorker."""
+        from workers.base import BaseWorker
+        from workers.content_extractor import ContentExtractor
+        from workers.entity_extractor import EntityExtractor
+        from workers.event_extractor import EventExtractor
+        from workers.location_extractor import LocationExtractor
+        from workers.embedding_generator import EmbeddingGenerator
+        from workers.photo_metadata_extractor import PhotoMetadataExtractor
+
+        for cls in (
+            ContentExtractor,
+            EntityExtractor,
+            EventExtractor,
+            LocationExtractor,
+            EmbeddingGenerator,
+            PhotoMetadataExtractor,
+        ):
+            assert issubclass(cls, BaseWorker), f"{cls.__name__} must subclass BaseWorker"
+
+    def test_all_extractors_expose_process_method(self):
+        """All extractor instances must have a callable process() method."""
+        from workers.content_extractor import ContentExtractor
+        from workers.entity_extractor import EntityExtractor
+        from workers.event_extractor import EventExtractor
+        from workers.location_extractor import LocationExtractor
+        from workers.embedding_generator import EmbeddingGenerator
+        from workers.photo_metadata_extractor import PhotoMetadataExtractor
+
+        mock_backend = MagicMock()
+
+        instances = [
+            ContentExtractor(mock_backend),
+            EntityExtractor(mock_backend),
+            EventExtractor(mock_backend),
+            LocationExtractor(mock_backend),
+            EmbeddingGenerator(mock_backend),
+            PhotoMetadataExtractor(mock_backend),
+        ]
+
+        for instance in instances:
+            assert callable(getattr(instance, 'process', None)), (
+                f"{type(instance).__name__} must have a callable process() method"
+            )
+
+    def test_base_worker_exported_from_workers_package(self):
+        """BaseWorker is accessible from the workers package."""
+        from workers import BaseWorker
+        assert BaseWorker is not None
 
 
 class TestJobConstants:

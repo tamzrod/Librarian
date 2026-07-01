@@ -9,11 +9,12 @@ This extracts date/time references and events from document content.
 import logging
 from datetime import datetime
 from typing import Optional
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class EventExtractor:
+class EventExtractor(BaseWorker):
     """
     Extracts events and date/time references from document content.
     
@@ -30,7 +31,7 @@ class EventExtractor:
         """
         self.backend = backend
     
-    def extract_events(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Extract events from a document.
         

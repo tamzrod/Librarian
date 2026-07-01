@@ -21,11 +21,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 from environment import get_library_root
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class PhotoMetadataExtractor:
+class PhotoMetadataExtractor(BaseWorker):
     """
     Extracts photo metadata from image files.
     
@@ -50,7 +51,7 @@ class PhotoMetadataExtractor:
         self.backend = backend
         self.library_root = library_root or get_library_root()
     
-    def extract_photo_metadata(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Extract photo metadata from an image document.
         
