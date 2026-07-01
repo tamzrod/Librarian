@@ -105,7 +105,7 @@ Create `.env`:
 POSTGRES_DB=librarian
 POSTGRES_USER=librarian
 POSTGRES_PASSWORD=your_secure_password
-API_PORT=8000
+API_HOST_PORT=8000
 LIBRARY_PATH=/mnt/user/documents
 ```
 

@@ -8,6 +8,7 @@ This generates vector embeddings for document content.
 
 import logging
 from typing import Optional
+from environment import get_embedding_model
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,9 @@ class EmbeddingGenerator:
     def _detect_model(self) -> str:
         """Detect the best available embedding model."""
         import os
-        
+
         # Check environment variable
-        env_model = os.environ.get('EMBEDDING_MODEL')
+        env_model = get_embedding_model()
         if env_model:
             return env_model
         
@@ -56,7 +57,7 @@ class EmbeddingGenerator:
             return 'sentence-transformers'
         except ImportError:
             pass
-        
+
         # Default to TF-IDF
         return 'tfidf'
     

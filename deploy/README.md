@@ -107,7 +107,7 @@ Librarian uses a **single-library architecture**:
 
 ### Mounting Your Library
 
-The library root is mounted at `/library` inside the API container. Configure it via `LIBRARY_PATH` in `.env`:
+The host library path is configured with `LIBRARY_PATH` in `.env` and mounted at `/library` inside the API container. Inside the application, the canonical runtime variable is `LIBRARIAN_LIBRARY_ROOT`:
 
 | Environment | Example Path |
 |-------------|--------------|
@@ -192,6 +192,15 @@ Uncomment the `nginx` section in `docker-compose.yml` and configure `nginx/nginx
 | `API_HOST_PORT` | 8001 | API host port (internal: 8000) |
 | `DASHBOARD_HOST_PORT` | 3100 | Dashboard host port (internal: 3000) |
 | `LIBRARY_PATH` | ./volumes/library | Host path to library |
+| `LIBRARIAN_LIBRARY_ROOT` | /library | Runtime library root inside API and worker containers |
+
+### Canonical Naming and Migration Notes
+
+- `LIBRARIAN_LIBRARY_ROOT` is the canonical application library-root variable. `LIBRARY_ROOT` is retained as a deprecated compatibility alias in code.
+- `LIBRARIAN_API_URL` is the canonical API URL variable for the legacy Python GUI. `API_URL` is retained as a deprecated compatibility alias.
+- `API_HOST_PORT` is the canonical deployment variable for the API host port. Platform compose files retain `API_PORT` as a deprecated compatibility alias.
+- `DASHBOARD_HOST_PORT` is the canonical deployment variable for the dashboard host port. Linux compose retains `DASHBOARD_PORT` as a deprecated compatibility alias.
+- Standard ecosystem variables remain unchanged: `DATABASE_URL`, `POSTGRES_*`, `PG*`, `OPENAI_API_KEY`, and `VITE_*`.
 
 ### Dashboard Build Metadata
 

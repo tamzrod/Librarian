@@ -92,6 +92,26 @@ cd deploy/docker/linux
 docker compose up -d
 ```
 
+## Environment Variables
+
+Repository-owned environment variables follow two rules:
+
+- Runtime variables use the `LIBRARIAN_` prefix.
+- Deployment host port variables use the explicit `*_HOST_PORT` suffix.
+
+Standard ecosystem variables keep their upstream names (`DATABASE_URL`, `POSTGRES_*`, `OPENAI_API_KEY`, `VITE_*`).
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `LIBRARIAN_LIBRARY_ROOT` | `/library` | Canonical runtime library root. Deprecated alias: `LIBRARY_ROOT`. |
+| `DATABASE_URL` | unset | PostgreSQL connection string for the API and worker. |
+| `LIBRARIAN_API_URL` | `http://localhost:8000` | Canonical API URL for the legacy Python GUI. Deprecated alias: `API_URL`. |
+| `WORKER_ID` | unset | Optional worker identifier. |
+| `EMBEDDING_MODEL` | auto-detected | Optional embedding backend override. |
+| `OPENAI_API_KEY` | unset | Optional key for OpenAI embeddings. |
+
+Deployment-specific variables, examples, and migration notes are documented in [deploy/README.md](deploy/README.md). Dashboard-specific `VITE_*` variables are documented in [dashboard/README.md](dashboard/README.md).
+
 ## Quick Start
 
 ```python

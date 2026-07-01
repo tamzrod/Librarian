@@ -20,6 +20,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional
+from environment import get_library_root
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class PhotoMetadataExtractor:
             library_root: Root path of the document library
         """
         self.backend = backend
-        self.library_root = library_root or os.environ.get('LIBRARIAN_LIBRARY_ROOT', '/library')
+        self.library_root = library_root or get_library_root()
     
     def extract_photo_metadata(self, job: dict) -> dict:
         """

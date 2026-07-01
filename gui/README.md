@@ -32,10 +32,10 @@ pip install -r requirements.txt
 Set the API URL via environment variable:
 
 ```bash
-export API_URL=http://localhost:8000
+export LIBRARIAN_API_URL=http://localhost:8000
 ```
 
-Or it defaults to `http://localhost:8000`.
+Deprecated alias: `API_URL`. If neither variable is set, the GUI defaults to `http://localhost:8000`.
 
 ## Running
 
