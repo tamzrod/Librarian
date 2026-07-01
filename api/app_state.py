@@ -349,6 +349,7 @@ class AppState:
             from workers.event_extractor import EventExtractor
             from workers.location_extractor import LocationExtractor
             from workers.embedding_generator import EmbeddingGenerator
+            from workers.photo_metadata_extractor import PhotoMetadataExtractor
             
             library_root = get_library_root(self.library_root)
             
@@ -371,6 +372,10 @@ class AppState:
             self.job_processor.register_handler(
                 'generate_embeddings',
                 EmbeddingGenerator(self.backend).process
+            )
+            self.job_processor.register_handler(
+                'extract_photo_metadata',
+                PhotoMetadataExtractor(self.backend).process
             )
             
             logger.info("Registered all job handlers")
