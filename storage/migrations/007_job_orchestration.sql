@@ -1,5 +1,9 @@
 -- Migration: 007_job_orchestration.sql
 -- Purpose: Job orchestration improvements
+-- Upgrade: Expands document_jobs status handling, adds prerequisite/snapshot tables, seeds default prerequisites, and tracks worker_version plus scan_snapshot_id.
+-- Downgrade: No automated downgrade path exists; restore from backup if the previous queue schema must be recovered.
+-- Live DB Safety: Run while workers are paused or during a maintenance window because document_jobs constraint and column changes can block active queue updates.
+-- Manual Steps: Pause workers before applying so no jobs are written with the old status contract mid-migration.
 --
 -- This migration adds:
 -- 1. BLOCKED status for jobs waiting on prerequisites

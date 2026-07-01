@@ -112,6 +112,13 @@ Standard ecosystem variables keep their upstream names (`DATABASE_URL`, `POSTGRE
 
 Deployment-specific variables, examples, and migration notes are documented in [deploy/README.md](deploy/README.md). Dashboard-specific `VITE_*` variables are documented in [dashboard/README.md](dashboard/README.md).
 
+## Schema Migrations
+
+Database schema upgrades are forward-only and run automatically at startup via `storage/migration_manager.py`.
+
+- Operator guide: [docs/SCHEMA_MIGRATIONS.md](docs/SCHEMA_MIGRATIONS.md)
+- Per-migration changelog: [storage/migrations/CHANGELOG.md](storage/migrations/CHANGELOG.md)
+
 ## Quick Start
 
 ```python
