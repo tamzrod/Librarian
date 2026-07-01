@@ -13,13 +13,13 @@ These two orders are intentionally different. High architectural importance does
 |---|---:|---|---|---|---|---|---|
 | 1 | 12 | P4 | [Replace AppState Singleton with Dependency Injection](./P4-replace-singleton-with-di.md) | High | Medium | Highest architectural value; intentionally last due to blast radius | Planned |
 | 2 | 4 | P3 | [Enforce Backend Interface](./P3-enforce-backend-interface.md) | Low | Low | Foundational backend contract before later structural changes | Completed |
-| 3 | 7 | P1 | [Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md) | Medium | Low | Removes duplicate ingestion architecture after baseline tests exist | Planned |
+| 3 | 7 | P1 | [Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md) | Medium | Low | Removes duplicate ingestion architecture after baseline tests exist | Completed |
 | 4 | 11 | P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | Important runtime consolidation, but safer after P5 and P6 | Planned |
-| 5 | 6 | P6 | [Add Integration Tests](./P6-add-integration-tests.md) | Medium | Medium | Baseline regression suite required before larger refactors | Planned |
+| 5 | 6 | P6 | [Add Integration Tests](./P6-add-integration-tests.md) | Medium | Medium | Baseline regression suite required before larger refactors | Completed |
 | 6 | 5 | P5 | [Add Worker Abstract Base](./P5-add-worker-abstract-base.md) | Low | Low | Small enabling contract for P2 | Completed |
 | 7 | 10 | P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | Low | Low | Depends on enforced backend contract; simpler after ingestion cleanup | Planned |
-| 8 | 9 | P7 | [Add Missing DB Indexes](./P7-add-missing-db-indexes.md) | Low | Medium | Important operational improvement; scheduled after migration docs | Planned |
-| 9 | 8 | P11 | [Remove JSON Persistence Layer](./P11-remove-json-persistence.md) | Low | Low | Cleanup step that should land immediately after P1 | Planned |
+| 8 | 9 | P7 | [Add Missing DB Indexes](./P7-add-missing-db-indexes.md) | Low | Medium | Important operational improvement; scheduled after migration docs | Completed |
+| 9 | 8 | P11 | [Remove JSON Persistence Layer](./P11-remove-json-persistence.md) | Low | Low | Cleanup step that should land immediately after P1 | Completed |
 | 10 | 1 | P9 | [Standardise Environment Variables](./P9-standardise-env-vars.md) | Low | Low | Safe, low-blast-radius setup work | Completed |
 | 11 | 2 | P10 | [Document Schema Migrations](./P10-document-schema-migrations.md) | Low | Medium | Documentation-first migration hygiene before schema changes | Completed |
 | 12 | 3 | P12 | [Add ParserRegistry.get_supported_extensions()](./P12-parser-registry-extensions.md) | Low | Low | Isolated API improvement with no sequencing pressure | Completed |

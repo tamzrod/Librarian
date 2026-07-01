@@ -27,6 +27,7 @@ This changelog documents every forward-only schema migration in `storage/migrati
 | `006_embeddings.sql` | Adds embeddings, extracted content, and plugin registry tables plus indexes. | Safe on live systems; creates new tables only. | None. |
 | `007_job_orchestration.sql` | Expands job status checks, adds prerequisite/snapshot tables, seeds defaults, and extends `document_jobs`. | Maintenance-window recommended because queue writes can conflict with `document_jobs` changes. | Pause workers before applying. |
 | `008_document_fields.sql` | Adds `mime_type` and `created_at` to `documents`, backfills `created_at`, and indexes `mime_type`. | Maintenance-window recommended because `documents` is altered and backfilled. | None. |
+| `009_add_missing_indexes.sql` | Adds indexes on `evidence_lineage.created_at`, `document_jobs.created_at`, and `scan_snapshots.collection_id`. | Safe on live systems; creates new indexes only. For very large tables apply with `CREATE INDEX CONCURRENTLY` outside a transaction. | None for normal deployments. |
 
 ## Detailed Notes
 
@@ -69,3 +70,11 @@ This changelog documents every forward-only schema migration in `storage/migrati
 
 - Adds fields required by Explorer API file metadata responses.
 - Existing rows inherit `created_at` from `indexed_at`; review that mapping if historical ingest time differs from desired record-creation semantics.
+
+### 009_add_missing_indexes.sql
+
+- Adds `idx_evidence_lineage_created_at` on `evidence_lineage(created_at)` — eliminates full table scans in `get_entity_evidence()` and `get_document_evidence()` which both ORDER BY `created_at DESC`.
+- Adds `idx_document_jobs_created_at` on `document_jobs(created_at)` — supports the worker claim query (`ORDER BY priority DESC, created_at ASC`) and all recent-jobs listings in operations and pipeline routes.
+- Adds `idx_scan_snapshots_collection` on `scan_snapshots(collection_id)` — FK index missing from 007.
+- All statements use `CREATE INDEX IF NOT EXISTS` so the migration is idempotent.
+- For very large production tables, apply the index statements manually with `CREATE INDEX CONCURRENTLY` (outside a transaction) and then insert the migration name into `schema_migrations` to mark it applied.

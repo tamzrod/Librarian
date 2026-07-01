@@ -117,9 +117,7 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    # Updated to 8 after adding 008_document_fields.sql
-    # (007_job_orchestration.sql exists but the constant was never incremented)
-    TARGET_SCHEMA_VERSION = 8  # Corresponds to 008_document_fields.sql
+    TARGET_SCHEMA_VERSION = 9  # Corresponds to 009_add_missing_indexes.sql
     
     def __init__(self, backend):
         """
