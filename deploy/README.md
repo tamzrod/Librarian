@@ -107,7 +107,7 @@ Librarian uses a **single-library architecture**:
 
 ### Mounting Your Library
 
-The host library path is configured with `LIBRARY_PATH` in `.env` and mounted at `/library` inside the API container. Inside the application, the canonical runtime variable is `LIBRARIAN_LIBRARY_ROOT`:
+The host library path is configured with `LIBRARY_PATH` in `.env` and mounted at `/library` inside the API container. The canonical runtime variable inside the application is `LIBRARIAN_LIBRARY_ROOT`:
 
 | Environment | Example Path |
 |-------------|--------------|
