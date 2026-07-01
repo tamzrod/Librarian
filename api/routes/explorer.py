@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from api.dependencies import get_storage_backend
 from api.app_state import get_app_state
+from api.routes.explorer_paths import resolve_folder_path
 from storage.backend import StorageBackend
 
 
@@ -430,14 +431,11 @@ async def get_folder_contents(
     app_state = get_app_state()
     collection_root = app_state.library_root or "/library"
     
-    # folder_path comes in as relative path (e.g., "Camera" or "Camera/subfolder")
-    # Build the full absolute path by combining with collection root
-    folder_path = folder_path.strip("/")
-    if folder_path:
-        full_folder_path = f"{collection_root}/{folder_path}"
-    else:
-        # Empty path means root
-        full_folder_path = collection_root
+    # Accept both relative ("Camera") and absolute ("/library/Camera") inputs.
+    try:
+        full_folder_path, relative_folder_path = resolve_folder_path(folder_path, collection_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     
     subfolders = []
     documents = []
@@ -458,7 +456,7 @@ async def get_folder_contents(
     
     folder_node = FolderNode(
         id=full_folder_path,
-        name=folder_path.rsplit('/')[-1] if folder_path else collection_root.lstrip('/').split('/')[-1],
+        name=relative_folder_path.rsplit('/')[-1] if relative_folder_path else collection_root.lstrip('/').split('/')[-1],
         path=full_folder_path,
         has_children=len(subfolders) > 0
     )
