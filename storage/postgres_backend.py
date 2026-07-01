@@ -2800,7 +2800,7 @@ class PostgresBackend(StorageBackend):
     def load_collection(self, collection_id=None, name=None):
         """Load a collection by ID or name."""
         if collection_id is None and name is None:
-            raise ValueError("collection_id or name is required")
+            raise ValueError("Either collection_id or name must be provided")
 
         conn = self._get_connection()
         cur = conn.cursor()
