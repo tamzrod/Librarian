@@ -446,7 +446,7 @@ None - all remaining tasks are in scope.
 | E1 | **Completed** | 2026-07-01 | 2026-07-01 | mime_type persistence |
 | E2 | Planned | - | - | structured_data handling |
 | ~~E3~~ | **Cancelled** | - | - | Replaced by E8 Map Aggregation Layer |
-| E4 | Planned | - | - | Metadata ownership |
+| **E4** | **Completed** | 2026-07-01 | 2026-07-01 | Metadata ownership contracts |
 | E5 | Planned | - | - | Thumbnails |
 | E6 | Planned | - | - | OCR persistence |
 | E7 | Planned | - | - | Embeddings |
@@ -561,6 +561,67 @@ Document the lifecycle of discovery and enrichment metadata, clarifying which st
 
 ### No Code Changes
 This task was documentation-only. No runtime behavior was modified.
+
+---
+
+## E4 Implementation Details (Completed)
+
+### Problem
+Metadata ownership was unclear across the system, leading to:
+- Unclear which component owns which metadata
+- Potential for duplicated ownership (e.g., GPS in both photo_metadata and locations)
+- Ambiguous parser vs worker responsibility
+- Hidden ownership of `structured_data`
+
+### Solution
+E4 establishes a **Metadata Ownership Contract** that formally defines:
+
+1. **Discovery Metadata** - Owned by `inventory` (CollectionWatcher)
+   - Exists immediately upon artifact discovery
+   - Rebuildable from filesystem
+   - Never depends on workers
+
+2. **Enrichment Metadata** - Owned by respective workers
+   - Asynchronous processing
+   - Worker-owned
+   - Independently rebuildable
+
+### Key Decisions
+
+| Decision | Resolution |
+|----------|------------|
+| GPS ownership | `photo_metadata` ONLY (NOT `locations`) |
+| Parser role | Discovery only, not persistence |
+| `structured_data` | Transient, NOT persisted |
+| Location types | GPS (EXIF) vs Semantic (text) are separate |
+
+### Ownership Summary
+
+| Layer | Owner | Component | Table |
+|-------|-------|-----------|-------|
+| Discovery | inventory | CollectionWatcher | documents |
+| Enrichment | photo_metadata | PhotoMetadataExtractor | photo_metadata |
+| Enrichment | document_content | ContentExtractor | document_content |
+| Enrichment | entities | EntityExtractor | entities |
+| Enrichment | locations | LocationExtractor | locations |
+| Enrichment | events | EventExtractor | events |
+| Enrichment | embeddings | EmbeddingGenerator | document_embeddings |
+
+### Files Documented
+
+| File | Role |
+|------|------|
+| `refactor/operation-exif/E4-inconsistent-metadata-ownership.md` | Full ownership contract documentation |
+| `storage/migrations/*.sql` | Schema ownership reference |
+| `workers/*.py` | Worker ownership documentation |
+| `ingestion/collection_watcher.py` | Discovery ownership documentation |
+| `parsers/*.py` | Parser transient nature documentation |
+
+### Rollback Strategy
+None required - E4 is documentation only. No code changes were made.
+
+### Verification
+Read `E4-inconsistent-metadata-ownership.md` to verify all metadata fields have exactly one owner.
 
 ---
 
