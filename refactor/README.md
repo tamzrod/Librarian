@@ -22,7 +22,7 @@ These two orders are intentionally different. High architectural importance does
 | 9 | 8 | P11 | [Remove JSON Persistence Layer](./P11-remove-json-persistence.md) | Low | Low | Cleanup step that should land immediately after P1 | Planned |
 | 10 | 1 | P9 | [Standardise Environment Variables](./P9-standardise-env-vars.md) | Low | Low | Safe, low-blast-radius setup work | Completed |
 | 11 | 2 | P10 | [Document Schema Migrations](./P10-document-schema-migrations.md) | Low | Medium | Documentation-first migration hygiene before schema changes | Completed |
-| 12 | 3 | P12 | [Add ParserRegistry.get_supported_extensions()](./P12-parser-registry-extensions.md) | Low | Low | Isolated API improvement with no sequencing pressure | Planned |
+| 12 | 3 | P12 | [Add ParserRegistry.get_supported_extensions()](./P12-parser-registry-extensions.md) | Low | Low | Isolated API improvement with no sequencing pressure | Completed |
 
 ## Approved Implementation Order
 
