@@ -117,8 +117,9 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    # Updated to 6 after adding 006_embeddings.sql
-    TARGET_SCHEMA_VERSION = 6  # Corresponds to 006_embeddings.sql
+    # Updated to 8 after adding 008_document_fields.sql
+    # (007_job_orchestration.sql exists but the constant was never incremented)
+    TARGET_SCHEMA_VERSION = 8  # Corresponds to 008_document_fields.sql
     
     def __init__(self, backend):
         """
