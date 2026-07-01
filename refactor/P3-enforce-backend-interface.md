@@ -1,7 +1,10 @@
 # P3 — Enforce Backend Interface
 
 **Source:** V-007, TD-003  
-**Effort:** Low | **Risk:** Low | **Priority:** 3
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 2 | **Implementation Order:** 4
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
 
 ---
 

@@ -1,7 +1,10 @@
 # P7 — Add Missing DB Indexes
 
 **Source:** TD-007  
-**Effort:** Low | **Risk:** Medium | **Priority:** 7
+**Effort:** Low | **Risk:** Medium
+**Architectural Priority:** 8 | **Implementation Order:** 9
+**Hard Prerequisites:** None
+**Soft Prerequisites:** P10
 
 ---
 

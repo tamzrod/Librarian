@@ -1,7 +1,10 @@
 # P1 — Consolidate Ingestion Paths
 
 **Source:** V-001, TD-001, TD-005  
-**Effort:** Medium | **Risk:** Low | **Priority:** 1 (Highest Value)
+**Effort:** Medium | **Risk:** Low
+**Architectural Priority:** 3 | **Implementation Order:** 7
+**Hard Prerequisites:** P6
+**Soft Prerequisites:** None
 
 ---
 

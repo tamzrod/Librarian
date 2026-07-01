@@ -1,7 +1,10 @@
 # P8 — Fix Incomplete Soft Delete
 
 **Source:** V-005, TD-009  
-**Effort:** Low | **Risk:** Low | **Priority:** 8
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 7 | **Implementation Order:** 10
+**Hard Prerequisites:** P3
+**Soft Prerequisites:** P1
 
 ---
 

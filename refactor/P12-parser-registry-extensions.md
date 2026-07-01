@@ -1,7 +1,10 @@
 # P12 — Add ParserRegistry.get_supported_extensions()
 
 **Source:** TD-012  
-**Effort:** Low | **Risk:** Low | **Priority:** 12
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 12 | **Implementation Order:** 3
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
 
 ---
 

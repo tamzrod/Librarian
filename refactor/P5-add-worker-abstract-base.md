@@ -1,7 +1,10 @@
 # P5 — Add Worker Abstract Base
 
 **Source:** V-004, TD-004  
-**Effort:** Low | **Risk:** Low | **Priority:** 5
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 6 | **Implementation Order:** 5
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
 
 ---
 
