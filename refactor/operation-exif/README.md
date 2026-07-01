@@ -90,7 +90,7 @@ Instead of E3 (copy GPS to locations), implement **E8 as a Map Aggregation Layer
 | E7 | Embedding Storage Incomplete | Medium | Open | **4** |
 | E8 | Location/EXIF Disconnect → Map Aggregation | High | Open | **7** |
 | E9 | API/UI Metadata Gaps | Medium | Partial | **8** |
-| E10 | Discovery vs Enrichment State Confusion | Low | Technical Debt | **2a** |
+| E10 | Discovery vs Enrichment State Confusion | Low | **Completed** | **2a** |
 
 ---
 
@@ -452,7 +452,7 @@ None - all remaining tasks are in scope.
 | E7 | Planned | - | - | Embeddings |
 | E8 | Planned | - | - | Location/EXIF → Map Aggregation |
 | E9 | Planned | - | - | API/UI gaps |
-| E10 | Planned | - | - | State confusion |
+| E10 | **Completed** | 2026-07-01 | 2026-07-01 | Lifecycle documentation |
 
 ---
 
@@ -528,6 +528,39 @@ ORDER BY COUNT(*) DESC;
 .pdf → application/pdf
 .md  → text/markdown
 ```
+
+---
+
+## E10 Implementation Details (Completed)
+
+### Purpose
+Document the lifecycle of discovery and enrichment metadata, clarifying which states belong to which phase.
+
+### What Was Documented
+
+1. **State Matrix**: Discovery vs Enrichment state classification
+2. **Phase Diagrams**: Discovery Phase and Enrichment Phase flowcharts
+3. **State Transitions**: Allowed and invalid transitions
+4. **Rebuild Behavior**: What survives database rebuild
+5. **Failure Recovery**: Retry paths and recovery flows
+6. **Metadata Ownership**: Which phase owns which metadata
+7. **Verification Queries**: SQL queries for state inspection
+
+### Key Insights
+
+| Aspect | Discovery | Enrichment |
+|--------|-----------|------------|
+| **Trigger** | Filesystem change | Job queue |
+| **Owner** | CollectionWatcher | Workers |
+| **States** | DISCOVERED, METADATA_INDEXED | CONTENT_EXTRACTED, ENTITY_EXTRACTED, etc. |
+| **Rebuildable** | ✓ Yes | ✗ No |
+| **Final State** | METADATA_INDEXED (if no parser) | COMPLETE (if all jobs succeed) |
+
+### Documentation File
+`refactor/operation-exif/E10-state-confusion.md` contains complete lifecycle documentation.
+
+### No Code Changes
+This task was documentation-only. No runtime behavior was modified.
 
 ---
 
