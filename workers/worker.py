@@ -254,12 +254,12 @@ def run_worker(backend, worker_id: str = None):
     worker = Worker(backend, worker_id=worker_id)
     
     # Register all handlers
-    worker.register_handler('extract_text', ContentExtractor(backend).extract_text)
-    worker.register_handler('extract_entities', EntityExtractor(backend).extract_entities)
-    worker.register_handler('extract_events', EventExtractor(backend).extract_events)
-    worker.register_handler('extract_locations', LocationExtractor(backend).extract_locations)
-    worker.register_handler('generate_embeddings', EmbeddingGenerator(backend).generate_embeddings)
-    worker.register_handler('extract_photo_metadata', PhotoMetadataExtractor(backend).extract_photo_metadata)
+    worker.register_handler('extract_text', ContentExtractor(backend).process)
+    worker.register_handler('extract_entities', EntityExtractor(backend).process)
+    worker.register_handler('extract_events', EventExtractor(backend).process)
+    worker.register_handler('extract_locations', LocationExtractor(backend).process)
+    worker.register_handler('generate_embeddings', EmbeddingGenerator(backend).process)
+    worker.register_handler('extract_photo_metadata', PhotoMetadataExtractor(backend).process)
     
     logger.info("Starting worker with all extraction handlers")
     worker.start()

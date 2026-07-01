@@ -16,7 +16,7 @@ These two orders are intentionally different. High architectural importance does
 | 3 | 7 | P1 | [Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md) | Medium | Low | Removes duplicate ingestion architecture after baseline tests exist | Planned |
 | 4 | 11 | P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | Important runtime consolidation, but safer after P5 and P6 | Planned |
 | 5 | 6 | P6 | [Add Integration Tests](./P6-add-integration-tests.md) | Medium | Medium | Baseline regression suite required before larger refactors | Planned |
-| 6 | 5 | P5 | [Add Worker Abstract Base](./P5-add-worker-abstract-base.md) | Low | Low | Small enabling contract for P2 | Planned |
+| 6 | 5 | P5 | [Add Worker Abstract Base](./P5-add-worker-abstract-base.md) | Low | Low | Small enabling contract for P2 | Completed |
 | 7 | 10 | P8 | [Fix Soft Delete](./P8-fix-soft-delete.md) | Low | Low | Depends on enforced backend contract; simpler after ingestion cleanup | Planned |
 | 8 | 9 | P7 | [Add Missing DB Indexes](./P7-add-missing-db-indexes.md) | Low | Medium | Important operational improvement; scheduled after migration docs | Planned |
 | 9 | 8 | P11 | [Remove JSON Persistence Layer](./P11-remove-json-persistence.md) | Low | Low | Cleanup step that should land immediately after P1 | Planned |

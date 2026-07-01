@@ -8,11 +8,12 @@ This extracts location references from document content.
 
 import logging
 from typing import Optional
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class LocationExtractor:
+class LocationExtractor(BaseWorker):
     """
     Extracts location references from document content.
     
@@ -29,7 +30,7 @@ class LocationExtractor:
         """
         self.backend = backend
     
-    def extract_locations(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Extract locations from a document.
         

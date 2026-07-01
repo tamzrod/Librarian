@@ -425,23 +425,23 @@ class AppState:
             
             self.job_processor.register_handler(
                 'extract_text', 
-                ContentExtractor(self.backend, library_root).extract_text
+                ContentExtractor(self.backend, library_root).process
             )
             self.job_processor.register_handler(
                 'extract_entities',
-                EntityExtractor(self.backend).extract_entities
+                EntityExtractor(self.backend).process
             )
             self.job_processor.register_handler(
                 'extract_events',
-                EventExtractor(self.backend).extract_events
+                EventExtractor(self.backend).process
             )
             self.job_processor.register_handler(
                 'extract_locations',
-                LocationExtractor(self.backend).extract_locations
+                LocationExtractor(self.backend).process
             )
             self.job_processor.register_handler(
                 'generate_embeddings',
-                EmbeddingGenerator(self.backend).generate_embeddings
+                EmbeddingGenerator(self.backend).process
             )
             
             logger.info("Registered all job handlers")

@@ -8,11 +8,12 @@ This extracts named entities from document content and stores them in the databa
 
 import logging
 from typing import Optional
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class EntityExtractor:
+class EntityExtractor(BaseWorker):
     """
     Extracts named entities from document content.
     
@@ -29,7 +30,7 @@ class EntityExtractor:
         """
         self.backend = backend
     
-    def extract_entities(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Extract entities from a document.
         

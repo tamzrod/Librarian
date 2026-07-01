@@ -9,11 +9,12 @@ This generates vector embeddings for document content.
 import logging
 from typing import Optional
 from environment import get_embedding_model
+from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingGenerator:
+class EmbeddingGenerator(BaseWorker):
     """
     Generates vector embeddings for document content.
     
@@ -61,7 +62,7 @@ class EmbeddingGenerator:
         # Default to TF-IDF
         return 'tfidf'
     
-    def generate_embeddings(self, job: dict) -> dict:
+    def process(self, job: dict) -> dict:
         """
         Generate embeddings for a document.
         
