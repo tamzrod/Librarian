@@ -3,24 +3,16 @@ class EvidenceBuilder:
         self.backend = backend
 
     def get_documents(self, query):
-        if hasattr(self.backend, 'search_documents'):
-            return self.backend.search_documents(query) or []
-        return []
+        return self.backend.search_documents(query) or []
 
     def get_entities(self, entity_type=None, value=None):
-        if hasattr(self.backend, 'search_entities'):
-            return self.backend.search_entities(entity_type, value) or []
-        return []
+        return self.backend.search_entities(entity_type, value) or []
 
     def get_events(self, timestamp=None, event_type=None):
-        if hasattr(self.backend, 'search_events'):
-            return self.backend.search_events(timestamp, event_type) or []
-        return []
+        return self.backend.search_events(timestamp, event_type) or []
 
     def get_locations(self, location_name=None):
-        if hasattr(self.backend, 'search_locations'):
-            return self.backend.search_locations(location_name) or []
-        return []
+        return self.backend.search_locations(location_name) or []
 
 
 def build_evidence(question, planner_result, backend):

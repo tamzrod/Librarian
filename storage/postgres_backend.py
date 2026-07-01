@@ -524,13 +524,39 @@ class PostgresBackend(StorageBackend):
             row = cur.fetchone()
             cur.close()
             conn.close()
-            
             if row and row[0]:
                 return row[0]
             return 'unknown'
         except Exception as e:
             logger.error(f"Error getting artifact_type for document {document_id}: {e}")
             return 'unknown'
+
+    def save_collection(self, collection):
+        """Save a collection to the database and return its ID."""
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        created_at = _to_postgres_timestamp(
+            collection.get('created_at') or datetime.now(timezone.utc)
+        )
+
+        cur.execute(
+            """
+            INSERT INTO collections (name, root_path, created_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (
+                collection.get('name'),
+                collection.get('root_path'),
+                created_at,
+            ),
+        )
+        collection_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+        return collection_id
     
     def discover_artifact(self, path: str, extension: str = None, file_size: int = None, modified_time = None) -> int:
         """Create an artifact record immediately upon discovery.
@@ -2772,7 +2798,45 @@ class PostgresBackend(StorageBackend):
         conn.close()
 
     def load_collection(self, collection_id=None, name=None):
-        raise NotImplementedError()
+        """Load a collection by ID or name."""
+        if collection_id is None and name is None:
+            raise ValueError("collection_id or name is required")
+
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        if collection_id is not None:
+            cur.execute(
+                """
+                SELECT id, name, root_path, created_at
+                FROM collections
+                WHERE id = %s
+                """,
+                (collection_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, name, root_path, created_at
+                FROM collections
+                WHERE name = %s
+                """,
+                (name,),
+            )
+
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if row is None:
+            return None
+
+        return {
+            'id': row[0],
+            'name': row[1],
+            'root_path': row[2],
+            'created_at': row[3],
+        }
 
     def search_documents(self, query=None, entity=None, date=None, month=None, location=None):
         """Search documents with optional filters.

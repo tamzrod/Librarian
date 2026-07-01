@@ -12,7 +12,7 @@ These two orders are intentionally different. High architectural importance does
 | Architectural Priority | Implementation Order | ID | Plan | Effort | Risk | Notes | Status |
 |---|---:|---|---|---|---|---|---|
 | 1 | 12 | P4 | [Replace AppState Singleton with Dependency Injection](./P4-replace-singleton-with-di.md) | High | Medium | Highest architectural value; intentionally last due to blast radius | Planned |
-| 2 | 4 | P3 | [Enforce Backend Interface](./P3-enforce-backend-interface.md) | Low | Low | Foundational backend contract before later structural changes | Planned |
+| 2 | 4 | P3 | [Enforce Backend Interface](./P3-enforce-backend-interface.md) | Low | Low | Foundational backend contract before later structural changes | Completed |
 | 3 | 7 | P1 | [Consolidate Ingestion Paths](./P1-consolidate-ingestion-paths.md) | Medium | Low | Removes duplicate ingestion architecture after baseline tests exist | Planned |
 | 4 | 11 | P2 | [Unify Worker Runtime](./P2-unify-worker-runtime.md) | Medium | Medium | Important runtime consolidation, but safer after P5 and P6 | Planned |
 | 5 | 6 | P6 | [Add Integration Tests](./P6-add-integration-tests.md) | Medium | Medium | Baseline regression suite required before larger refactors | Planned |

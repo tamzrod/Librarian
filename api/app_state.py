@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any
 
+from storage.backend import validate_backend_instance
 from storage.postgres_backend import PostgresBackend
 from ingestion.librarian import Librarian
 from ingestion.collection_watcher import CollectionWatcher, WATCHDOG_AVAILABLE
@@ -244,6 +245,7 @@ class AppState:
                         user=user,
                         password=password
                     )
+                    validate_backend_instance(self.backend)
                     # Test connection
                     self.backend._get_connection().close()
                     self._persistence_available = True
