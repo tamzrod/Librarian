@@ -1,7 +1,11 @@
 # P4 — Replace AppState Singleton with Dependency Injection
 
 **Source:** V-002, TD-008  
-**Effort:** High | **Risk:** Medium | **Priority:** 4
+**Effort:** High | **Risk:** Medium
+**Architectural Priority:** 1 | **Implementation Order:** 12
+**Hard Prerequisites:** P6
+**Soft Prerequisites:** P3, P2
+**Implementation Note:** Execute last due to repository-wide blast radius and route/test impact.
 
 ---
 

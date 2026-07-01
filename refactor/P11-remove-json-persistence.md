@@ -1,15 +1,17 @@
 # P11 — Remove JSON Persistence Layer
 
 **Source:** TD-005  
-**Effort:** Low | **Risk:** Low | **Priority:** 11
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 9 | **Implementation Order:** 8
+**Hard Prerequisites:** P1
+**Soft Prerequisites:** None
+**Implementation Note:** Execute immediately after P1 so JSON persistence cleanup does not linger.
 
 ---
 
 ## Problem
 
 `ingestion/persistence.py` contains the original JSON snapshot code that pre-dates the PostgreSQL catalog. After P1 is complete (ingestion consolidated to the `CollectionWatcher` path), this file will have no callers and can be deleted.
-
-**Prerequisite:** P1 must be completed first.
 
 ## Impact
 

@@ -1,7 +1,11 @@
 # P6 — Add Integration Tests for Full Ingestion Pipeline
 
 **Source:** TD-011  
-**Effort:** Medium | **Risk:** Medium | **Priority:** 6
+**Effort:** Medium | **Risk:** Medium
+**Architectural Priority:** 5 | **Implementation Order:** 6
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
+**Implementation Note:** Baseline regression suite must land before P1, P2, or P4 execute.
 
 ---
 

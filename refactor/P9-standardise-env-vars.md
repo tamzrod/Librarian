@@ -1,7 +1,10 @@
 # P9 — Standardise Environment Variable Naming
 
 **Source:** V-006, TD-010  
-**Effort:** Low | **Risk:** Low | **Priority:** 9
+**Effort:** Low | **Risk:** Low
+**Architectural Priority:** 10 | **Implementation Order:** 1
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
 
 ---
 

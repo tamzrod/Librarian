@@ -1,7 +1,10 @@
 # P2 — Unify Worker Runtime
 
 **Source:** V-003, TD-002  
-**Effort:** Medium | **Risk:** Medium | **Priority:** 2
+**Effort:** Medium | **Risk:** Medium
+**Architectural Priority:** 4 | **Implementation Order:** 11
+**Hard Prerequisites:** P5, P6
+**Soft Prerequisites:** None
 
 ---
 

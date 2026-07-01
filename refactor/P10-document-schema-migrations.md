@@ -1,7 +1,10 @@
 # P10 — Document Schema Migration Behaviour
 
 **Source:** TD-006  
-**Effort:** Low | **Risk:** Medium | **Priority:** 10
+**Effort:** Low | **Risk:** Medium
+**Architectural Priority:** 11 | **Implementation Order:** 2
+**Hard Prerequisites:** None
+**Soft Prerequisites:** None
 
 ---
 
