@@ -35,12 +35,12 @@
 CREATE INDEX IF NOT EXISTS idx_evidence_lineage_created_at
     ON evidence_lineage(created_at);
 
--- Document jobs: ORDER BY priority DESC, created_at ASC used by the worker claim
--- query; ORDER BY created_at DESC / ASC used by operations and pipeline routes.
+-- Document jobs: ORDER BY priority DESC, created_at ASC used by worker claim
+-- query: ORDER BY created_at DESC or ASC used by operations and pipeline routes
 CREATE INDEX IF NOT EXISTS idx_document_jobs_created_at
     ON document_jobs(created_at);
 
--- Scan snapshots: collection_id FK column; no index was created in 007.
+-- Scan snapshots: collection_id FK column. No index was created in 007.
 CREATE INDEX IF NOT EXISTS idx_scan_snapshots_collection
     ON scan_snapshots(collection_id);
 
