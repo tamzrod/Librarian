@@ -7,6 +7,7 @@ Models a familiar file-browser experience similar to VSCode, Finder, or Windows 
 import os
 from typing import Optional
 from datetime import datetime
+from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -127,6 +128,27 @@ def normalize_path_relative(path: str, collection_root: str) -> str:
     
     relative = normalized_path[len(normalized_root):]
     return relative.lstrip('/')
+
+
+def resolve_folder_path(folder_path: str, collection_root: str) -> tuple[str, str]:
+    """Resolve request folder path to a full absolute path and relative path."""
+    decoded_path = unquote(folder_path or "").strip("/")
+    normalized_root = collection_root.rstrip("/")
+
+    if not decoded_path:
+        return normalized_root, ""
+
+    if decoded_path == normalized_root.lstrip("/"):
+        return normalized_root, ""
+
+    if decoded_path.startswith(f"{normalized_root}/"):
+        relative_path = decoded_path[len(normalized_root):].strip("/")
+        return f"{normalized_root}/{relative_path}", relative_path
+
+    if decoded_path == normalized_root:
+        return normalized_root, ""
+
+    return f"{normalized_root}/{decoded_path}", decoded_path
 
 
 def _extract_folder_paths(conn, collection_root: str) -> list[str]:
@@ -430,14 +452,8 @@ async def get_folder_contents(
     app_state = get_app_state()
     collection_root = app_state.library_root or "/library"
     
-    # folder_path comes in as relative path (e.g., "Camera" or "Camera/subfolder")
-    # Build the full absolute path by combining with collection root
-    folder_path = folder_path.strip("/")
-    if folder_path:
-        full_folder_path = f"{collection_root}/{folder_path}"
-    else:
-        # Empty path means root
-        full_folder_path = collection_root
+    # Accept both relative ("Camera") and absolute ("/library/Camera") inputs.
+    full_folder_path, relative_folder_path = resolve_folder_path(folder_path, collection_root)
     
     subfolders = []
     documents = []
@@ -458,7 +474,7 @@ async def get_folder_contents(
     
     folder_node = FolderNode(
         id=full_folder_path,
-        name=folder_path.rsplit('/')[-1] if folder_path else collection_root.lstrip('/').split('/')[-1],
+        name=relative_folder_path.rsplit('/')[-1] if relative_folder_path else collection_root.lstrip('/').split('/')[-1],
         path=full_folder_path,
         has_children=len(subfolders) > 0
     )
