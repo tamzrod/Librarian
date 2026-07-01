@@ -5,6 +5,7 @@
 **Architectural Priority:** 7 | **Implementation Order:** 10
 **Hard Prerequisites:** P3
 **Soft Prerequisites:** P1
+**Status:** ⚠️ Partially Complete
 
 ---
 
@@ -12,30 +13,34 @@
 
 `mark_deleted()` exists in the `StorageBackend` interface, but the implementation in `collection_watcher._mark_deleted()` has a fallback path that sets `exists_on_disk` directly — which silently does nothing if the column is absent in older schema versions.
 
-## Impact
+## Resolution Progress (2026-07)
 
-- Deleted file tracking may fail silently on older database schemas.
-- Audit trail for deleted files may be incomplete.
+### Completed
+- ✅ `mark_deleted()` is defined in `StorageBackend` ABC with docstring and artifact inventory rationale
+- ✅ P3 prerequisite completed — backend interface enforced
+
+### Remaining Work
+- 🔴 Fallback still exists in `collection_watcher._mark_deleted()` (lines 238-249):
+  ```python
+  if hasattr(self.backend, 'mark_deleted'):
+      self.backend.mark_deleted(artifact_path)
+  elif hasattr(self.backend, 'save_document'):
+      # Fallback: update exists_on_disk via save_document
+      ...
+  ```
+- 🔴 No startup validation of `exists_on_disk` column
 
 ## Files Affected
 
-| File | Action |
-|------|--------|
-| `storage/postgres_backend.py` | Verify/complete `mark_deleted()` implementation |
-| `ingestion/collection_watcher.py` | Remove fallback; use `mark_deleted()` exclusively |
-| `api/app_state.py` | Add startup assertion that `exists_on_disk` column exists |
-
-## Steps
-
-1. Confirm `exists_on_disk` column is present in all supported schema versions (check migration history).
-2. If any migration is missing the column addition, add it in a new migration.
-3. Remove the fallback in `collection_watcher._mark_deleted()` — call `self.backend.mark_deleted(document_id)` only.
-4. Add a startup check (or schema validation step) that asserts the column exists before the watcher starts.
-5. Write a unit test: create a document, delete the file, trigger the watcher, assert `exists_on_disk = false` and `deleted_at` is set.
+| File | Action | Status |
+|------|--------|--------|
+| `storage/postgres_backend.py` | Verify/complete `mark_deleted()` implementation | ✅ Done |
+| `ingestion/collection_watcher.py` | Remove fallback; use `mark_deleted()` exclusively | 🔴 Pending |
+| `api/app_state.py` | Add startup assertion that `exists_on_disk` column exists | 🔴 Pending |
 
 ## Definition of Done
 
-- `mark_deleted()` is the single code path for soft-deleting a document.
-- No fallback `hasattr` or column-check workaround exists in `collection_watcher`.
-- The column is guaranteed by schema validation at startup.
-- Unit test covers the soft-delete path.
+- [ ] `mark_deleted()` is the single code path for soft-deleting a document.
+- [ ] No fallback `hasattr` or column-check workaround exists in `collection_watcher`.
+- [ ] The column is guaranteed by schema validation at startup.
+- [ ] Unit test covers the soft-delete path.
