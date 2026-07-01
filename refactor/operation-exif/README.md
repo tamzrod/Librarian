@@ -81,11 +81,11 @@ Instead of E3 (copy GPS to locations), implement **E8 as a Map Aggregation Layer
 
 | ID | Finding | Severity | Classification | Priority Rank |
 |----|---------|----------|----------------|---------------|
-| E1 | mime_type Not Persisted | Critical | Architectural Violation | **1** |
-| E2 | structured_data Dropped in Pipeline | Critical | Open | **3** |
+| E1 | mime_type Not Persisted | Critical | **Completed** | **1** |
+| E2 | structured_data Dropped in Pipeline | Critical | **Completed** | **3** |
 | E3 | GPS Not Copied to locations Table | High | **Cancelled** | N/A |
-| E4 | Inconsistent Metadata Ownership | High | Architectural Violation | **2** |
-| E5 | Thumbnail Persistence Missing | Medium | Open | **5** |
+| E4 | Inconsistent Metadata Ownership | High | **Completed** | **2** |
+| E5 | Thumbnail Persistence Missing | Medium | **Completed** | **5** |
 | E6 | OCR Output Not Persisted | Medium | Open | **6** |
 | E7 | Embedding Storage Incomplete | Medium | Open | **4** |
 | E8 | Location/EXIF Disconnect → Map Aggregation | High | Open | **7** |
@@ -431,7 +431,7 @@ None - all remaining tasks are in scope.
 ### What's Broken ✗
 
 1. ~~**mime_type**: Schema exists, never populated~~ ✅ **FIXED (E1)**
-2. **structured_data**: Produced by parsers, dropped at ingestion
+2. ~~**structured_data**: Produced by parsers, dropped at ingestion~~ ✅ **FIXED (E2)**
 3. **Thumbnails**: Job queued, not implemented
 4. **OCR**: Job queued, output not persisted
 5. **Embeddings**: Table exists, storage incomplete
@@ -444,10 +444,10 @@ None - all remaining tasks are in scope.
 | Task | Status | Started | Completed | Notes |
 |------|--------|---------|-----------|-------|
 | E1 | **Completed** | 2026-07-01 | 2026-07-01 | mime_type persistence |
-| E2 | Planned | - | - | structured_data handling |
+| E2 | **Completed** | 2026-07-01 | 2026-07-01 | structured_data routing contract |
 | ~~E3~~ | **Cancelled** | - | - | Replaced by E8 Map Aggregation Layer |
 | **E4** | **Completed** | 2026-07-01 | 2026-07-01 | Metadata ownership contracts |
-| E5 | Planned | - | - | Thumbnails |
+| E5 | **Completed** | 2026-07-01 | 2026-07-01 | Thumbnails |
 | E6 | Planned | - | - | OCR persistence |
 | E7 | Planned | - | - | Embeddings |
 | E8 | Planned | - | - | Location/EXIF → Map Aggregation |
@@ -564,6 +564,82 @@ This task was documentation-only. No runtime behavior was modified.
 
 ---
 
+## E2 Implementation Details (Completed)
+
+### Problem
+The `structured_data` blob produced by all parsers was **completely dropped** in the ingestion pipeline without explicit ownership decisions. This violated Operation EXIF ownership rules because metadata disappeared without determining owner, persistence target, or rebuild source.
+
+### Solution
+E2 establishes a **Structured Data Routing Contract** that formally defines the outcome of every parser `structured_data` field:
+
+1. **Persist** - Extracted to appropriate enrichment tables by workers
+2. **Transform and persist** - Converted to worker-owned format
+3. **Explicitly discard** - Logged as intentional, no data loss concern
+
+### Structured Data Routing Matrix
+
+| Parser | Field | Action | Owner | Destination |
+|--------|-------|--------|-------|-------------|
+| image | mime_type | discard | inventory | N/A (E1 handles) |
+| image | width | persist | photo_metadata | photo_metadata.width |
+| image | height | persist | photo_metadata | photo_metadata.height |
+| image | aspect_ratio | discard | none | N/A (derived) |
+| text | line_count | discard | none | N/A (diagnostic) |
+| text | word_count | discard | none | N/A (diagnostic) |
+| python | imports/classes/functions | discard | none | N/A (EntityExtractor) |
+| csv/json/yaml/xml/toml/ini | [entire blob] | discard | none | N/A (EntityExtractor) |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ingestion/structured_data_router.py` | **NEW** - Routing contract module |
+| `ingestion/collection_watcher.py` | Import and call router after parsing |
+| `refactor/operation-exif/E2-structured-data-dropped.md` | Updated with routing matrix |
+
+### Key Implementation
+
+The router validates that every parser field has an explicit routing decision. If a field is encountered without a routing decision, it raises a `ValueError` (implicit discard detection).
+
+```python
+# In collection_watcher.py
+from .structured_data_router import route_structured_data
+
+# After parsing:
+try:
+    routing_decisions = route_structured_data(
+        parser_type,
+        parsed['structured_data'],
+        log_routing=True
+    )
+except ValueError as e:
+    # Implicit discard - fail fast
+    raise
+```
+
+### No Data Loss
+E2 is a **documentation and contract task**. The actual routing behavior was already correct:
+- Image dimensions are extracted by PhotoMetadataExtractor
+- Structured data parsers output is consumed by EntityExtractor
+- Parser diagnostics are intentionally transient
+
+The routing matrix formalizes what was implicit, enabling:
+1. Clear ownership documentation
+2. Explicit logging of discard decisions
+3. Detection of implicit discards (future-proofing)
+
+### Rollback Strategy
+To rollback E2:
+```bash
+# Remove the structured_data_router.py module
+rm ingestion/structured_data_router.py
+
+# Remove the routing call from collection_watcher.py (lines 201-218)
+# Revert to the original parsing code
+```
+
+---
+
 ## E4 Implementation Details (Completed)
 
 ### Problem
@@ -632,6 +708,8 @@ Read `E4-inconsistent-metadata-ownership.md` to verify all metadata fields have 
 | File | Role |
 |------|------|
 | `ingestion/collection_watcher.py` | ✅ **FIXED (E1)**: Now persists mime_type during discovery |
+| `ingestion/collection_watcher.py` | ✅ **FIXED (E2)**: Routes structured_data with explicit decisions |
+| `ingestion/structured_data_router.py` | ✅ **NEW (E2)**: Routing contract module |
 | `ingestion/scanner.py` | Discovery metadata source |
 | `ingestion/indexer.py` | Indexing logic |
 
@@ -687,13 +765,16 @@ Total Effort: 38-55 hours
 ## Next Steps
 
 1. Review this prioritization document
-2. Assign ownership for Wave 0 tasks
-3. Begin E1 (mime_type) implementation - no dependencies
-4. Begin E4 + E10 (documentation) in parallel
-5. Schedule review of E2 approach (Option A vs B vs C)
+2. ~~Begin E1 (mime_type) implementation~~ ✅ **COMPLETED**
+3. ~~Begin E4 + E10 (documentation) in parallel~~ ✅ **COMPLETED**
+4. ~~Begin E2 (structured_data routing)~~ ✅ **COMPLETED**
+5. ~~Begin E5 (thumbnail persistence)~~ ✅ **COMPLETED**
+6. Continue with remaining tasks: E6, E7, E8, E9
 
 ---
 
-**Document Version:** 2.0
+**Document Version:** 2.2
 **Re-prioritization Completed:** 2026-07-01
-**Next Review:** After Wave 0 implementation
+**E2 Implementation Completed:** 2026-07-01
+**E5 Implementation Completed:** 2026-07-01
+**Next Review:** After remaining tasks (E6-E9)
