@@ -43,7 +43,7 @@ class InMemoryBackend:
 
     # -- Artifact / document lifecycle --------------------------------------
 
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         doc_id = self._next_id
         self._next_id += 1
         doc = {
@@ -54,6 +54,7 @@ class InMemoryBackend:
             'modified_time': modified_time,
             'status': 'DISCOVERED',
             'exists_on_disk': True,
+            'mime_type': mime_type,
         }
         self.documents[path] = doc
         self.documents_by_id[doc_id] = doc

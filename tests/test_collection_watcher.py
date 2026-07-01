@@ -27,7 +27,7 @@ class MockBackend:
         self.discovered_artifacts = []  # Track discovered artifacts
         self.deleted_artifacts = []  # Track deleted artifacts
     
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         """Create an artifact record immediately upon discovery."""
         doc_id = len(self.documents) + 1
         self.documents[path] = {
@@ -39,10 +39,11 @@ class MockBackend:
             'status': 'DISCOVERED',
             'exists_on_disk': True,
             'lifecycle_state': 'discovered',
-            'artifact_type': self._classify_artifact_type(extension)
+            'artifact_type': self._classify_artifact_type(extension),
+            'mime_type': mime_type
         }
         self.discovered_artifacts.append(path)
-        print(f"  [Backend] Discovered artifact: {path} (type: {self.documents[path]['artifact_type']})")
+        print(f"  [Backend] Discovered artifact: {path} (type: {self.documents[path]['artifact_type']}, mime: {mime_type})")
         return doc_id
     
     def save_document(self, document):

@@ -38,7 +38,7 @@ class ConcreteBackend(StorageBackend):
     def mark_deleted(self, path):
         return True
 
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         return 1
 
 
@@ -73,7 +73,7 @@ class PartialBackend(StorageBackend):
     def mark_deleted(self, path):
         return True
 
-    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None):
+    def discover_artifact(self, path, extension=None, file_size=None, modified_time=None, mime_type=None):
         return 1
 
 

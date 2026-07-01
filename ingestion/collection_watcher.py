@@ -149,9 +149,14 @@ class CollectionWatcher:
         
         # Step 1: Discover artifact immediately (no parser required)
         # ARTIFACT INVENTORY MODEL: Discovery precedes understanding
+        # E1: mime_type is Discovery Metadata - determined from extension, persisted immediately
         try:
             stat = full_path.stat()
             doc_id = None
+            
+            # Determine mime_type from extension (Discovery Metadata - no worker dependency)
+            from registry.register_parsers import get_mime_type_from_extension
+            mime_type = get_mime_type_from_extension(full_path.suffix)
             
             if hasattr(self.backend, 'discover_artifact'):
                 # Use new discover_artifact method for immediate creation
@@ -159,9 +164,10 @@ class CollectionWatcher:
                     path=artifact_path,
                     extension=full_path.suffix,
                     file_size=stat.st_size,
-                    modified_time=datetime.fromtimestamp(stat.st_mtime)
+                    modified_time=datetime.fromtimestamp(stat.st_mtime),
+                    mime_type=mime_type
                 )
-                print(f"[CollectionWatcher] Discovered artifact {artifact_path} -> id:{doc_id}")
+                print(f"[CollectionWatcher] Discovered artifact {artifact_path} -> id:{doc_id}, mime_type:{mime_type}")
             elif hasattr(self.backend, 'save_document'):
                 # Fallback to save_document for backends without discover_artifact
                 document = {
@@ -294,13 +300,17 @@ class CollectionWatcher:
                             continue
                     
                     # Discover artifact
+                    # E1: mime_type is Discovery Metadata - determined from extension, persisted immediately
                     doc_id = None
                     if hasattr(self.backend, 'discover_artifact'):
+                        from registry.register_parsers import get_mime_type_from_extension
+                        mime_type = get_mime_type_from_extension(full_path.suffix)
                         doc_id = self.backend.discover_artifact(
                             path=artifact_path,
                             extension=full_path.suffix,
                             file_size=stat.st_size,
-                            modified_time=datetime.fromtimestamp(stat.st_mtime)
+                            modified_time=datetime.fromtimestamp(stat.st_mtime),
+                            mime_type=mime_type
                         )
                     
                     # Create scan snapshot for tracking

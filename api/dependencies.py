@@ -66,10 +66,11 @@ class MockBackend:
         return []
     
     def discover_artifact(self, path: str, extension: str = None, 
-                          file_size: int = None, modified_time = None) -> int:
+                          file_size: int = None, modified_time = None, mime_type: str = None) -> int:
         """Create an artifact record immediately upon discovery.
         
         ARTIFACT INVENTORY MODEL: Discovery precedes understanding.
+        E1: mime_type is Discovery Metadata - persisted immediately from extension.
         """
         doc_id = self._next_id
         self._next_id += 1
@@ -82,7 +83,8 @@ class MockBackend:
             'status': 'DISCOVERED',
             'exists_on_disk': True,
             'lifecycle_state': 'discovered',
-            'artifact_type': self._classify_artifact_type(extension)
+            'artifact_type': self._classify_artifact_type(extension),
+            'mime_type': mime_type
         }
         return doc_id
     
