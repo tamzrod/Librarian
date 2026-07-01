@@ -22,6 +22,65 @@ Approved plans not yet started.
 
 ---
 
+## Operation EXIF - Metadata Architecture Audit
+
+**Audit Date:** 2026-07-01
+**Priority:** Critical
+**Status:** Audit Complete
+
+Following the EXIF investigation, a second architectural layer was identified: metadata ownership, persistence, lifecycle, and presentation. This audit examines these gaps.
+
+### Findings Summary
+
+| ID | Finding | Severity | Status |
+|----|---------|----------|--------|
+| E1 | mime_type Not Persisted | Critical | Open |
+| E2 | structured_data Dropped | Critical | Open |
+| E3 | GPS Not Copied to locations | High | Open |
+| E4 | Inconsistent Metadata Ownership | High | Open |
+| E5 | Thumbnail Persistence Missing | Medium | Open |
+| E6 | OCR Output Not Persisted | Medium | Open |
+| E7 | Embedding Storage Incomplete | Medium | Open |
+| E8 | Location/EXIF Disconnect | High | Open |
+| E9 | API/UI Metadata Gaps | Medium | Open |
+| E10 | State Confusion | Low | Open |
+
+### Quick Links
+
+- [Operation EXIF Dashboard](./operation-exif/README.md)
+- [Dependency Graph](./operation-exif/DEPENDENCIES.md)
+- [Implementation Waves](./operation-exif/WAVES.md)
+
+### Implementation Order
+
+1. **Wave 1:** E1 (mime_type), E5 (thumbnails), E6 (OCR), E7 (embeddings), E10 (state) - parallelizable
+2. **Wave 2:** E2 (structured_data), E3 (GPS), E8 (Location/EXIF) - sequential
+3. **Wave 3:** E4 (ownership), E9 (API/UI) - dependent
+
+### Estimated Effort
+
+- Wave 1: 22-35 hours
+- Wave 2: 10-18 hours
+- Wave 3: 6-9 hours
+- **Total: 38-62 hours**
+
+### Individual Findings
+
+| Document | Description |
+|----------|-------------|
+| [E1: mime_type](./operation-exif/E1-mime-type-not-persisted.md) | Critical - schema exists but never populated |
+| [E2: structured_data](./operation-exif/E2-structured-data-dropped.md) | Critical - parser output dropped |
+| [E3: GPS to locations](./operation-exif/E3-gps-not-copied-to-locations.md) | High - photo_metadata GPS never copied |
+| [E4: Metadata Ownership](./operation-exif/E4-inconsistent-metadata-ownership.md) | High - unclear ownership model |
+| [E5: Thumbnails](./operation-exif/E5-thumbnail-persistence-missing.md) | Medium - job queued but not implemented |
+| [E6: OCR](./operation-exif/E6-ocr-output-not-persisted.md) | Medium - job queued but not implemented |
+| [E7: Embeddings](./operation-exif/E7-embedding-storage-incomplete.md) | Medium - table exists but storage incomplete |
+| [E8: Location/EXIF](./operation-exif/E8-location-exif-disconnect.md) | High - two separate location systems |
+| [E9: API/UI Gaps](./operation-exif/E9-api-ui-metadata-gaps.md) | Medium - available data not exposed |
+| [E10: State Confusion](./operation-exif/E10-state-confusion.md) | Low - documentation needed |
+
+---
+
 ## Archived Plans
 
 Completed refactor plans. See [archive/](archive/) for historical documentation.
