@@ -37,3 +37,8 @@ def test_resolve_folder_path_rejects_path_traversal():
 def test_resolve_folder_path_rejects_encoded_path_traversal():
     with pytest.raises(ValueError, match="path traversal"):
         resolve_folder_path("%2E%2E/Camera", "/library")
+
+
+def test_resolve_folder_path_rejects_backslash_traversal():
+    with pytest.raises(ValueError, match="path traversal"):
+        resolve_folder_path("..\\Camera", "/library")
