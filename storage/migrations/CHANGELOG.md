@@ -28,6 +28,7 @@ This changelog documents every forward-only schema migration in `storage/migrati
 | `007_job_orchestration.sql` | Expands job status checks, adds prerequisite/snapshot tables, seeds defaults, and extends `document_jobs`. | Maintenance-window recommended because queue writes can conflict with `document_jobs` changes. | Pause workers before applying. |
 | `008_document_fields.sql` | Adds `mime_type` and `created_at` to `documents`, backfills `created_at`, and indexes `mime_type`. | Maintenance-window recommended because `documents` is altered and backfilled. | None. |
 | `009_add_missing_indexes.sql` | Adds indexes on `evidence_lineage.created_at`, `document_jobs.created_at`, and `scan_snapshots.collection_id`. | Safe on live systems; creates new indexes only. For very large tables apply with `CREATE INDEX CONCURRENTLY` outside a transaction. | None for normal deployments. |
+| `010_thumbnails.sql` | Adds `thumbnail_path` to `documents` and index for E5 thumbnail persistence. | Safe on live systems; adds nullable column with default. | None. |
 
 ## Detailed Notes
 

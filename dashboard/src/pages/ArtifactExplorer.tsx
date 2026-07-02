@@ -70,6 +70,52 @@ interface TreeNode {
   children: TreeNode[]
 }
 
+// E5: Grid item component that displays thumbnail when available
+interface GridDocumentItemProps {
+  doc: ExplorerDocument
+  isSelected: boolean
+  onClick: () => void
+  documentDetail: DocumentDetail | null
+}
+
+function GridDocumentItem({ doc, isSelected, onClick, documentDetail }: GridDocumentItemProps) {
+  const thumbnailUrl = documentDetail?.thumbnail_path 
+    ? api.getThumbnailUrl(documentDetail.thumbnail_path) 
+    : null
+  
+  const isImage = api.isImagePreviewable(doc.extension)
+
+  return (
+    <div
+      className={`grid-item ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+    >
+      <div className="grid-item-thumbnail">
+        {thumbnailUrl && isImage ? (
+          <img 
+            src={thumbnailUrl} 
+            alt={doc.name}
+            className="grid-thumbnail-img"
+            onError={(e) => {
+              // Fall back to icon on error
+              (e.target as HTMLImageElement).style.display = 'none'
+              const parent = (e.target as HTMLImageElement).parentElement
+              if (parent) parent.querySelector('.grid-item-icon')?.classList.remove('hidden')
+            }}
+          />
+        ) : null}
+        <div className={`grid-item-icon ${thumbnailUrl && isImage ? 'hidden' : ''}`}>
+          {getFileIcon(doc.name)}
+        </div>
+      </div>
+      <div className="grid-item-name">{doc.name}</div>
+      {doc.extension && (
+        <div className="grid-item-meta">{doc.extension.replace('.', '').toUpperCase()}</div>
+      )}
+    </div>
+  )
+}
+
 function ArtifactExplorer() {
   // State
   const [tree, setTree] = useState<TreeNode[]>([])
@@ -307,17 +353,13 @@ function ArtifactExplorer() {
       ))}
       {/* Documents */}
       {folderContents.documents.map(doc => (
-        <div
+        <GridDocumentItem
           key={doc.id}
-          className={`grid-item ${selectedDocument?.id === doc.id ? 'selected' : ''}`}
+          doc={doc}
+          isSelected={selectedDocument?.id === doc.id}
           onClick={() => selectDocument(doc)}
-        >
-          <div className="grid-item-icon">{getFileIcon(doc.name)}</div>
-          <div className="grid-item-name">{doc.name}</div>
-          {doc.extension && (
-            <div className="grid-item-meta">{doc.extension.replace('.', '').toUpperCase()}</div>
-          )}
-        </div>
+          documentDetail={doc.id === selectedDocument?.id ? documentDetail : null}
+        />
       ))}
       {folderContents.folders.length === 0 && folderContents.documents.length === 0 && (
         <div className="view-empty">

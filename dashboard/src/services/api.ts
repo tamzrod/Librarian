@@ -383,6 +383,18 @@ class LibrarianApiClient {
   }
 
   /**
+   * Get the thumbnail URL for a document.
+   * @param thumbnailPath - The relative thumbnail path (e.g., ".thumbnails/1017_IMG_001_thumb.jpg")
+   * @returns URL to fetch the thumbnail image
+   */
+  getThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
+    if (!thumbnailPath) return null
+    // thumbnailPath already includes ".thumbnails/" prefix, so we just prepend the base
+    const base = this.client.defaults.baseURL || ''
+    return `${base}/thumbnails/${thumbnailPath}`
+  }
+
+  /**
    * Check if a file extension is previewable as text.
    */
   isTextPreviewable(extension: string | null | undefined): boolean {
