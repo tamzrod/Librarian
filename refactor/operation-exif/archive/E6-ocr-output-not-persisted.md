@@ -2,7 +2,40 @@
 
 **Status:** Open  
 **Severity:** Medium  
-**Classification:** Open
+**Classification:** Not Implemented
+**Last Updated:** 2026-07-02 (Post-Implementation Audit)
+
+## Implementation Status
+
+### What Exists
+
+1. ✅ `JobType.RUN_OCR = 'run_ocr'` defined in backend
+2. ✅ `run_ocr` job queued for image artifacts (see ARTIFACT_TYPE_JOBS)
+3. ❌ **NO handler registered** - Worker does not register a handler for `run_ocr`
+
+### Gap Analysis
+
+The job queue expects `run_ocr` jobs but no worker processes them:
+```
+Worker handlers registered:
+- extract_text ✅
+- extract_entities ✅
+- extract_events ✅
+- extract_locations ✅
+- generate_embeddings ✅
+- extract_photo_metadata ✅
+- generate_thumbnail ✅
+- run_ocr ❌ NOT REGISTERED
+- object_detection ❌ NOT REGISTERED
+```
+
+### What's Needed
+
+1. Create `OcrWorker` class to handle `run_ocr` jobs
+2. Register handler: `worker.register_handler('run_ocr', OcrWorker(backend).process)`
+3. Implement OCR using pytesseract, easyocr, or rapidocr
+4. Store OCR text in `document_content` table
+5. Add integration tests
 
 ## Problem Statement
 

@@ -1,8 +1,25 @@
 # E7: Embedding Storage Incomplete
 
-**Status:** Open  
+**Status:** Partial  
 **Severity:** Medium  
-**Classification:** Open
+**Classification:** Partial Implementation
+**Last Updated:** 2026-07-02 (Post-Implementation Audit)
+
+## Implementation Status
+
+### What Was Done
+
+1. ✅ `EmbeddingGenerator` worker exists (`workers/embedding_generator.py`)
+2. ✅ Handler registered in worker.py: `generate_embeddings`
+3. ✅ `document_embeddings` table exists in schema
+4. ✅ `save_embedding()` method exists in backend
+5. ✅ Multiple embedding model support (OpenAI, sentence-transformers, TF-IDF fallback)
+
+### What Remains
+
+1. ❌ **Vector retrieval API** - No `get_embedding()` or `search_by_embedding()` endpoints
+2. ❌ **Semantic search** - Not implemented in API layer
+3. ❌ **No verification** - Integration tests not added
 
 ## Problem Statement
 

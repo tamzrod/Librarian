@@ -1,8 +1,37 @@
 # E9: API/UI Metadata Gaps
 
-**Status:** Open  
+**Status:** Partial  
 **Severity:** Medium  
-**Classification:** Partial
+**Classification:** Partial Implementation
+**Last Updated:** 2026-07-02 (Post-Implementation Audit)
+
+## Implementation Status
+
+### What Was Done
+
+1. ✅ `mime_type` is now populated for new documents (E1 partial)
+2. ✅ DocumentDetail model includes `thumbnail_path` (E5)
+3. ✅ Timeline API exposes photo metadata (existing)
+4. ⚠️ Explorer API includes `mime_type` field in DocumentDetail
+
+### What Remains
+
+1. ❌ **No mime_type filter in Explorer API** - Can't filter by media type
+2. ❌ **No camera/make filter** - Not exposed as query parameters
+3. ❌ **No GPS location name** - No reverse geocoding
+4. ❌ **Dashboard filters incomplete** - Frontend not updated
+5. ❌ **No metadata counts API** - Operations API missing stats
+
+### API Gap Analysis
+
+| Metadata | Explorer API | Timeline API | Status |
+|----------|-------------|-------------|--------|
+| mime_type | ✅ Partial | - | Need filter params |
+| Dimensions | ✅ Via photo_metadata | - | Need better exposure |
+| Camera make/model | ✅ Via photo_metadata | ✅ | Need filter params |
+| GPS coordinates | ✅ Via photo_metadata | ✅ | Need aggregation |
+| File size | ✅ | - | Working |
+| Timestamps | ✅ | ✅ | Working |
 
 ## Problem Statement
 

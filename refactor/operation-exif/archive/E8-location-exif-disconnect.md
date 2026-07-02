@@ -2,8 +2,29 @@
 
 **Status:** Open  
 **Severity:** High  
-**Classification:** Open  
+**Classification:** Not Implemented
 **Priority:** 7
+**Last Updated:** 2026-07-02 (Post-Implementation Audit)
+
+## Implementation Status
+
+### What Exists
+
+1. ✅ `PhotoMetadataExtractor` saves GPS coordinates to `photo_metadata` table
+2. ✅ `LocationExtractor` extracts semantic locations to `locations` table
+3. ✅ Separate query paths exist for each source
+4. ❌ **NO unified location API** - No single endpoint returning both GPS and semantic
+5. ❌ **NO aggregation layer** - No `get_document_locations()` method
+
+### Gap Analysis
+
+Current state: Two separate location sources with no unified access
+```
+photo_metadata table: gps_latitude, gps_longitude, gps_altitude
+locations table: name, latitude, longitude (geocoded)
+```
+
+Missing: Unified API that returns both sources for a document
 
 ## Updated Approach: Map Aggregation Layer
 
