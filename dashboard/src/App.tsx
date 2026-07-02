@@ -9,6 +9,7 @@ import TimelineView from './pages/TimelineView'
 import MapView from './pages/MapView'
 import EntitiesView from './pages/EntitiesView'
 import RelationshipsView from './pages/RelationshipsView'
+import TraceView from './pages/TraceView'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/explorer" replace />} />
         <Route path="explorer" element={<ArtifactExplorer />} />
+        <Route path="trace" element={<TraceView />} />
         <Route path="timeline" element={<TimelineView />} />
         <Route path="map" element={<MapView />} />
         <Route path="entities" element={<EntitiesView />} />
