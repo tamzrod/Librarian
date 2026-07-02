@@ -24,7 +24,8 @@ export default function TraceView() {
     sources: [],
     startDate: null,
     endDate: null,
-    includeUnknownDevice: false
+    includeUnknownDevice: false,
+    timePreset: null
   })
   
   // Initialize view mode from URL parameter (for backwards compatibility with /map, /timeline)

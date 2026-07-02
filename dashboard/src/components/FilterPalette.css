@@ -207,7 +207,92 @@
   padding: 8px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+/* Time Presets */
+.time-presets {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.time-presets-row {
+  display: flex;
+  gap: 6px;
+}
+
+.time-presets-row .time-preset-btn {
+  flex: 1;
+}
+
+.time-presets-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.time-presets-divider::before,
+.time-presets-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color, #404040);
+}
+
+.time-presets-divider span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #666);
+}
+
+.time-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.time-preset-btn {
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  border: 1px solid var(--border-color, #404040);
+  color: var(--text-secondary, #b3b3b3);
+  background: transparent;
+  text-align: center;
+}
+
+.time-preset-btn:hover {
+  background: var(--bg-hover, #333);
+  color: var(--text-primary, #fff);
+}
+
+.time-preset-btn.active {
+  background: var(--accent-primary, #64b5f6);
+  border-color: var(--accent-primary, #64b5f6);
+  color: #1a1a1a;
+}
+
+.time-preset-custom {
+  width: 100%;
+  grid-column: span 2;
+  margin-top: 4px;
+}
+
+/* Custom Range Pickers */
+.custom-range-pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-tertiary, #1a1a1a);
+  border-radius: 4px;
+  margin-top: 4px;
 }
 
 .time-range-field {
