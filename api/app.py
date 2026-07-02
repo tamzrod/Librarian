@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 import uuid
 
-from api.routes import questions, collections, pipeline, operations, timeline, explorer, trace
+from api.routes import questions, collections, pipeline, operations, timeline, explorer, trace, settings
 from api.dependencies import get_storage_backend, MockBackend
 from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
@@ -89,6 +89,7 @@ app.include_router(operations.router, prefix="/api/v1")
 app.include_router(timeline.router, prefix="/api/v1")
 app.include_router(explorer.router, prefix="/api/v1")
 app.include_router(trace.router, prefix="/api/v1")
+app.include_router(settings.router, prefix="/api/v1")
 
 
 # E5: Thumbnail serving endpoint

@@ -26,6 +26,8 @@ import type {
   TraceFiltersResponse,
   TraceDataResponse,
   TracePhotoDetailResponse,
+  PluginListResponse,
+  PluginUpdateResponse,
 } from '../types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -493,6 +495,34 @@ class LibrarianApiClient {
       return `/thumbnails/${cleanPath}`
     }
     return `${base}/thumbnails/${cleanPath}`
+  }
+
+  // =========================================================================
+  // Settings API (Plugin Configuration)
+  // =========================================================================
+
+  /**
+   * Get all installed plugins with their configuration.
+   */
+  async getPlugins(): Promise<PluginListResponse> {
+    return this.get<PluginListResponse>('/api/v1/settings/plugins')
+  }
+
+  /**
+   * Update plugin enabled state.
+   * @param pluginName - Name of the plugin
+   * @param enabled - Whether the plugin should be enabled
+   */
+  async updatePlugin(pluginName: string, enabled: boolean): Promise<PluginUpdateResponse> {
+    try {
+      const response = await this.client.put<PluginUpdateResponse>(
+        `/api/v1/settings/plugins/${pluginName}`,
+        { enabled }
+      )
+      return response.data
+    } catch (error) {
+      handleApiError(error)
+    }
   }
 }
 

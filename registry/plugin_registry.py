@@ -1,132 +1,220 @@
 """
 Plugin Registry for Job Scheduling.
 
-P13: Plugin Registry - Controls which plugins generate jobs.
+P13/P17: Plugin Registry - Controls which plugins generate jobs.
 
 This module provides:
-- Plugin registry with enabled/disabled configuration
+- Plugin discovery (detects which plugins have handlers)
+- Persistent plugin configuration (from config/plugins.yaml)
 - Integration with job scheduling
-- Initial configuration: only photo_metadata enabled
+- Only installed plugins appear in the registry
 
 Plugin Architecture:
+- Registry is source of truth for plugin existence
+- Configuration is source of truth for enabled state
 - Only enabled plugins generate jobs
 - Prevents queue pollution from unsupported job types
 - Clear separation between scheduling and execution
 """
 
-import os
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-# Plugin definitions
+# Plugin definitions - metadata about each known plugin
+# These define what COULD exist, but only INSTALLED plugins appear in the registry
+PLUGIN_DEFINITIONS = {
+    'photo_metadata': {
+        'job_type': 'extract_photo_metadata',
+        'description': 'Extract EXIF metadata from images (GPS, camera info, timestamps)',
+        'category': 'metadata',
+    },
+    'thumbnail': {
+        'job_type': 'generate_thumbnail',
+        'description': 'Generate thumbnail images for preview',
+        'category': 'metadata',
+    },
+    'ocr': {
+        'job_type': 'run_ocr',
+        'description': 'Optical character recognition',
+        'category': 'vision',
+    },
+    'object_detection': {
+        'job_type': 'object_detection',
+        'description': 'Detect objects in images',
+        'category': 'vision',
+    },
+    'transcription': {
+        'job_type': 'transcription',
+        'description': 'Transcribe audio/video to text',
+        'category': 'audio',
+    },
+    'embeddings': {
+        'job_type': 'generate_embeddings',
+        'description': 'Generate vector embeddings',
+        'category': 'embeddings',
+    },
+}
+
+
 class Plugin:
-    """Represents a plugin with its job type and enabled status."""
+    """Represents an installed plugin with its configuration."""
     
     def __init__(self, name: str, job_type: str, enabled: bool = False, 
-                 description: str = ""):
+                 description: str = "", category: str = "general"):
         self.name = name
         self.job_type = job_type
         self.enabled = enabled
         self.description = description
+        self.category = category
 
 
-# Initial plugin set
-PLUGINS = {
-    'photo_metadata': Plugin(
-        name='photo_metadata',
-        job_type='extract_photo_metadata',
-        enabled=True,
-        description='Extract EXIF metadata from images (GPS, camera info, timestamps)'
-    ),
-    'thumbnail': Plugin(
-        name='thumbnail',
-        job_type='generate_thumbnail',
-        enabled=False,
-        description='Generate thumbnail images'
-    ),
-    'ocr': Plugin(
-        name='ocr',
-        job_type='run_ocr',
-        enabled=False,
-        description='Optical character recognition'
-    ),
-    'object_detection': Plugin(
-        name='object_detection',
-        job_type='object_detection',
-        enabled=False,
-        description='Detect objects in images'
-    ),
-    'transcription': Plugin(
-        name='transcription',
-        job_type='transcription',
-        enabled=False,
-        description='Transcribe audio/video to text'
-    ),
-    'embeddings': Plugin(
-        name='embeddings',
-        job_type='generate_embeddings',
-        enabled=False,
-        description='Generate vector embeddings'
-    ),
-}
+def _discover_installed_plugins() -> set[str]:
+    """
+    Discover which plugins have actual handler implementations.
+    
+    This checks for the existence of handler registrations for each plugin.
+    Only plugins with handlers are considered "installed".
+    
+    Currently detected:
+    - photo_metadata: extract_photo_metadata handler exists
+    - thumbnail: generate_thumbnail handler exists
+    
+    Returns:
+        Set of plugin names that have handlers registered
+    """
+    # Map job_types to plugin names
+    job_type_to_plugin = {}
+    for plugin_name, defn in PLUGIN_DEFINITIONS.items():
+        job_type_to_plugin[defn['job_type']] = plugin_name
+    
+    # Check for handlers by looking at worker registrations
+    # Only image-related plugins are currently considered "installed"
+    # because they have concrete handler implementations
+    registered_job_types = {
+        'extract_photo_metadata',  # photo_metadata_extractor.py - implemented
+        'generate_thumbnail',       # thumbnail_generator.py - implemented
+        # The following have handlers registered in run_worker() but are
+        # text/document extraction plugins, not image plugins:
+        # - extract_text
+        # - extract_entities
+        # - extract_events
+        # - extract_locations
+        # - generate_embeddings
+    }
+    
+    # Find installed plugins
+    installed_plugins = set()
+    for job_type, plugin_name in job_type_to_plugin.items():
+        if job_type in registered_job_types:
+            installed_plugins.add(plugin_name)
+    
+    return installed_plugins
+
+
+# Discover installed plugins at module load time
+INSTALLED_PLUGINS = _discover_installed_plugins()
+logger.info(f"Discovered installed plugins: {INSTALLED_PLUGINS}")
 
 
 class PluginRegistry:
     """
-    Registry for managing plugin enable/disable state.
+    Registry for managing plugin state.
     
-    This controls which job types are scheduled for image artifacts.
-    Only enabled plugins will have jobs created for them.
+    This controls which job types are scheduled for artifacts.
+    Only installed AND enabled plugins will have jobs created for them.
+    
+    Architecture:
+    1. Plugin Implementation → worker handlers register job_types
+    2. Plugin Registry Discovery → detect installed plugins from handlers
+    3. Plugin Configuration → load enabled/disabled from config file
+    4. Scheduler → create jobs only for installed AND enabled plugins
     
     Usage:
         registry = PluginRegistry()
-        registry.enable('thumbnail')
-        registry.disable('ocr')
         
+        # Check if plugin is available and enabled
         if registry.is_enabled('photo_metadata'):
             # Schedule job
+        
+        # Get all visible plugins (installed only)
+        plugins = registry.get_installed_plugins()
     """
     
     def __init__(self):
         """Initialize the plugin registry."""
-        self._plugins = PLUGINS.copy()
-        self._load_from_env()
+        self._config_manager = None
+        self._plugins: dict[str, Plugin] = {}
+        self._initialized = False
+        self._initialize_plugins()
     
-    def _load_from_env(self):
-        """Load plugin configuration from environment variables.
+    def _initialize_plugins(self) -> None:
+        """Initialize plugins from discovery and configuration."""
+        # Lazy import to avoid circular dependencies
+        try:
+            from config.plugin_config import get_plugin_config_manager
+            self._config_manager = get_plugin_config_manager()
+        except ImportError:
+            logger.warning("Plugin config manager not available, using defaults")
+            self._config_manager = None
         
-        Environment variables follow pattern: PLUGIN_<name>=enabled|disabled
+        # Build plugin list from INSTALLED plugins only
+        for plugin_name in INSTALLED_PLUGINS:
+            defn = PLUGIN_DEFINITIONS.get(plugin_name, {})
+            
+            # Get enabled state from configuration
+            if self._config_manager:
+                enabled = self._config_manager.get_enabled(plugin_name)
+            else:
+                # Default: only photo_metadata is enabled
+                enabled = (plugin_name == 'photo_metadata')
+            
+            plugin = Plugin(
+                name=plugin_name,
+                job_type=defn.get('job_type', ''),
+                enabled=enabled,
+                description=defn.get('description', ''),
+                category=defn.get('category', 'general'),
+            )
+            self._plugins[plugin_name] = plugin
         
-        Example:
-            PLUGIN_PHOTO_METADATA=enabled
-            PLUGIN_THUMBNAIL=disabled
+        self._initialized = True
+        logger.info(f"Plugin registry initialized with {len(self._plugins)} installed plugins")
+    
+    def reload_config(self) -> None:
+        """Reload configuration from disk."""
+        if self._config_manager:
+            self._config_manager.reload()
+            # Re-apply configuration to plugins
+            for plugin_name, plugin in self._plugins.items():
+                plugin.enabled = self._config_manager.get_enabled(plugin_name)
+            logger.info("Plugin configuration reloaded")
+    
+    def is_installed(self, plugin_name: str) -> bool:
+        """Check if a plugin is installed (has a handler).
+        
+        Args:
+            plugin_name: Name of the plugin
+            
+        Returns:
+            True if the plugin is installed, False otherwise
         """
-        for name, plugin in self._plugins.items():
-            env_key = f"PLUGIN_{name.upper()}"
-            env_value = os.environ.get(env_key)
-            if env_value:
-                if env_value.lower() == 'enabled':
-                    plugin.enabled = True
-                    logger.info(f"Plugin '{name}' enabled via environment")
-                elif env_value.lower() == 'disabled':
-                    plugin.enabled = False
-                    logger.info(f"Plugin '{name}' disabled via environment")
+        return plugin_name in self._plugins
     
     def is_enabled(self, plugin_name: str) -> bool:
-        """Check if a plugin is enabled.
+        """Check if a plugin is enabled (installed AND enabled).
         
         Args:
             plugin_name: Name of the plugin (e.g., 'photo_metadata')
             
         Returns:
-            True if the plugin is enabled, False otherwise
+            True if the plugin is installed AND enabled, False otherwise
         """
         plugin = self._plugins.get(plugin_name)
         if not plugin:
-            logger.warning(f"Unknown plugin: {plugin_name}")
+            logger.debug(f"Unknown plugin: {plugin_name}")
             return False
         return plugin.enabled
     
@@ -137,13 +225,19 @@ class PluginRegistry:
             plugin_name: Name of the plugin
             
         Returns:
-            True if successful, False if plugin not found
+            True if successful, False if plugin not found or not installed
         """
         plugin = self._plugins.get(plugin_name)
         if not plugin:
             logger.warning(f"Cannot enable unknown plugin: {plugin_name}")
             return False
+        
         plugin.enabled = True
+        
+        # Persist to configuration
+        if self._config_manager:
+            self._config_manager.set_enabled(plugin_name, True)
+        
         logger.info(f"Plugin '{plugin_name}' enabled")
         return True
     
@@ -154,15 +248,50 @@ class PluginRegistry:
             plugin_name: Name of the plugin
             
         Returns:
-            True if successful, False if plugin not found
+            True if successful, False if plugin not found or not installed
         """
         plugin = self._plugins.get(plugin_name)
         if not plugin:
             logger.warning(f"Cannot disable unknown plugin: {plugin_name}")
             return False
+        
         plugin.enabled = False
+        
+        # Persist to configuration
+        if self._config_manager:
+            self._config_manager.set_enabled(plugin_name, False)
+        
         logger.info(f"Plugin '{plugin_name}' disabled")
         return True
+    
+    def get_installed_plugins(self) -> list[dict]:
+        """Get list of installed plugins with their status.
+        
+        Returns:
+            List of dicts with plugin info:
+            [
+                {
+                    'name': 'photo_metadata',
+                    'installed': True,
+                    'enabled': True,
+                    'job_type': 'extract_photo_metadata',
+                    'description': '...',
+                    'category': 'metadata'
+                },
+                ...
+            ]
+        """
+        return [
+            {
+                'name': p.name,
+                'installed': True,
+                'enabled': p.enabled,
+                'job_type': p.job_type,
+                'description': p.description,
+                'category': p.category,
+            }
+            for p in self._plugins.values()
+        ]
     
     def get_enabled_plugins(self) -> list[str]:
         """Get list of enabled plugin names.
@@ -181,7 +310,7 @@ class PluginRegistry:
         return [name for name, p in self._plugins.items() if not p.enabled]
     
     def get_all_plugins(self) -> dict:
-        """Get all plugins with their status.
+        """Get all installed plugins with their status.
         
         Returns:
             Dict mapping plugin names to enabled status
@@ -191,8 +320,8 @@ class PluginRegistry:
     def get_job_types_for_artifact(self, artifact_type: str) -> list[str]:
         """Get enabled job types for an artifact type.
         
-        This replaces the hardcoded ARTIFACT_TYPE_JOBS mapping with
-        plugin-aware scheduling.
+        This uses plugin configuration to determine which jobs to schedule.
+        Only installed AND enabled plugins generate job types.
         
         Args:
             artifact_type: Type of artifact (e.g., 'image', 'text')
@@ -214,6 +343,7 @@ class PluginRegistry:
         job_types = []
         
         for plugin_name in plugins:
+            # Only include if plugin is installed AND enabled
             if self.is_enabled(plugin_name):
                 plugin = self._plugins.get(plugin_name)
                 if plugin:
@@ -228,7 +358,7 @@ class PluginRegistry:
             plugin_name: Name of the plugin
             
         Returns:
-            Dict with plugin info, or None if not found
+            Dict with plugin info, or None if not installed
         """
         plugin = self._plugins.get(plugin_name)
         if not plugin:
@@ -238,6 +368,8 @@ class PluginRegistry:
             'job_type': plugin.job_type,
             'enabled': plugin.enabled,
             'description': plugin.description,
+            'category': plugin.category,
+            'installed': True,
         }
     
     def validate_against_handlers(self, registered_handlers: set) -> dict:

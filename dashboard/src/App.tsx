@@ -10,6 +10,7 @@ import MapView from './pages/MapView'
 import EntitiesView from './pages/EntitiesView'
 import RelationshipsView from './pages/RelationshipsView'
 import TraceView from './pages/TraceView'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
         <Route path="activity" element={<ActivityFeed />} />
         <Route path="extractions" element={<ExtractionViewer />} />
         <Route path="extractions/:id" element={<ExtractionViewer />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )
