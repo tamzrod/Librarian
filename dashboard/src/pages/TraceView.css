@@ -29,6 +29,7 @@
   position: relative;
   overflow: hidden;
   min-height: 0; /* Critical for Leaflet map */
+  height: 100%; /* Ensure height propagates to map container */
 }
 
 /* Event stream docked at bottom */
