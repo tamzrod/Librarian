@@ -1,0 +1,2211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRACE — Temporal Investigation Workspace</title>
+    
+    <!--
+    ╔══════════════════════════════════════════════════════════════════════════════╗
+    ║  TRACE: TEMPORAL INVESTIGATION WORKSPACE                                     ║
+    ║  Design Specification v2.0                                                   ║
+    ╠══════════════════════════════════════════════════════════════════════════════╣
+    ║                                                                              ║
+    ║  CORE PRINCIPLES                                                             ║
+    ║  ───────────────                                                             ║
+    ║  TRACE investigates:                                                         ║
+    ║    WHERE + WHEN                                                              ║
+    ║                                                                              ║
+    ║  The map represents: SPACE                                                   ║
+    ║  The timeline represents: TIME                                               ║
+    ║  The playback cursor represents: CURRENT MOMENT OF INVESTIGATION            ║
+    ║                                                                              ║
+    ║  INVESTIGATION MODES                                                         ║
+    ║  ──────────────────                                                         ║
+    ║  Map Mode      │ Geographic exploration                                      ║
+    ║  Timeline Mode  │ Chronological exploration                                  ║
+    ║  Grid Mode      │ Bulk evidence review                                        ║
+    ║  Replay Mode    │ Temporal reconstruction (MOVEMENT REPLAY)                  ║
+    ║  Heatmap Mode   │ Location density visualization (FUTURE)                     ║
+    ║  Route Mode     │ Movement analysis (FUTURE)                                 ║
+    ║  Cluster Mode   │ Geographic grouping (FUTURE)                               ║
+    ║                                                                              ║
+    ║  KEY CONCEPTS                                                                ║
+    ║  ─────────────                                                                ║
+    ║  • Investigation Anchors: User-defined timeline markers for narrative       ║
+    ║  • Stay Points: Automatic detection of location dwell time                   ║
+    ║  • Film Strip: Temporal playback rail (not merely thumbnails)               ║
+    ║  • Route Intelligence: Movement visualization with temporal gradients       ║
+    ║                                                                              ║
+    ║  SUCCESS CRITERIA                                                            ║
+    ║  ──────────────────                                                         ║
+    ║  Investigators can answer without leaving TRACE:                            ║
+    ║  • Where was the device?                                                     ║
+    ║  • When was it there?                                                        ║
+    ║  • Where did it go next?                                                     ║
+    ║  • What happened before and after?                                          ║
+    ║  • Which evidence belongs together?                                          ║
+    ║  • Where did the subject spend the most time?                                ║
+    ║                                                                              ║
+    ╠══════════════════════════════════════════════════════════════════════════════╣
+    ║  DESIGN LANGUAGE                                                             ║
+    ║  ───────────────                                                             ║
+    ║  Aesthetic: Tactical/Forensic Interface                                      ║
+    ║  Theme: Dark, immersive, mission control inspired                            ║
+    ║  Fonts: JetBrains Mono (technical) + Outfit (UI)                            ║
+    ║  Accents: Cyan (#00d4ff) + Magenta (#ff3d8e)                                 ║
+    ║  Route Gradient: Green (old) → Yellow (mid) → Red (recent)                  ║
+    ╚══════════════════════════════════════════════════════════════════════════════╝
+    -->
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            /* Core palette - Investigation/Forensic theme */
+            --bg-primary: #0a0c10;
+            --bg-secondary: #12151c;
+            --bg-tertiary: #1a1e28;
+            --bg-elevated: #232936;
+            --bg-hover: #2d3444;
+            
+            /* Accent colors */
+            --accent-cyan: #00d4ff;
+            --accent-cyan-dim: rgba(0, 212, 255, 0.15);
+            --accent-magenta: #ff3d8e;
+            --accent-magenta-dim: rgba(255, 61, 142, 0.15);
+            --accent-amber: #ffb020;
+            
+            /* Timeline gradient (old → new) */
+            --route-old: #22c55e;
+            --route-mid: #eab308;
+            --route-recent: #ef4444;
+            
+            /* Text hierarchy */
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-tertiary: #64748b;
+            --text-muted: #475569;
+            
+            /* Borders & lines */
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-default: rgba(255, 255, 255, 0.1);
+            --border-active: rgba(0, 212, 255, 0.5);
+            
+            /* Film strip perforations */
+            --film-perforation: #0a0c10;
+            --film-strip-bg: #1a1a1a;
+            
+            /* Shadows */
+            --shadow-glow-cyan: 0 0 20px rgba(0, 212, 255, 0.3);
+            --shadow-glow-magenta: 0 0 20px rgba(255, 61, 142, 0.3);
+            
+            /* Timing */
+            --transition-fast: 150ms ease;
+            --transition-normal: 250ms ease;
+            --transition-slow: 400ms ease-out;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ===== MAIN LAYOUT ===== */
+        .trace-workspace {
+            display: grid;
+            grid-template-rows: auto 1fr auto auto;
+            height: 100vh;
+            background: 
+                radial-gradient(ellipse at 20% 80%, rgba(0, 212, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(255, 61, 142, 0.02) 0%, transparent 50%),
+                var(--bg-primary);
+        }
+
+        /* ===== HEADER / MODE TABS ===== */
+        .trace-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            height: 56px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .trace-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .trace-logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--bg-primary);
+        }
+
+        .trace-logo-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 18px;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .trace-logo-subtitle {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--text-tertiary);
+            margin-top: -4px;
+        }
+
+        .mode-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-tertiary);
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .mode-tab {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .mode-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .mode-tab.active {
+            background: var(--bg-elevated);
+            color: var(--accent-cyan);
+            box-shadow: var(--shadow-glow-cyan);
+        }
+
+        .mode-tab.future {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mode-tab.future:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .mode-tab.future::after {
+            content: 'Soon';
+            font-size: 9px;
+            padding: 2px 5px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            margin-left: 6px;
+            opacity: 0.7;
+        }
+
+        .mode-tab-icon {
+            font-size: 16px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .time-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-tertiary);
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+
+        .time-display-value {
+            color: var(--accent-cyan);
+        }
+
+        /* ===== MAIN CONTENT AREA ===== */
+        .trace-content {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 0;
+            overflow: hidden;
+        }
+
+        /* ===== FILTER PALETTE ===== */
+        .filter-palette {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-subtle);
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .filter-section {
+            margin-bottom: 24px;
+        }
+
+        .filter-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-tertiary);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        /* Device Filter */
+        .device-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .device-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            border: 1px solid transparent;
+        }
+
+        .device-item:hover {
+            background: var(--bg-elevated);
+        }
+
+        .device-item.active {
+            border-color: var(--accent-cyan);
+            background: var(--accent-cyan-dim);
+        }
+
+        .device-checkbox {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .device-item.active .device-checkbox {
+            background: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+        }
+
+        .device-checkbox svg {
+            width: 12px;
+            height: 12px;
+            opacity: 0;
+            transition: opacity var(--transition-fast);
+        }
+
+        .device-item.active .device-checkbox svg {
+            opacity: 1;
+        }
+
+        .device-icon {
+            font-size: 16px;
+        }
+
+        .device-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .device-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-tertiary);
+            background: var(--bg-primary);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .device-item.unknown .device-name {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Time Range Filter */
+        .time-presets {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .time-preset {
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-align: center;
+        }
+
+        .time-preset:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .time-preset.active {
+            background: var(--accent-cyan-dim);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .time-preset.full {
+            grid-column: span 2;
+        }
+
+        .custom-time-range {
+            margin-top: 12px;
+            display: none;
+        }
+
+        .custom-time-range.visible {
+            display: block;
+        }
+
+        .time-input-group {
+            margin-bottom: 12px;
+        }
+
+        .time-input-label {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .time-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            transition: border-color var(--transition-fast);
+        }
+
+        .time-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        /* Playback Controls in Palette */
+        .playback-mini {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .playback-buttons {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .playback-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-elevated);
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .playback-btn:hover {
+            background: var(--bg-hover);
+            transform: scale(1.05);
+        }
+
+        .playback-btn.play {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-cyan), #00a8cc);
+            box-shadow: var(--shadow-glow-cyan);
+        }
+
+        .playback-btn.play:hover {
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        }
+
+        .playback-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .playback-btn.play svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .speed-selector {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+        }
+
+        .speed-btn {
+            padding: 6px 10px;
+            background: var(--bg-primary);
+            border: none;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .speed-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .speed-btn.active {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        /* Stats Panel */
+        .stats-panel {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        /* ===== INVESTIGATION ANCHORS ===== */
+        .add-anchor-btn {
+            float: right;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            background: var(--accent-cyan-dim);
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            transition: all var(--transition-fast);
+        }
+
+        .add-anchor-btn:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        .anchors-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .anchor-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-amber);
+            transition: all var(--transition-fast);
+        }
+
+        .anchor-item:hover {
+            background: var(--bg-elevated);
+        }
+
+        .anchor-marker {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-amber);
+            box-shadow: 0 0 8px var(--accent-amber);
+        }
+
+        .anchor-info {
+            flex: 1;
+        }
+
+        .anchor-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .anchor-meta {
+            font-size: 10px;
+            color: var(--text-tertiary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .anchor-delete {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0;
+            transition: all var(--transition-fast);
+        }
+
+        .anchor-item:hover .anchor-delete {
+            opacity: 1;
+        }
+
+        .anchor-delete:hover {
+            background: var(--accent-magenta-dim);
+            color: var(--accent-magenta);
+        }
+
+        .anchor-hint, .feature-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-style: italic;
+            margin-top: 8px;
+        }
+
+        /* ===== STAY POINTS (FUTURE) ===== */
+        .future-feature {
+            opacity: 0.7;
+            position: relative;
+        }
+
+        .future-badge {
+            float: right;
+            font-size: 9px;
+            padding: 2px 6px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stay-points-preview {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stay-point-example {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            opacity: 0.6;
+        }
+
+        .stay-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .stay-icon.home {
+            background: var(--accent-cyan-dim);
+            color: var(--accent-cyan);
+        }
+
+        .stay-icon.office {
+            background: var(--accent-magenta-dim);
+            color: var(--accent-magenta);
+        }
+
+        .stay-icon.transit {
+            background: rgba(255, 176, 32, 0.15);
+            color: var(--accent-amber);
+        }
+
+        .stay-info {
+            flex: 1;
+        }
+
+        .stay-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .stay-duration {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stay-count {
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-tertiary);
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        /* ===== MAP AREA ===== */
+        .map-area {
+            position: relative;
+            background: var(--bg-primary);
+        }
+
+        #trace-map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Map overlay info */
+        .map-overlay-info {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 12px 16px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay-stat {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .overlay-stat:last-child {
+            margin-bottom: 0;
+        }
+
+        .overlay-stat-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .overlay-stat-dot.photos { background: var(--accent-cyan); }
+        .overlay-stat-dot.devices { background: var(--accent-magenta); }
+        .overlay-stat-dot.clusters { background: var(--accent-amber); }
+
+        .overlay-stat-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .overlay-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-left: auto;
+        }
+
+        /* Active photo card */
+        .active-photo-card {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-default);
+            border-radius: 12px;
+            padding: 12px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            display: none;
+            min-width: 280px;
+        }
+
+        .active-photo-card.visible {
+            display: flex;
+            gap: 12px;
+        }
+
+        .photo-thumbnail {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: var(--bg-tertiary);
+        }
+
+        .photo-info {
+            flex: 1;
+        }
+
+        .photo-timestamp {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-bottom: 4px;
+        }
+
+        .photo-device {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .photo-location {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .auto-follow-toggle {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 8px 14px;
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+        }
+
+        .toggle-switch {
+            width: 36px;
+            height: 20px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            position: relative;
+            transition: background var(--transition-fast);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: var(--text-tertiary);
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all var(--transition-fast);
+        }
+
+        .auto-follow-toggle.active .toggle-switch {
+            background: var(--accent-cyan);
+        }
+
+        .auto-follow-toggle.active .toggle-switch::after {
+            left: 18px;
+            background: var(--bg-primary);
+        }
+
+        .toggle-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== PLAYBACK BAR ===== */
+        .playback-bar {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-subtle);
+            padding: 12px 24px;
+        }
+
+        .playback-main {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .playback-main-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .playback-main-btn:hover {
+            background: var(--bg-elevated);
+            transform: scale(1.05);
+        }
+
+        .playback-main-btn.primary {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--accent-cyan), #00a8cc);
+            box-shadow: var(--shadow-glow-cyan);
+        }
+
+        .playback-main-btn.primary:hover {
+            box-shadow: 0 0 40px rgba(0, 212, 255, 0.5);
+        }
+
+        .playback-main-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .playback-main-btn.primary svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .current-time-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            min-width: 140px;
+        }
+
+        .current-time-display span {
+            color: var(--text-tertiary);
+            font-size: 16px;
+        }
+
+        .time-cursor-line {
+            flex: 1;
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .time-cursor-progress {
+            height: 100%;
+            background: linear-gradient(90deg, var(--route-old), var(--route-mid), var(--route-recent));
+            border-radius: 2px;
+            width: 35%;
+            transition: width var(--transition-fast);
+        }
+
+        .time-cursor-thumb {
+            position: absolute;
+            top: 50%;
+            left: 35%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            background: var(--text-primary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            cursor: grab;
+        }
+
+        .time-cursor-thumb::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 6px;
+            height: 6px;
+            background: var(--bg-primary);
+            border-radius: 50%;
+        }
+
+        .speed-selector-main {
+            display: flex;
+            gap: 4px;
+        }
+
+        .speed-btn-main {
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid transparent;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .speed-btn-main:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .speed-btn-main.active {
+            background: var(--accent-cyan-dim);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        /* ===== FILM STRIP ===== */
+        .film-strip {
+            background: var(--film-strip-bg);
+            height: 120px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .film-perforations {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 16px;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--film-perforation) 0px,
+                var(--film-perforation) 12px,
+                var(--film-strip-bg) 12px,
+                var(--film-strip-bg) 20px
+            );
+        }
+
+        .film-perforations.bottom {
+            top: auto;
+            bottom: 0;
+        }
+
+        .film-content {
+            display: flex;
+            gap: 8px;
+            padding: 24px 40px 16px;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            height: 100%;
+            align-items: center;
+        }
+
+        .film-content::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .film-content::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .film-content::-webkit-scrollbar-thumb {
+            background: var(--bg-hover);
+            border-radius: 3px;
+        }
+
+        .film-frame {
+            flex-shrink: 0;
+            width: 72px;
+            height: 72px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            overflow: hidden;
+        }
+
+        .film-frame::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            transition: border-color var(--transition-fast);
+        }
+
+        .film-frame:hover {
+            transform: translateY(-4px);
+        }
+
+        .film-frame:hover::before {
+            border-color: var(--text-tertiary);
+        }
+
+        .film-frame.past {
+            opacity: 0.4;
+        }
+
+        .film-frame.past:hover {
+            opacity: 0.7;
+        }
+
+        .film-frame.current {
+            transform: translateY(-8px) scale(1.1);
+            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+        }
+
+        .film-frame.current::before {
+            border-color: var(--accent-cyan);
+        }
+
+        .film-frame.future {
+            opacity: 0.8;
+        }
+
+        .film-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .film-frame-time {
+            position: absolute;
+            bottom: 2px;
+            left: 2px;
+            right: 2px;
+            background: rgba(0, 0, 0, 0.8);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text-primary);
+            padding: 2px 4px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity var(--transition-fast);
+        }
+
+        .film-frame:hover .film-frame-time,
+        .film-frame.current .film-frame-time {
+            opacity: 1;
+        }
+
+        .film-frame.current .film-frame-time {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        /* Playhead indicator */
+        .film-playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 15px var(--accent-cyan);
+            z-index: 10;
+            pointer-events: none;
+            transition: left 0.1s linear;
+        }
+
+        .film-playhead::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid var(--accent-cyan);
+        }
+
+        /* Cluster markers on map */
+        .cluster-marker {
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            box-shadow: var(--shadow-glow-cyan);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .cluster-marker:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        }
+
+        .cluster-marker.small {
+            width: 40px;
+            height: 40px;
+            font-size: 12px;
+        }
+
+        .cluster-marker.medium {
+            width: 56px;
+            height: 56px;
+            font-size: 14px;
+        }
+
+        .cluster-marker.large {
+            width: 72px;
+            height: 72px;
+            font-size: 16px;
+        }
+
+        /* Route lines */
+        .route-line {
+            stroke: url(#routeGradient);
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Photo marker */
+        .photo-marker {
+            width: 36px;
+            height: 36px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 50%;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            box-shadow: var(--shadow-glow-cyan);
+        }
+
+        .photo-marker:hover {
+            transform: scale(1.15);
+        }
+
+        .photo-marker.active {
+            border-color: var(--accent-magenta);
+            box-shadow: var(--shadow-glow-magenta);
+        }
+
+        .photo-marker img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Leaflet popup customization */
+        .leaflet-popup-content-wrapper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-default);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .leaflet-popup-content {
+            margin: 0;
+            padding: 0;
+        }
+
+        .leaflet-popup-tip {
+            background: var(--bg-secondary);
+        }
+
+        .popup-content {
+            padding: 12px;
+        }
+
+        .popup-thumbnail {
+            width: 200px;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .popup-timestamp {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .popup-device {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .popup-coords {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-tertiary);
+            margin-top: 6px;
+        }
+
+        /* Legend */
+        .map-legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 12px 16px;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .legend-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-tertiary);
+            margin-bottom: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .legend-line {
+            width: 24px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .legend-line.old { background: var(--route-old); }
+        .legend-line.mid { background: var(--route-mid); }
+        .legend-line.recent { background: var(--route-recent); }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: slideUp 0.4s ease-out forwards;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .trace-content {
+                grid-template-columns: 240px 1fr;
+            }
+            
+            .mode-tabs {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .trace-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-palette {
+                display: none;
+            }
+            
+            .film-strip {
+                height: 100px;
+            }
+            
+            .film-frame {
+                width: 56px;
+                height: 56px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="trace-workspace">
+        <!-- Header with Mode Tabs -->
+        <header class="trace-header">
+            <div class="trace-logo">
+                <div class="trace-logo-icon">T</div>
+                <div>
+                    <div class="trace-logo-text">TRACE</div>
+                    <div class="trace-logo-subtitle">Temporal Investigation</div>
+                </div>
+            </div>
+
+            <nav class="mode-tabs">
+                <div class="mode-tab active" data-mode="map">
+                    <span class="mode-tab-icon">🗺️</span>
+                    Map
+                </div>
+                <div class="mode-tab" data-mode="timeline">
+                    <span class="mode-tab-icon">📅</span>
+                    Timeline
+                </div>
+                <div class="mode-tab" data-mode="grid">
+                    <span class="mode-tab-icon">⊞</span>
+                    Grid
+                </div>
+                <div class="mode-tab" data-mode="replay">
+                    <span class="mode-tab-icon">▶</span>
+                    Replay
+                </div>
+                <div class="mode-tab future" data-mode="heatmap" title="Coming Soon">
+                    <span class="mode-tab-icon">🌡️</span>
+                    Heatmap
+                </div>
+                <div class="mode-tab future" data-mode="route" title="Coming Soon">
+                    <span class="mode-tab-icon">↗</span>
+                    Route
+                </div>
+            </nav>
+
+            <div class="header-actions">
+                <div class="time-display">
+                    <span class="time-display-value" id="current-datetime">2025-07-02</span>
+                    <span id="current-timezone">UTC</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="trace-content">
+            <!-- Filter Palette Sidebar -->
+            <aside class="filter-palette">
+                <!-- Device Filter -->
+                <section class="filter-section">
+                    <h3 class="filter-title">Devices</h3>
+                    <div class="device-list">
+                        <div class="device-item active" data-device="honor">
+                            <div class="device-checkbox">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </div>
+                            <span class="device-icon">📱</span>
+                            <span class="device-name">HONOR BRP-NX1</span>
+                            <span class="device-count">847</span>
+                        </div>
+                        <div class="device-item active" data-device="xiaomi">
+                            <div class="device-checkbox">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </div>
+                            <span class="device-icon">📱</span>
+                            <span class="device-name">XIAOMI 2109119DG</span>
+                            <span class="device-count">523</span>
+                        </div>
+                        <div class="device-item unknown" data-device="unknown">
+                            <div class="device-checkbox">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </div>
+                            <span class="device-icon">❓</span>
+                            <span class="device-name">Unknown Device</span>
+                            <span class="device-count">156</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Time Range Filter -->
+                <section class="filter-section">
+                    <h3 class="filter-title">Time Range</h3>
+                    <div class="time-presets">
+                        <div class="time-preset full active" data-range="all">All Time</div>
+                        <div class="time-preset" data-range="24h">Last 24h</div>
+                        <div class="time-preset" data-range="7d">Last 7 Days</div>
+                        <div class="time-preset" data-range="30d">Last 30 Days</div>
+                        <div class="time-preset" data-range="90d">Last 90 Days</div>
+                        <div class="time-preset" data-range="custom">Custom</div>
+                    </div>
+                    <div class="custom-time-range" id="custom-time-range">
+                        <div class="time-input-group">
+                            <label class="time-input-label">From</label>
+                            <input type="datetime-local" class="time-input" id="time-from" value="2025-01-01T00:00">
+                        </div>
+                        <div class="time-input-group">
+                            <label class="time-input-label">To</label>
+                            <input type="datetime-local" class="time-input" id="time-to" value="2025-07-02T23:59">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Playback Controls -->
+                <section class="filter-section">
+                    <h3 class="filter-title">Playback</h3>
+                    <div class="playback-mini">
+                        <div class="playback-buttons">
+                            <button class="playback-btn" id="btn-prev" title="Previous">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                                    <line x1="5" y1="19" x2="5" y2="5"></line>
+                                </svg>
+                            </button>
+                            <button class="playback-btn play" id="btn-play" title="Play">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                            </button>
+                            <button class="playback-btn" id="btn-next" title="Next">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                                    <line x1="19" y1="5" x2="19" y2="19"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="speed-selector">
+                            <button class="speed-btn" data-speed="0.5">0.5x</button>
+                            <button class="speed-btn active" data-speed="1">1x</button>
+                            <button class="speed-btn" data-speed="2">2x</button>
+                            <button class="speed-btn" data-speed="5">5x</button>
+                            <button class="speed-btn" data-speed="10">10x</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Investigation Anchors -->
+                <section class="filter-section">
+                    <h3 class="filter-title">
+                        Investigation Anchors
+                        <button class="add-anchor-btn" id="add-anchor" title="Add Anchor">+</button>
+                    </h3>
+                    <div class="anchors-list" id="anchors-list">
+                        <!-- Example anchors - these would be user-created in production -->
+                        <div class="anchor-item">
+                            <div class="anchor-marker"></div>
+                            <div class="anchor-info">
+                                <div class="anchor-label">08:15 — Leave Home</div>
+                                <div class="anchor-meta">Jan 15, 2025</div>
+                            </div>
+                            <button class="anchor-delete" title="Remove">×</button>
+                        </div>
+                        <div class="anchor-item">
+                            <div class="anchor-marker"></div>
+                            <div class="anchor-info">
+                                <div class="anchor-label">09:00 — Arrived Office</div>
+                                <div class="anchor-meta">Jan 15, 2025</div>
+                            </div>
+                            <button class="anchor-delete" title="Remove">×</button>
+                        </div>
+                        <div class="anchor-item">
+                            <div class="anchor-marker"></div>
+                            <div class="anchor-info">
+                                <div class="anchor-label">12:10 — Lunch Meeting</div>
+                                <div class="anchor-meta">Jan 15, 2025</div>
+                            </div>
+                            <button class="anchor-delete" title="Remove">×</button>
+                        </div>
+                        <div class="anchor-item">
+                            <div class="anchor-marker"></div>
+                            <div class="anchor-info">
+                                <div class="anchor-label">18:30 — Returned Home</div>
+                                <div class="anchor-meta">Jan 15, 2025</div>
+                            </div>
+                            <button class="anchor-delete" title="Remove">×</button>
+                        </div>
+                    </div>
+                    <p class="anchor-hint">Create timeline markers to build investigation narratives</p>
+                </section>
+
+                <!-- Stay Points (Future Feature) -->
+                <section class="filter-section future-feature">
+                    <h3 class="filter-title">
+                        Stay Points
+                        <span class="future-badge">Future</span>
+                    </h3>
+                    <div class="stay-points-preview">
+                        <div class="stay-point-example">
+                            <div class="stay-icon home"></div>
+                            <div class="stay-info">
+                                <div class="stay-label">Home</div>
+                                <div class="stay-duration">8h 13m</div>
+                            </div>
+                            <div class="stay-count">142 photos</div>
+                        </div>
+                        <div class="stay-point-example">
+                            <div class="stay-icon office"></div>
+                            <div class="stay-info">
+                                <div class="stay-label">Office</div>
+                                <div class="stay-duration">9h 44m</div>
+                            </div>
+                            <div class="stay-count">89 photos</div>
+                        </div>
+                        <div class="stay-point-example">
+                            <div class="stay-icon transit"></div>
+                            <div class="stay-info">
+                                <div class="stay-label">Passing Through</div>
+                                <div class="stay-duration">3m</div>
+                            </div>
+                            <div class="stay-count">1 photo</div>
+                        </div>
+                    </div>
+                    <p class="feature-hint">Automatic detection of location dwell time</p>
+                </section>
+
+                <!-- Stats Panel -->
+                <section class="filter-section">
+                    <h3 class="filter-title">Investigation Stats</h3>
+                    <div class="stats-panel">
+                        <div class="stat-row">
+                            <span class="stat-label">Total Photos</span>
+                            <span class="stat-value" id="stat-photos">1,526</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Active Devices</span>
+                            <span class="stat-value" id="stat-devices">3</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Clusters</span>
+                            <span class="stat-value" id="stat-clusters">24</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Time Span</span>
+                            <span class="stat-value" id="stat-timespan">184 days</span>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Map Area -->
+            <div class="map-area">
+                <div id="trace-map"></div>
+
+                <!-- Auto Follow Toggle -->
+                <div class="auto-follow-toggle active" id="auto-follow">
+                    <div class="toggle-switch"></div>
+                    <span class="toggle-label">Auto Follow</span>
+                </div>
+
+                <!-- Map Overlay Info -->
+                <div class="map-overlay-info">
+                    <div class="overlay-stat">
+                        <span class="overlay-stat-dot photos"></span>
+                        <span class="overlay-stat-text">Photos</span>
+                        <span class="overlay-stat-value" id="overlay-photos">1,526</span>
+                    </div>
+                    <div class="overlay-stat">
+                        <span class="overlay-stat-dot devices"></span>
+                        <span class="overlay-stat-text">Devices</span>
+                        <span class="overlay-stat-value" id="overlay-devices">3</span>
+                    </div>
+                    <div class="overlay-stat">
+                        <span class="overlay-stat-dot clusters"></span>
+                        <span class="overlay-stat-text">Clusters</span>
+                        <span class="overlay-stat-value" id="overlay-clusters">24</span>
+                    </div>
+                </div>
+
+                <!-- Active Photo Card -->
+                <div class="active-photo-card" id="active-photo-card">
+                    <img class="photo-thumbnail" id="active-photo-img" src="" alt="Current photo">
+                    <div class="photo-info">
+                        <div class="photo-timestamp" id="active-photo-time">2025-06-15 14:32:18</div>
+                        <div class="photo-device" id="active-photo-device">HONOR BRP-NX1</div>
+                        <div class="photo-location" id="active-photo-location">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            <span id="active-photo-coords">37.7749° N, 122.4194° W</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Route Legend -->
+                <div class="map-legend">
+                    <div class="legend-title">Route Timeline</div>
+                    <div class="legend-item">
+                        <span class="legend-line old"></span>
+                        Older
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-line mid"></span>
+                        Middle
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-line recent"></span>
+                        Recent
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Playback Bar -->
+        <div class="playback-bar">
+            <div class="playback-main">
+                <div class="playback-controls">
+                    <button class="playback-main-btn" id="main-btn-prev" title="Previous Photo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                            <line x1="5" y1="19" x2="5" y2="5"></line>
+                        </svg>
+                    </button>
+                    <button class="playback-main-btn primary" id="main-btn-play" title="Play/Pause">
+                        <svg viewBox="0 0 24 24" fill="currentColor" id="play-icon">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" id="pause-icon" style="display:none;">
+                            <rect x="6" y="4" width="4" height="16"></rect>
+                            <rect x="14" y="4" width="4" height="16"></rect>
+                        </svg>
+                    </button>
+                    <button class="playback-main-btn" id="main-btn-next" title="Next Photo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                            <line x1="19" y1="5" x2="19" y2="19"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="current-time-display">
+                    <span id="playback-time">2025-06-15</span>
+                    <span> | </span>
+                    <span id="playback-hour">14:32:18</span>
+                </div>
+
+                <div class="time-cursor-line" id="time-cursor">
+                    <div class="time-cursor-progress" id="time-progress"></div>
+                    <div class="time-cursor-thumb" id="time-thumb"></div>
+                </div>
+
+                <div class="speed-selector-main">
+                    <button class="speed-btn-main active" data-speed="0.5">0.5x</button>
+                    <button class="speed-btn-main" data-speed="1">1x</button>
+                    <button class="speed-btn-main" data-speed="2">2x</button>
+                    <button class="speed-btn-main" data-speed="5">5x</button>
+                    <button class="speed-btn-main" data-speed="10">10x</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Film Strip Timeline -->
+        <div class="film-strip">
+            <div class="film-perforations"></div>
+            <div class="film-playhead" id="film-playhead"></div>
+            <div class="film-content" id="film-content">
+                <!-- Film frames will be generated dynamically -->
+            </div>
+            <div class="film-perforations bottom"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ===== TRACE WORKSPACE - TEMPORAL INVESTIGATION =====
+
+        // Sample data - in production this would come from API
+        const samplePhotos = [
+            { id: 1, lat: 37.7749, lng: -122.4194, time: new Date('2025-01-15T08:30:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/1/200/200' },
+            { id: 2, lat: 37.7851, lng: -122.4094, time: new Date('2025-01-20T10:15:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/2/200/200' },
+            { id: 3, lat: 37.7651, lng: -122.4294, time: new Date('2025-02-05T14:22:00'), device: 'XIAOMI 2109119DG', thumb: 'https://picsum.photos/seed/3/200/200' },
+            { id: 4, lat: 37.7951, lng: -122.3994, time: new Date('2025-03-10T09:45:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/4/200/200' },
+            { id: 5, lat: 37.7551, lng: -122.4394, time: new Date('2025-04-02T16:30:00'), device: 'XIAOMI 2109119DG', thumb: 'https://picsum.photos/seed/5/200/200' },
+            { id: 6, lat: 37.7851, lng: -122.4094, time: new Date('2025-04-18T11:00:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/6/200/200' },
+            { id: 7, lat: 37.7751, lng: -122.4194, time: new Date('2025-05-05T13:15:00'), device: 'Unknown', thumb: 'https://picsum.photos/seed/7/200/200' },
+            { id: 8, lat: 37.7951, lng: -122.4294, time: new Date('2025-05-22T08:00:00'), device: 'XIAOMI 2109119DG', thumb: 'https://picsum.photos/seed/8/200/200' },
+            { id: 9, lat: 37.7651, lng: -122.3994, time: new Date('2025-06-01T10:30:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/9/200/200' },
+            { id: 10, lat: 37.7551, lng: -122.4094, time: new Date('2025-06-15T14:32:00'), device: 'HONOR BRP-NX1', thumb: 'https://picsum.photos/seed/10/200/200' },
+            { id: 11, lat: 37.7851, lng: -122.4194, time: new Date('2025-06-28T17:45:00'), device: 'XIAOMI 2109119DG', thumb: 'https://picsum.photos/seed/11/200/200' },
+            { id: 12, lat: 37.7751, lng: -122.4294, time: new Date('2025-07-01T09:20:00'), device: 'Unknown', thumb: 'https://picsum.photos/seed/12/200/200' },
+        ];
+
+        // State management
+        const state = {
+            currentIndex: 9,
+            isPlaying: false,
+            playbackSpeed: 1,
+            autoFollow: true,
+            currentMode: 'map',
+            photos: samplePhotos,
+            activeDevices: ['honor', 'xiaomi', 'unknown'],
+            timeRange: 'all'
+        };
+
+        // Initialize Map
+        const map = L.map('trace-map', {
+            center: [37.7751, -122.4194],
+            zoom: 12,
+            zoomControl: false
+        });
+
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Create markers for photos
+        const markers = [];
+        const routeCoordinates = [];
+
+        samplePhotos.forEach((photo, index) => {
+            // Create photo marker
+            const markerIcon = L.divIcon({
+                className: 'photo-marker-container',
+                html: `<div class="photo-marker ${index === state.currentIndex ? 'active' : ''}" data-index="${index}">
+                    <img src="${photo.thumb}" alt="Photo ${photo.id}">
+                </div>`,
+                iconSize: [36, 36],
+                iconAnchor: [18, 18]
+            });
+
+            const marker = L.marker([photo.lat, photo.lng], { icon: markerIcon }).addTo(map);
+            
+            // Create popup content
+            const popupContent = `
+                <div class="popup-content">
+                    <img class="popup-thumbnail" src="${photo.thumb}" alt="Photo ${photo.id}">
+                    <div class="popup-timestamp">${formatTimestamp(photo.time)}</div>
+                    <div class="popup-device">${photo.device}</div>
+                    <div class="popup-coords">${photo.lat.toFixed(4)}° N, ${Math.abs(photo.lng).toFixed(4)}° W</div>
+                </div>
+            `;
+            
+            marker.bindPopup(popupContent);
+            
+            marker.on('click', () => {
+                goToIndex(index);
+            });
+            
+            markers.push(marker);
+            routeCoordinates.push([photo.lat, photo.lng]);
+        });
+
+        // Draw route line with gradient
+        const routeGradient = {
+            0: '#22c55e',    // Old - green
+            0.5: '#eab308',  // Middle - yellow
+            1: '#ef4444'     // Recent - red
+        };
+
+        // Create gradient definition for SVG
+        const svgDef = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgDef.innerHTML = `
+            <defs>
+                <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#22c55e"/>
+                    <stop offset="50%" stop-color="#eab308"/>
+                    <stop offset="100%" stop-color="#ef4444"/>
+                </linearGradient>
+            </defs>
+        `;
+        document.body.appendChild(svgDef);
+
+        // Add route line
+        const routeLine = L.polyline(routeCoordinates, {
+            color: 'url(#routeGradient)',
+            weight: 3,
+            opacity: 0.8,
+            lineCap: 'round',
+            lineJoin: 'round'
+        }).addTo(map);
+
+        // Generate film strip
+        function generateFilmStrip() {
+            const filmContent = document.getElementById('film-content');
+            filmContent.innerHTML = '';
+            
+            samplePhotos.forEach((photo, index) => {
+                const frame = document.createElement('div');
+                frame.className = `film-frame ${getFrameState(index)}`;
+                frame.dataset.index = index;
+                frame.innerHTML = `
+                    <img src="${photo.thumb}" alt="Photo ${photo.id}">
+                    <div class="film-frame-time">${formatHour(photo.time)}</div>
+                `;
+                
+                frame.addEventListener('click', () => goToIndex(index));
+                filmContent.appendChild(frame);
+            });
+            
+            updateFilmPlayhead();
+        }
+
+        function getFrameState(index) {
+            if (index < state.currentIndex) return 'past';
+            if (index === state.currentIndex) return 'current';
+            return 'future';
+        }
+
+        function formatTimestamp(date) {
+            return date.toISOString().slice(0, 19).replace('T', ' ');
+        }
+
+        function formatHour(date) {
+            return date.toISOString().slice(11, 16);
+        }
+
+        function formatDate(date) {
+            return date.toISOString().slice(0, 10);
+        }
+
+        // Navigation functions
+        function goToIndex(index) {
+            if (index < 0 || index >= samplePhotos.length) return;
+            
+            state.currentIndex = index;
+            const photo = samplePhotos[index];
+            
+            // Update UI
+            updateActivePhoto(photo);
+            updateFilmStrip();
+            updateMapMarker();
+            updatePlayhead();
+            
+            // Auto follow map if enabled
+            if (state.autoFollow) {
+                map.setView([photo.lat, photo.lng], map.getZoom(), { animate: true });
+            }
+        }
+
+        function updateActivePhoto(photo) {
+            const card = document.getElementById('active-photo-card');
+            card.classList.add('visible');
+            
+            document.getElementById('active-photo-img').src = photo.thumb;
+            document.getElementById('active-photo-time').textContent = formatTimestamp(photo.time);
+            document.getElementById('active-photo-device').textContent = photo.device;
+            document.getElementById('active-photo-coords').textContent = 
+                `${photo.lat.toFixed(4)}° N, ${Math.abs(photo.lng).toFixed(4)}° W`;
+            
+            document.getElementById('playback-time').textContent = formatDate(photo.time);
+            document.getElementById('playback-hour').textContent = formatHour(photo.time);
+        }
+
+        function updateFilmStrip() {
+            const frames = document.querySelectorAll('.film-frame');
+            frames.forEach((frame, index) => {
+                frame.className = `film-frame ${getFrameState(index)}`;
+            });
+            
+            updateFilmPlayhead();
+            
+            // Scroll to center current frame
+            const currentFrame = document.querySelector('.film-frame.current');
+            if (currentFrame) {
+                currentFrame.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'center' });
+            }
+        }
+
+        function updateFilmPlayhead() {
+            const playhead = document.getElementById('film-playhead');
+            const filmContent = document.getElementById('film-content');
+            const currentFrame = document.querySelector('.film-frame.current');
+            
+            if (currentFrame) {
+                const rect = currentFrame.getBoundingClientRect();
+                const filmRect = filmContent.getBoundingClientRect();
+                const offset = rect.left - filmRect.left + rect.width / 2 - 1.5;
+                playhead.style.left = `${Math.max(40, offset)}px`;
+            }
+        }
+
+        function updateMapMarker() {
+            markers.forEach((marker, index) => {
+                const el = marker.getElement();
+                if (el) {
+                    const markerDiv = el.querySelector('.photo-marker');
+                    if (markerDiv) {
+                        markerDiv.classList.toggle('active', index === state.currentIndex);
+                    }
+                }
+            });
+            
+            // Open popup for current marker
+            if (markers[state.currentIndex]) {
+                markers[state.currentIndex].openPopup();
+            }
+        }
+
+        function updatePlayhead() {
+            const progress = ((state.currentIndex + 1) / samplePhotos.length) * 100;
+            document.getElementById('time-progress').style.width = `${progress}%`;
+            document.getElementById('time-thumb').style.left = `${progress}%`;
+        }
+
+        // Playback controls
+        let playbackInterval = null;
+
+        function togglePlayback() {
+            state.isPlaying = !state.isPlaying;
+            
+            const playIcon = document.getElementById('play-icon');
+            const pauseIcon = document.getElementById('pause-icon');
+            const playBtn = document.getElementById('main-btn-play');
+            const palettePlayBtn = document.getElementById('btn-play');
+            
+            if (state.isPlaying) {
+                playIcon.style.display = 'none';
+                pauseIcon.style.display = 'block';
+                playBtn.style.background = 'linear-gradient(135deg, var(--accent-magenta), #cc3173)';
+                playBtn.style.boxShadow = 'var(--shadow-glow-magenta)';
+                palettePlayBtn.style.background = 'linear-gradient(135deg, var(--accent-magenta), #cc3173)';
+                
+                const interval = 1000 / state.playbackSpeed;
+                playbackInterval = setInterval(() => {
+                    if (state.currentIndex < samplePhotos.length - 1) {
+                        goToIndex(state.currentIndex + 1);
+                    } else {
+                        togglePlayback(); // Stop at end
+                    }
+                }, interval);
+            } else {
+                playIcon.style.display = 'block';
+                pauseIcon.style.display = 'none';
+                playBtn.style.background = 'linear-gradient(135deg, var(--accent-cyan), #00a8cc)';
+                playBtn.style.boxShadow = 'var(--shadow-glow-cyan)';
+                palettePlayBtn.style.background = 'linear-gradient(135deg, var(--accent-cyan), #00a8cc)';
+                
+                clearInterval(playbackInterval);
+            }
+        }
+
+        function nextPhoto() {
+            if (state.isPlaying) togglePlayback();
+            goToIndex(state.currentIndex + 1);
+        }
+
+        function prevPhoto() {
+            if (state.isPlaying) togglePlayback();
+            goToIndex(state.currentIndex - 1);
+        }
+
+        function setSpeed(speed) {
+            state.playbackSpeed = parseFloat(speed);
+            
+            // Update both speed selectors
+            document.querySelectorAll('.speed-btn, .speed-btn-main').forEach(btn => {
+                btn.classList.toggle('active', parseFloat(btn.dataset.speed) === state.playbackSpeed);
+            });
+            
+            // If playing, restart with new speed
+            if (state.isPlaying) {
+                clearInterval(playbackInterval);
+                const interval = 1000 / state.playbackSpeed;
+                playbackInterval = setInterval(() => {
+                    if (state.currentIndex < samplePhotos.length - 1) {
+                        goToIndex(state.currentIndex + 1);
+                    } else {
+                        togglePlayback();
+                    }
+                }, interval);
+            }
+        }
+
+        // Device filter
+        document.querySelectorAll('.device-item').forEach(item => {
+            item.addEventListener('click', () => {
+                item.classList.toggle('active');
+                const device = item.dataset.device;
+                
+                if (item.classList.contains('active')) {
+                    if (!state.activeDevices.includes(device)) {
+                        state.activeDevices.push(device);
+                    }
+                } else {
+                    state.activeDevices = state.activeDevices.filter(d => d !== device);
+                }
+                
+                updateStats();
+            });
+        });
+
+        // Time range filter
+        document.querySelectorAll('.time-preset').forEach(preset => {
+            preset.addEventListener('click', () => {
+                document.querySelectorAll('.time-preset').forEach(p => p.classList.remove('active'));
+                preset.classList.add('active');
+                
+                const range = preset.dataset.range;
+                document.getElementById('custom-time-range').classList.toggle('visible', range === 'custom');
+                
+                state.timeRange = range;
+                // In production, this would filter the photos
+            });
+        });
+
+        // Mode tabs
+        document.querySelectorAll('.mode-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Ignore clicks on future modes
+                if (tab.classList.contains('future')) return;
+                
+                document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                state.currentMode = tab.dataset.mode;
+                
+                // Mode-specific behavior
+                switch(state.currentMode) {
+                    case 'map':
+                        routeLine.setStyle({ opacity: 0.8 });
+                        break;
+                    case 'replay':
+                        routeLine.setStyle({ opacity: 0.9 });
+                        break;
+                    case 'route':
+                    case 'heatmap':
+                    case 'cluster':
+                        routeLine.setStyle({ opacity: 0.5 });
+                        break;
+                    default:
+                        routeLine.setStyle({ opacity: 0 });
+                }
+            });
+        });
+
+        // Auto follow toggle
+        document.getElementById('auto-follow').addEventListener('click', function() {
+            this.classList.toggle('active');
+            state.autoFollow = this.classList.contains('active');
+        });
+
+        // Playback button events
+        document.getElementById('main-btn-play').addEventListener('click', togglePlayback);
+        document.getElementById('main-btn-prev').addEventListener('click', prevPhoto);
+        document.getElementById('main-btn-next').addEventListener('click', nextPhoto);
+        document.getElementById('btn-play').addEventListener('click', togglePlayback);
+        document.getElementById('btn-prev').addEventListener('click', prevPhoto);
+        document.getElementById('btn-next').addEventListener('click', nextPhoto);
+
+        // Speed buttons
+        document.querySelectorAll('.speed-btn, .speed-btn-main').forEach(btn => {
+            btn.addEventListener('click', () => setSpeed(btn.dataset.speed));
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case ' ':
+                    e.preventDefault();
+                    togglePlayback();
+                    break;
+                case 'ArrowLeft':
+                    prevPhoto();
+                    break;
+                case 'ArrowRight':
+                    nextPhoto();
+                    break;
+                case 'Home':
+                    goToIndex(0);
+                    break;
+                case 'End':
+                    goToIndex(samplePhotos.length - 1);
+                    break;
+            }
+        });
+
+        // Update stats
+        function updateStats() {
+            const filteredCount = samplePhotos.length; // In production, filter by active devices
+            document.getElementById('stat-photos').textContent = filteredCount.toLocaleString();
+            document.getElementById('overlay-photos').textContent = filteredCount.toLocaleString();
+            
+            const activeCount = state.activeDevices.length;
+            document.getElementById('stat-devices').textContent = activeCount;
+            document.getElementById('overlay-devices').textContent = activeCount;
+        }
+
+        // Update time display
+        function updateTimeDisplay() {
+            const now = new Date();
+            document.getElementById('current-datetime').textContent = now.toISOString().slice(0, 10);
+        }
+
+        // Initialize
+        generateFilmStrip();
+        goToIndex(state.currentIndex);
+        updateTimeDisplay();
+        setInterval(updateTimeDisplay, 1000);
+
+        // Handle window resize for film playhead
+        window.addEventListener('resize', updateFilmPlayhead);
+    </script>
+</body>
+</html>
