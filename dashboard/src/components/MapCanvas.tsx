@@ -20,6 +20,7 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const [markers, setMarkers] = useState<TraceMapMarker[]>([])
   const [loading, setLoading] = useState(false)
   const [stats, setStats] = useState({ total: 0, withGps: 0 })
@@ -68,7 +69,26 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
 
     leafletMapRef.current = map
 
+    // CRITICAL: Invalidate size after initialization to fix flexbox container issue
+    // Leaflet calculates dimensions at init time; if container has 0 height, map breaks
+    setTimeout(() => {
+      map.invalidateSize({ pan: true })
+    }, 100)
+
+    // Set up ResizeObserver to handle layout changes
+    if (mapRef.current) {
+      resizeObserverRef.current = new ResizeObserver(() => {
+        map.invalidateSize({ pan: false })
+      })
+      resizeObserverRef.current.observe(mapRef.current)
+    }
+
     return () => {
+      if (resizeObserverRef.current && mapRef.current) {
+        resizeObserverRef.current.unobserve(mapRef.current)
+        resizeObserverRef.current.disconnect()
+        resizeObserverRef.current = null
+      }
       map.remove()
       leafletMapRef.current = null
     }
@@ -175,6 +195,11 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
       const bounds = L.latLngBounds(markers.map(m => [m.latitude, m.longitude]))
       map.fitBounds(bounds, { padding: [50, 50] })
     }
+
+    // Invalidate size after adding markers (fitBounds changes map dimensions)
+    setTimeout(() => {
+      map.invalidateSize({ pan: true })
+    }, 100)
   }, [markers, selectedMarkerId, leafletLoaded, onMarkerClick])
 
   const formatTimestamp = (timestamp: string | null): string => {
