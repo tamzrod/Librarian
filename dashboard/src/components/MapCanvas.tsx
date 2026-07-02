@@ -148,10 +148,15 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
         .addTo(map)
         .on('click', () => onMarkerClick?.(marker))
 
-      // Create popup content
+      // Create popup content with thumbnail if available
+      const thumbnailUrl = marker.thumbnail_path ? api.getTraceThumbnailUrl(marker.thumbnail_path) : null
+      const thumbnailHtml = thumbnailUrl
+        ? `<img src="${thumbnailUrl}" alt="${marker.filename}" class="map-popup-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" /><div class="map-popup-placeholder" style="display:none;">📷</div>`
+        : `<div class="map-popup-placeholder">📷</div>`
+
       const popupContent = `
         <div class="map-popup">
-          <div class="map-popup-placeholder">📷</div>
+          ${thumbnailHtml}
           <div class="map-popup-info">
             <div class="map-popup-camera">${marker.camera || 'Unknown Camera'}</div>
             <div class="map-popup-timestamp">${formatTimestamp(marker.timestamp)}</div>

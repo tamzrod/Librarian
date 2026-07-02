@@ -134,14 +134,14 @@ export default function TraceView() {
               </div>
             )}
           </div>
-
-          {/* Event stream */}
-          <EventStream
-            filters={filters}
-            onEventSelect={handleEventSelect}
-            selectedEventId={selectedDocumentId || undefined}
-          />
         </div>
+
+        {/* Event stream - docked to bottom */}
+        <EventStream
+          filters={filters}
+          onEventSelect={handleEventSelect}
+          selectedEventId={selectedDocumentId || undefined}
+        />
       </div>
 
       {/* Photo popup */}

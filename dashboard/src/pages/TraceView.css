@@ -10,8 +10,10 @@
 .trace-main {
   display: flex;
   flex: 1;
+  flex-direction: column; /* Stack content vertically */
   min-height: 0; /* Allow flex child to shrink */
   overflow: hidden;
+  position: relative; /* For FilterPalette positioning */
 }
 
 .trace-content {
@@ -23,10 +25,15 @@
 }
 
 .trace-canvas {
-  flex: 1;
+  flex: 1 1 auto; /* Grow to fill available space */
   position: relative;
   overflow: hidden;
   min-height: 0; /* Critical for Leaflet map */
+}
+
+/* Event stream docked at bottom */
+.event-stream {
+  flex-shrink: 0; /* Don't shrink - fixed height */
 }
 
 /* View mode tabs */

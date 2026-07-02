@@ -126,6 +126,7 @@ function ArtifactExplorer() {
   })
   const [selectedDocument, setSelectedDocument] = useState<ExplorerDocument | null>(null)
   const [documentDetail, setDocumentDetail] = useState<DocumentDetail | null>(null)
+  const [documentThumbnailCache, setDocumentThumbnailCache] = useState<Record<number, DocumentDetail | null>>({})
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -148,6 +149,13 @@ function ArtifactExplorer() {
       loadFolderContents(selectedFolder)
     }
   }, [selectedFolder])
+
+  // Load thumbnail cache when folder contents change (for grid view thumbnails)
+  useEffect(() => {
+    if (viewMode === 'grid' && folderContents.documents.length > 0) {
+      loadDocumentThumbnailCache(folderContents.documents)
+    }
+  }, [folderContents.documents, viewMode])
 
   // Load document details when selected document changes
   useEffect(() => {
@@ -212,6 +220,34 @@ function ArtifactExplorer() {
     } catch (err) {
       console.error('Failed to load document details:', err)
       setDocumentDetail(null)
+    }
+  }
+
+  // Load thumbnail details for all documents in grid view (for E5 thumbnails)
+  const loadDocumentThumbnailCache = async (documents: ExplorerDocument[]) => {
+    // Load thumbnails in parallel, but only if we don't have them cached
+    const uncachedDocs = documents.filter(doc => documentThumbnailCache[doc.id] === undefined)
+    if (uncachedDocs.length === 0) return
+
+    try {
+      const results = await Promise.allSettled(
+        uncachedDocs.slice(0, 100).map(async (doc) => {
+          const response = await api.getDocumentDetails(doc.id)
+          return { id: doc.id, detail: response.document }
+        })
+      )
+
+      setDocumentThumbnailCache(prev => {
+        const updated = { ...prev }
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            updated[result.value.id] = result.value.detail
+          }
+        })
+        return updated
+      })
+    } catch (err) {
+      console.error('Failed to load thumbnail cache:', err)
     }
   }
 
@@ -358,7 +394,7 @@ function ArtifactExplorer() {
           doc={doc}
           isSelected={selectedDocument?.id === doc.id}
           onClick={() => selectDocument(doc)}
-          documentDetail={doc.id === selectedDocument?.id ? documentDetail : null}
+          documentDetail={documentThumbnailCache[doc.id] ?? null}
         />
       ))}
       {folderContents.folders.length === 0 && folderContents.documents.length === 0 && (
