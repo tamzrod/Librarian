@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import FilterPalette, { FilterState } from '../components/FilterPalette'
 import MapCanvas from '../components/MapCanvas'
 import EventStream from '../components/EventStream'
+import FilmStrip from '../components/FilmStrip'
 import PhotoPopup from '../components/PhotoPopup'
 import { api } from '../services/api'
 import type { TraceMapMarker, TraceEventItem } from '../types/api'
@@ -20,7 +21,10 @@ export default function TraceView() {
     cameras: [],
     collections: [],
     years: [],
-    sources: []
+    sources: [],
+    startDate: null,
+    endDate: null,
+    includeUnknownDevice: false
   })
   
   // Initialize view mode from URL parameter (for backwards compatibility with /map, /timeline)
@@ -35,6 +39,9 @@ export default function TraceView() {
     withGps: 0,
     uniqueCameras: 0
   })
+  const [scrollToThumbnailId, setScrollToThumbnailId] = useState<number | undefined>()
+  const [centerOnMarkerId, setCenterOnMarkerId] = useState<number | undefined>()
+  const [filmStripCollapsed] = useState(false)
 
   // Load stats on mount
   useEffect(() => {
@@ -57,15 +64,47 @@ export default function TraceView() {
 
   const handleMarkerClick = (marker: TraceMapMarker) => {
     setSelectedDocumentId(marker.document_id)
+    // Scroll film strip to this photo
+    setScrollToThumbnailId(marker.document_id)
   }
 
   const handleEventSelect = (event: TraceEventItem) => {
     setSelectedDocumentId(event.document_id)
+    // Scroll film strip to this photo
+    setScrollToThumbnailId(event.document_id)
+  }
+
+  const handleThumbnailClick = (item: TraceEventItem) => {
+    setSelectedDocumentId(item.document_id)
+    // Trigger scroll for next render
+    setScrollToThumbnailId(item.document_id)
+    // Center map on this photo if it has GPS
+    if (item.latitude && item.longitude) {
+      setCenterOnMarkerId(item.document_id)
+    }
   }
 
   const handlePopupClose = () => {
     setSelectedDocumentId(null)
   }
+
+  // Clear scroll trigger after it's been used
+  useEffect(() => {
+    if (scrollToThumbnailId) {
+      // Small delay to ensure film strip has rendered the thumbnail
+      const timer = setTimeout(() => setScrollToThumbnailId(undefined), 100)
+      return () => clearTimeout(timer)
+    }
+  }, [scrollToThumbnailId])
+
+  // Clear center trigger after it's been used
+  useEffect(() => {
+    if (centerOnMarkerId) {
+      // Small delay to ensure map has loaded markers
+      const timer = setTimeout(() => setCenterOnMarkerId(undefined), 500)
+      return () => clearTimeout(timer)
+    }
+  }, [centerOnMarkerId])
 
   return (
     <div className="trace-view">
@@ -111,7 +150,7 @@ export default function TraceView() {
         {/* Filter palette */}
         <FilterPalette onFiltersChange={handleFiltersChange} />
 
-        {/* Workspace - contains map and event stream */}
+        {/* Workspace - contains map, film strip, and event stream */}
         <div className="trace-workspace">
           {/* Map area */}
           <div className="map-area">
@@ -120,6 +159,7 @@ export default function TraceView() {
                 filters={filters}
                 onMarkerClick={handleMarkerClick}
                 selectedMarkerId={selectedDocumentId || undefined}
+                centerOnMarkerId={centerOnMarkerId}
               />
             )}
             {viewMode === 'timeline' && (
@@ -133,6 +173,16 @@ export default function TraceView() {
               </div>
             )}
           </div>
+
+          {/* Chronological Film Strip */}
+          {!filmStripCollapsed && (
+            <FilmStrip
+              filters={filters}
+              onThumbnailClick={handleThumbnailClick}
+              selectedThumbnailId={selectedDocumentId || undefined}
+              scrollToThumbnailId={scrollToThumbnailId}
+            />
+          )}
 
           {/* Event stream - docked at bottom */}
           <EventStream

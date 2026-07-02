@@ -12,17 +12,27 @@ export interface FilterState {
   collections: string[]
   years: string[]
   sources: string[]
+  startDate: string | null
+  endDate: string | null
+  includeUnknownDevice: boolean
 }
 
 export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
   const [filterGroups, setFilterGroups] = useState<TraceFilterGroup[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['devices', 'collections', 'years']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['devices', 'collections', 'years', 'timeRange']))
   const [filters, setFilters] = useState<FilterState>({
     cameras: [],
     collections: [],
     years: [],
-    sources: []
+    sources: [],
+    startDate: null,
+    endDate: null,
+    includeUnknownDevice: false
+  })
+  const [timeRange, setTimeRange] = useState<{ minDate: string | null; maxDate: string | null }>({
+    minDate: null,
+    maxDate: null
   })
   const [totalItems, setTotalItems] = useState(0)
   const [selectedCounts, setSelectedCounts] = useState<Record<string, number>>({})
@@ -43,16 +53,34 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
         cameras: [],
         collections: [],
         years: [],
-        sources: []
+        sources: [],
+        startDate: null,
+        endDate: null,
+        includeUnknownDevice: false
       }
       const counts: Record<string, number> = {}
+      let foundTimeRange = false
 
       for (const group of response.groups) {
-        const selected = group.options
-          .filter(opt => opt.checked)
-          .map(opt => opt.id)
-        initialFilters[group.id as keyof FilterState] = selected
-        counts[group.id] = selected.length
+        if (group.id === 'timeRange') {
+          // Extract time range bounds
+          setTimeRange({
+            minDate: group.min_date || null,
+            maxDate: group.max_date || null
+          })
+          foundTimeRange = true
+        } else {
+          const selected = group.options
+            .filter(opt => opt.checked)
+            .map(opt => opt.id)
+          ;(initialFilters as any)[group.id] = selected
+          counts[group.id] = selected.length
+        }
+      }
+
+      // Set default time range if not found
+      if (!foundTimeRange) {
+        setTimeRange({ minDate: null, maxDate: null })
       }
 
       setFilters(initialFilters)
@@ -78,18 +106,34 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
 
   const toggleOption = (groupId: string, optionId: string) => {
     setFilters(prev => {
-      const groupFilters = prev[groupId as keyof FilterState]
+      // Handle special fields
+      if (groupId === 'startDate' || groupId === 'endDate') {
+        const newFilters = { ...prev }
+        newFilters[groupId as 'startDate' | 'endDate'] = optionId || null
+        onFiltersChange?.(newFilters)
+        return newFilters
+      }
+
+      if (groupId === 'includeUnknownDevice') {
+        const newFilters = { ...prev }
+        newFilters.includeUnknownDevice = !prev.includeUnknownDevice
+        onFiltersChange?.(newFilters)
+        return newFilters
+      }
+
+      // Handle regular options
+      const groupFilters = (prev as any)[groupId] as string[]
       const newFilters = { ...prev }
 
       if (groupFilters.includes(optionId)) {
-        newFilters[groupId as keyof FilterState] = groupFilters.filter(id => id !== optionId)
+        (newFilters as any)[groupId] = groupFilters.filter(id => id !== optionId)
       } else {
-        newFilters[groupId as keyof FilterState] = [...groupFilters, optionId]
+        (newFilters as any)[groupId] = [...groupFilters, optionId]
       }
 
       // Update selected counts
       const counts = { ...selectedCounts }
-      counts[groupId] = (newFilters[groupId as keyof FilterState] as string[]).length
+      counts[groupId] = ((newFilters as any)[groupId] as string[]).length
       setSelectedCounts(counts)
 
       // Notify parent of changes
@@ -103,12 +147,35 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
     toggleOption('years', year)
   }
 
+  const handleStartDateChange = (value: string) => {
+    toggleOption('startDate', value)
+  }
+
+  const handleEndDateChange = (value: string) => {
+    toggleOption('endDate', value)
+  }
+
+  const toggleUnknownDevice = () => {
+    toggleOption('includeUnknownDevice', '')
+  }
+
+  const clearTimeRange = () => {
+    setFilters(prev => {
+      const newFilters = { ...prev, startDate: null, endDate: null }
+      onFiltersChange?.(newFilters)
+      return newFilters
+    })
+  }
+
   const clearAll = () => {
     const clearedFilters: FilterState = {
       cameras: [],
       collections: [],
       years: [],
-      sources: []
+      sources: [],
+      startDate: null,
+      endDate: null,
+      includeUnknownDevice: false
     }
     setFilters(clearedFilters)
     setSelectedCounts({})
@@ -116,8 +183,21 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
   }
 
   const getGroupSelectedCount = (group: TraceFilterGroup): number => {
-    const groupFilters = filters[group.id as keyof FilterState]
-    return (groupFilters as string[] || []).length
+    if (group.id === 'timeRange') {
+      return (filters.startDate || filters.endDate) ? 1 : 0
+    }
+    const groupFilters = (filters as any)[group.id] as string[] || []
+    return groupFilters.length
+  }
+
+  // Format date for display
+  const formatDateForInput = (isoString: string | null): string => {
+    if (!isoString) return ''
+    try {
+      return isoString.split('T')[0]
+    } catch {
+      return ''
+    }
   }
 
   if (loading) {
@@ -170,18 +250,59 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
                     </button>
                   ))}
                 </div>
-              ) : (
-                group.options.map(option => (
-                  <label key={option.id} className="filter-option">
+              ) : group.id === 'timeRange' ? (
+                <div className="time-range-filters">
+                  <div className="time-range-field">
+                    <label>From</label>
                     <input
-                      type="checkbox"
-                      checked={filters[group.id as keyof FilterState]?.includes(option.id) ?? false}
-                      onChange={() => toggleOption(group.id, option.id)}
+                      type="date"
+                      value={formatDateForInput(filters.startDate)}
+                      min={formatDateForInput(timeRange.minDate)}
+                      max={formatDateForInput(timeRange.maxDate)}
+                      onChange={(e) => handleStartDateChange(e.target.value)}
                     />
-                    <span className="filter-option-label">{option.label}</span>
-                    <span className="filter-option-count">({option.count})</span>
-                  </label>
-                ))
+                  </div>
+                  <div className="time-range-field">
+                    <label>To</label>
+                    <input
+                      type="date"
+                      value={formatDateForInput(filters.endDate)}
+                      min={formatDateForInput(timeRange.minDate)}
+                      max={formatDateForInput(timeRange.maxDate)}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                    />
+                  </div>
+                  {(filters.startDate || filters.endDate) && (
+                    <button className="time-range-clear" onClick={clearTimeRange}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {group.options.map(option => (
+                    <label key={option.id} className="filter-option">
+                      <input
+                        type="checkbox"
+                        checked={(filters as any)[group.id]?.includes(option.id) ?? false}
+                        onChange={() => toggleOption(group.id, option.id)}
+                      />
+                      <span className="filter-option-label">{option.label}</span>
+                      <span className="filter-option-count">({option.count})</span>
+                    </label>
+                  ))}
+                  {/* Unknown Device Toggle for devices group */}
+                  {group.id === 'devices' && group.has_unknown && (
+                    <label className="filter-option unknown-device-toggle">
+                      <input
+                        type="checkbox"
+                        checked={filters.includeUnknownDevice}
+                        onChange={toggleUnknownDevice}
+                      />
+                      <span className="filter-option-label">Include Unknown Device</span>
+                    </label>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -446,6 +446,11 @@ export interface TraceFilterGroup {
   label: string
   expanded: boolean
   options: TraceFilterOption[]
+  // Time range specific
+  min_date?: string | null
+  max_date?: string | null
+  // Devices specific
+  has_unknown?: boolean
 }
 
 export interface TraceFiltersResponse {

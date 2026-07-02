@@ -3369,24 +3369,45 @@ class PostgresBackend(StorageBackend):
             cur.execute("""
                 SELECT 
                     COALESCE(camera_make, 'Unknown') || ' ' || COALESCE(camera_model, '') as camera,
-                    COUNT(*) as count
+                    COUNT(*) as count,
+                    camera_make IS NULL OR camera_make = '' as is_unknown
                 FROM photo_metadata pm
                 JOIN documents d ON pm.document_id = d.id
                 WHERE d.status != 'DELETED'
                 GROUP BY camera_make, camera_model
-                ORDER BY count DESC
+                ORDER BY is_unknown ASC, count DESC
             """)
             camera_options = []
+            has_unknown = False
             for row in cur.fetchall():
                 camera = row[0].strip()
-                if camera and camera != 'Unknown':
+                is_unknown = row[2]
+                if is_unknown:
+                    has_unknown = True
+                    camera_options.append({
+                        'id': 'Unknown Device',
+                        'label': 'Unknown Device',
+                        'count': row[1],
+                        'checked': False
+                    })
+                elif camera:
                     camera_options.append({
                         'id': camera,
                         'label': camera,
                         'count': row[1],
                         'checked': True
                     })
-            if camera_options:
+            
+            # Add Unknown Device toggle option
+            if has_unknown:
+                groups.append({
+                    'id': 'devices',
+                    'label': 'Devices',
+                    'expanded': True,
+                    'options': camera_options,
+                    'has_unknown': True
+                })
+            elif camera_options:
                 groups.append({
                     'id': 'devices',
                     'label': 'Devices',
@@ -3451,6 +3472,27 @@ class PostgresBackend(StorageBackend):
                     'options': year_options
                 })
             
+            # Time Range group - returns min/max timestamps for date pickers
+            cur.execute("""
+                SELECT 
+                    MIN(pm.timestamp_original) as min_date,
+                    MAX(pm.timestamp_original) as max_date
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE pm.timestamp_original IS NOT NULL
+                    AND d.status != 'DELETED'
+            """)
+            time_range_row = cur.fetchone()
+            if time_range_row and time_range_row[0]:
+                groups.append({
+                    'id': 'timeRange',
+                    'label': 'Time Range',
+                    'expanded': False,
+                    'options': [],
+                    'min_date': time_range_row[0].isoformat() if time_range_row[0] else None,
+                    'max_date': time_range_row[1].isoformat() if time_range_row[1] else None
+                })
+            
             # Sources group (GPS, OCR, AI, Manual based on metadata availability)
             cur.execute("""
                 SELECT 
@@ -3503,6 +3545,9 @@ class PostgresBackend(StorageBackend):
         collections: list = None,
         years: list = None,
         sources: list = None,
+        start_date: str = None,
+        end_date: str = None,
+        include_unknown_device: bool = False,
         limit: int = 100,
         offset: int = 0
     ) -> dict:
@@ -3519,11 +3564,28 @@ class PostgresBackend(StorageBackend):
             conditions = ["d.status != 'DELETED'"]
             params = []
             
-            # Camera filter
+            # Camera filter (excluding Unknown Device unless explicitly included)
             if cameras:
-                camera_placeholders = ','.join(['%s'] * len(cameras))
-                conditions.append(f"(pm.camera_make || ' ' || COALESCE(pm.camera_model, '')) IN ({camera_placeholders})")
-                params.extend(cameras)
+                known_cameras = [c for c in cameras if c != 'Unknown Device']
+                if known_cameras:
+                    camera_placeholders = ','.join(['%s'] * len(known_cameras))
+                    conditions.append(f"(pm.camera_make || ' ' || COALESCE(pm.camera_model, '')) IN ({camera_placeholders})")
+                    params.extend(known_cameras)
+                elif not include_unknown_device:
+                    # If only "Unknown Device" is selected but it's not included, exclude all
+                    conditions.append("(pm.camera_make IS NULL OR pm.camera_make = '')")
+            
+            # Include/exclude unknown devices based on filter
+            if cameras and 'Unknown Device' not in cameras and not include_unknown_device:
+                conditions.append("(pm.camera_make IS NOT NULL AND pm.camera_make != '')")
+            
+            # Time range filter
+            if start_date:
+                conditions.append("pm.timestamp_original >= %s")
+                params.append(start_date)
+            if end_date:
+                conditions.append("pm.timestamp_original <= %s")
+                params.append(end_date)
             
             # Collection filter
             if collections:

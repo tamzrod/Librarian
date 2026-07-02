@@ -170,6 +170,18 @@ async def get_trace_data(
         None,
         description="Comma-separated list of sources (gps, ocr, ai, manual)"
     ),
+    start_date: Optional[str] = Query(
+        None,
+        description="Start date filter (ISO format)"
+    ),
+    end_date: Optional[str] = Query(
+        None,
+        description="End date filter (ISO format)"
+    ),
+    include_unknown_device: bool = Query(
+        False,
+        description="Include photos with unknown device"
+    ),
     limit: int = Query(100, ge=1, le=500, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Offset for pagination")
 ) -> TraceDataResponse:
@@ -190,6 +202,9 @@ async def get_trace_data(
             collections=collection_list,
             years=year_list,
             sources=source_list,
+            start_date=start_date,
+            end_date=end_date,
+            include_unknown_device=include_unknown_device,
             limit=limit,
             offset=offset
         )

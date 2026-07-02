@@ -36,12 +36,24 @@ export default function EventStream({ filters, onEventSelect, selectedEventId }:
       if (filters.sources.length > 0) {
         params.append('sources', filters.sources.join(','))
       }
+      if (filters.startDate) {
+        params.append('start_date', filters.startDate)
+      }
+      if (filters.endDate) {
+        params.append('end_date', filters.endDate)
+      }
+      if (filters.includeUnknownDevice) {
+        params.append('include_unknown_device', 'true')
+      }
 
       const response = await api.getTraceData({
         cameras: params.get('cameras') || undefined,
         collections: params.get('collections') || undefined,
         years: params.get('years') || undefined,
         sources: params.get('sources') || undefined,
+        startDate: params.get('start_date') || undefined,
+        endDate: params.get('end_date') || undefined,
+        includeUnknownDevice: params.get('include_unknown_device') === 'true',
         limit: 50
       })
 
