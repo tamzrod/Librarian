@@ -54,8 +54,8 @@ services:
       - "${API_HOST_PORT:-${API_PORT:-8001}}:8000"
     volumes:
       # Mount library root - RECURSIVE FILE DISCOVERY IS AUTOMATIC
-      # No collection management, no folder picker, no import wizard
-      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Read-write needed for thumbnail generation (.thumbnails directory)
+      - ${LIBRARY_PATH:-./volumes/library}:/library:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,8 +81,8 @@ services:
       - LIBRARIAN_LIBRARY_ROOT=/library
       - WORKER_ID=${WORKER_ID:-worker-1}
     volumes:
-      # Mount library root for content extraction
-      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Mount library root for content extraction and thumbnail generation
+      - ${LIBRARY_PATH:-./volumes/library}:/library:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,7 +100,8 @@ services:
       context: ../dashboard
       dockerfile: Dockerfile
       args:
-        API_URL: http://librarian-api:8000
+        # Use relative URL for API so browser uses nginx proxy
+        API_URL: /
         # Build metadata - injected at build time for version traceability
         VITE_BUILD_SHA: ${DASHBOARD_BUILD_SHA:-local}
         VITE_BUILD_TIME: ${DASHBOARD_BUILD_TIME:-}
@@ -109,8 +110,6 @@ services:
         VITE_ENVIRONMENT: ${DASHBOARD_ENVIRONMENT:-production}
     container_name: librarian-dashboard
     restart: unless-stopped
-    environment:
-      - VITE_API_URL=http://librarian-api:8000
     ports:
       - "${DASHBOARD_HOST_PORT:-${DASHBOARD_PORT:-3100}}:3000"
     depends_on:

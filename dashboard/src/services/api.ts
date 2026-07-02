@@ -392,12 +392,16 @@ class LibrarianApiClient {
    */
   getThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
-    const base = this.client.defaults.baseURL || ''
     // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
     // Backend expects just the filename after .thumbnails/, so we strip ".thumbnails/" prefix
     // URL becomes /thumbnails/filename.jpg
-    // Backend then looks for /library/.thumbnails/filename.jpg
     const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    // Handle base URL (which may be "/" or empty for relative URLs)
+    const base = this.client.defaults.baseURL || '/'
+    // Ensure no double slashes when base is "/"
+    if (base === '/') {
+      return `/thumbnails/${cleanPath}`
+    }
     return `${base}/thumbnails/${cleanPath}`
   }
 
@@ -479,14 +483,15 @@ class LibrarianApiClient {
    */
   getTraceThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
-    const base = this.client.defaults.baseURL || ''
     // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
-    // Backend expects just the filename after .thumbnails/, so we strip the leading "."
-    // URL becomes /thumbnails/thumbnails/docId_filename_thumb.jpg
-    // Backend then prepends .thumbnails/ to get: /library/.thumbnails/thumbnails/filename.jpg
-    // But actually backend adds .thumbnails/ again, so we need to strip the ".thumbnails/" part
-    // The cleanest fix: strip ".thumbnails/" prefix from path to get just the filename
+    // Backend expects just the filename after .thumbnails/, so we strip the prefix
     const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    // Handle base URL (which may be "/" or empty for relative URLs)
+    const base = this.client.defaults.baseURL || '/'
+    // Ensure no double slashes when base is "/"
+    if (base === '/') {
+      return `/thumbnails/${cleanPath}`
+    }
     return `${base}/thumbnails/${cleanPath}`
   }
 }

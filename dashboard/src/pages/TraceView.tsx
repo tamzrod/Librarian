@@ -24,43 +24,20 @@ export default function TraceView() {
     uniqueCameras: 0
   })
 
+  // Load stats on mount
   useEffect(() => {
-    loadStats()
-  }, [filters])
-
-  const loadStats = async () => {
-    try {
-      const params = new URLSearchParams()
-      if (filters.cameras.length > 0) {
-        params.append('cameras', filters.cameras.join(','))
-      }
-      if (filters.collections.length > 0) {
-        params.append('collections', filters.collections.join(','))
-      }
-      if (filters.years.length > 0) {
-        params.append('years', filters.years.join(','))
-      }
-      if (filters.sources.length > 0) {
-        params.append('sources', filters.sources.join(','))
-      }
-
-      const response = await api.getTraceData({
-        cameras: params.get('cameras') || undefined,
-        collections: params.get('collections') || undefined,
-        years: params.get('years') || undefined,
-        sources: params.get('sources') || undefined,
-        limit: 1
+    api.getTraceData({ limit: 1 })
+      .then(response => {
+        setStats({
+          total: response.stats.total,
+          withGps: response.stats.with_gps,
+          uniqueCameras: response.stats.unique_cameras
+        })
       })
-
-      setStats({
-        total: response.stats.total,
-        withGps: response.stats.with_gps,
-        uniqueCameras: response.stats.unique_cameras
+      .catch(error => {
+        console.error('Failed to load trace stats:', error)
       })
-    } catch (error) {
-      console.error('Failed to load stats:', error)
-    }
-  }
+  }, [])
 
   const handleFiltersChange = (newFilters: FilterState) => {
     setFilters(newFilters)
