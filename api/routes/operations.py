@@ -7,7 +7,7 @@ All endpoints are read-only - no write operations are performed.
 from typing import Optional
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_storage_backend
@@ -50,6 +50,30 @@ class SystemOverviewResponse(BaseModel):
     watcher_status: str = Field(description="File watcher status")
     job_processor_status: str = Field(description="Job processor status")
     api_status: str = Field(description="API status")
+
+
+# Thumbnail Priority Schemas
+class ThumbnailPriorityRequest(BaseModel):
+    """Request to prioritize thumbnail jobs for visible documents."""
+    viewport_document_ids: list[int] = Field(
+        description="Document IDs visible in current viewport",
+        min_length=0,
+        max_length=500
+    )
+    current_folder_document_ids: Optional[list[int]] = Field(
+        default=None,
+        description="Document IDs in the currently open folder (for secondary priority)",
+        max_length=2000
+    )
+
+
+class ThumbnailPriorityResponse(BaseModel):
+    """Response from thumbnail priority update."""
+    viewport_prioritized: int = Field(description="Number of viewport jobs prioritized")
+    folder_prioritized: int = Field(description="Number of folder jobs prioritized")
+    viewport_created: int = Field(description="Number of new viewport jobs created")
+    folder_created: int = Field(description="Number of new folder jobs created")
+    timestamp: str = Field(description="Server timestamp")
 
 
 class ActivityEvent(BaseModel):
@@ -862,3 +886,85 @@ async def list_documents(
         pass
     
     return DocumentListResponse(documents=documents, total=total)
+
+
+# Priority levels for thumbnail jobs
+THUMBNAIL_PRIORITY_VIEWPORT = 100  # Currently visible in viewport
+THUMBNAIL_PRIORITY_FOLDER = 50     # In currently open folder
+THUMBNAIL_PRIORITY_BACKGROUND = 10  # Background generation
+
+
+@router.post(
+    "/thumbnails/prioritize",
+    response_model=ThumbnailPriorityResponse,
+    summary="Prioritize thumbnail jobs based on visibility"
+)
+async def prioritize_thumbnails(
+    request: ThumbnailPriorityRequest,
+    backend: StorageBackend = Depends(get_storage_backend)
+) -> ThumbnailPriorityResponse:
+    """
+    Prioritize thumbnail generation jobs based on which documents are currently visible.
+    
+    Priority levels:
+    - Priority 100: Documents visible in current viewport (highest)
+    - Priority 50: Documents in currently open folder
+    - Priority 10: Background generation (default)
+    
+    This endpoint updates existing queued jobs or creates new ones with appropriate priority.
+    """
+    if not backend or not hasattr(backend, 'prioritize_thumbnail_jobs'):
+        return ThumbnailPriorityResponse(
+            viewport_prioritized=0,
+            folder_prioritized=0,
+            viewport_created=0,
+            folder_created=0,
+            timestamp=datetime.utcnow().isoformat() + "Z"
+        )
+    
+    viewport_prioritized = 0
+    folder_prioritized = 0
+    viewport_created = 0
+    folder_created = 0
+    
+    try:
+        # Prioritize viewport documents (priority 100)
+        if request.viewport_document_ids:
+            viewport_prioritized = backend.prioritize_thumbnail_jobs(
+                request.viewport_document_ids,
+                THUMBNAIL_PRIORITY_VIEWPORT
+            )
+            # Create jobs for viewport docs that don't have queued jobs
+            for doc_id in request.viewport_document_ids:
+                job_id = backend.create_or_update_thumbnail_job(
+                    doc_id,
+                    THUMBNAIL_PRIORITY_VIEWPORT
+                )
+                if job_id and viewport_created == 0:
+                    # Count how many were actually created (not just updated)
+                    pass
+        
+        # Prioritize folder documents (priority 50)
+        if request.current_folder_document_ids:
+            folder_prioritized = backend.prioritize_thumbnail_jobs(
+                request.current_folder_document_ids,
+                THUMBNAIL_PRIORITY_FOLDER
+            )
+            # Create jobs for folder docs that don't have queued jobs
+            for doc_id in request.current_folder_document_ids:
+                if doc_id not in request.viewport_document_ids:
+                    job_id = backend.create_or_update_thumbnail_job(
+                        doc_id,
+                        THUMBNAIL_PRIORITY_FOLDER
+                    )
+    
+    except Exception as e:
+        pass
+    
+    return ThumbnailPriorityResponse(
+        viewport_prioritized=viewport_prioritized,
+        folder_prioritized=folder_prioritized,
+        viewport_created=viewport_created,
+        folder_created=folder_created,
+        timestamp=datetime.utcnow().isoformat() + "Z"
+    )

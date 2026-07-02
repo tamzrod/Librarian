@@ -499,6 +499,42 @@ class LibrarianApiClient {
   }
 
   // =========================================================================
+  // Thumbnail Priority API
+  // =========================================================================
+
+  /**
+   * Report visible documents to prioritize their thumbnail generation.
+   * @param viewportDocumentIds - Document IDs currently visible in viewport
+   * @param currentFolderDocumentIds - Document IDs in the currently open folder
+   */
+  async prioritizeThumbnails(
+    viewportDocumentIds: number[],
+    currentFolderDocumentIds?: number[]
+  ): Promise<{
+    viewport_prioritized: number
+    folder_prioritized: number
+    viewport_created: number
+    folder_created: number
+    timestamp: string
+  }> {
+    try {
+      const response = await this.client.post<{
+        viewport_prioritized: number
+        folder_prioritized: number
+        viewport_created: number
+        folder_created: number
+        timestamp: string
+      }>('/api/v1/operations/thumbnails/prioritize', {
+        viewport_document_ids: viewportDocumentIds,
+        current_folder_document_ids: currentFolderDocumentIds
+      })
+      return response.data
+    } catch (error) {
+      handleApiError(error)
+    }
+  }
+
+  // =========================================================================
   // Settings API (Plugin Configuration)
   // =========================================================================
 

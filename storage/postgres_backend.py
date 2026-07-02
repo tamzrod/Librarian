@@ -2130,6 +2130,161 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error checking duplicate job: {e}")
             return False
 
+    def update_job_priority(self, document_id: int, job_type: str, priority: int) -> bool:
+        """Update the priority of a queued job for a document.
+        
+        Only updates jobs that are in QUEUED status.
+        
+        Args:
+            document_id: ID of the document
+            job_type: Type of job
+            priority: New priority value (higher = more important)
+            
+        Returns:
+            True if a job was updated, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET priority = %s
+                WHERE document_id = %s 
+                  AND job_type = %s
+                  AND status = 'QUEUED'
+                """,
+                (priority, document_id, job_type)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+            cur.close()
+            conn.close()
+            if updated:
+                logger.debug(f"Updated priority to {priority} for job: document={document_id} job={job_type}")
+            return updated
+        except Exception as e:
+            logger.error(f"Error updating job priority: {e}")
+            return False
+
+    def prioritize_thumbnail_jobs(self, document_ids: list[int], priority: int = 100) -> int:
+        """Prioritize thumbnail generation jobs for visible documents.
+        
+        Updates priority for queued generate_thumbnail jobs matching the given documents.
+        Only updates jobs that are not already at the target priority or higher.
+        
+        Args:
+            document_ids: List of document IDs to prioritize
+            priority: Priority level to set (default: 100 for viewport items)
+            
+        Returns:
+            Number of jobs updated
+        """
+        if not document_ids:
+            return 0
+        
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET priority = %s
+                WHERE document_id = ANY(%s)
+                  AND job_type = 'generate_thumbnail'
+                  AND status = 'QUEUED'
+                  AND priority < %s
+                """,
+                (priority, document_ids, priority)
+            )
+            updated = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            if updated > 0:
+                logger.info(f"Prioritized {updated} thumbnail jobs to priority {priority}")
+            return updated
+        except Exception as e:
+            logger.error(f"Error prioritizing thumbnail jobs: {e}")
+            return 0
+
+    def create_or_update_thumbnail_job(self, document_id: int, priority: int = 50) -> int:
+        """Create or update priority of a thumbnail generation job for a document.
+        
+        If a job already exists in QUEUED status, updates its priority.
+        If no job exists, creates a new one with the specified priority.
+        
+        Args:
+            document_id: ID of the document
+            priority: Priority level (default: 50 for current folder)
+            
+        Returns:
+            Job ID if created/updated, None on failure
+        """
+        try:
+            # First check if job exists in QUEUED status
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, priority FROM document_jobs
+                WHERE document_id = %s 
+                  AND job_type = 'generate_thumbnail'
+                  AND status = 'QUEUED'
+                LIMIT 1
+                """,
+                (document_id,)
+            )
+            row = cur.fetchone()
+            
+            if row:
+                job_id = row[0]
+                current_priority = row[1]
+                # Update priority only if new priority is higher
+                if priority > current_priority:
+                    cur.execute(
+                        """
+                        UPDATE document_jobs
+                        SET priority = %s
+                        WHERE id = %s
+                        """,
+                        (priority, job_id)
+                    )
+                    conn.commit()
+                    logger.debug(f"Updated thumbnail job {job_id} priority from {current_priority} to {priority}")
+                cur.close()
+                conn.close()
+                return job_id
+            
+            # No existing job - create new one
+            cur.close()
+            
+            created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
+                VALUES (%s, 'generate_thumbnail', %s, %s, %s)
+                ON CONFLICT (document_id, job_type) DO NOTHING
+                RETURNING id
+                """,
+                (document_id, priority, JobStatus.QUEUED, created_at)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            if row:
+                job_id = row[0]
+                logger.debug(f"Created thumbnail job {job_id} for document {document_id} with priority {priority}")
+                return job_id
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error creating/updating thumbnail job: {e}")
+            return None
+
     def create_scan_snapshot(self, collection_id: int, scan_path: str, file_hash: str, 
                            artifact_type: str = None, worker_version: str = None) -> int:
         """Create a snapshot entry for an artifact in a scan.

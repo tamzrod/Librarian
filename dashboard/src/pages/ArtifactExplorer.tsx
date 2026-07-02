@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../services/api'
 import type { FolderNode, ExplorerDocument, DocumentDetail } from '../types/api'
 import './ArtifactExplorer.css'
@@ -89,6 +89,7 @@ function GridDocumentItem({ doc, isSelected, onClick, documentDetail }: GridDocu
     <div
       className={`grid-item ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
+      data-document-id={doc.id}
     >
       <div className="grid-item-thumbnail">
         {thumbnailUrl && isImage ? (
@@ -138,6 +139,11 @@ function ArtifactExplorer() {
   } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  // Refs for viewport tracking (thumbnail priority queue)
+  const intersectionObserverRef = useRef<IntersectionObserver | null>(null)
+  const visibleDocumentIdsRef = useRef<Set<number>>(new Set())
+  const priorityUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Load folder tree on mount
   useEffect(() => {
     loadFolderTree()
@@ -174,6 +180,86 @@ function ArtifactExplorer() {
       setPreviewContent(null)
     }
   }, [selectedDocument, viewMode])
+
+  // Setup Intersection Observer for viewport tracking
+  useEffect(() => {
+    if (viewMode !== 'grid') {
+      // Clean up observer when not in grid view
+      if (intersectionObserverRef.current) {
+        intersectionObserverRef.current.disconnect()
+        intersectionObserverRef.current = null
+      }
+      return
+    }
+
+    // Create Intersection Observer
+    intersectionObserverRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const documentId = entry.target.getAttribute('data-document-id')
+          if (documentId) {
+            const id = parseInt(documentId, 10)
+            if (entry.isIntersecting) {
+              visibleDocumentIdsRef.current.add(id)
+            } else {
+              visibleDocumentIdsRef.current.delete(id)
+            }
+          }
+        })
+        
+        // Debounce priority updates
+        if (priorityUpdateTimeoutRef.current) {
+          clearTimeout(priorityUpdateTimeoutRef.current)
+        }
+        priorityUpdateTimeoutRef.current = setTimeout(() => {
+          reportVisibleDocuments()
+        }, 100) // Wait 100ms after last change before reporting
+      },
+      {
+        root: null, // viewport
+        rootMargin: '50px', // Include elements slightly outside viewport
+        threshold: 0.1 // Trigger when 10% visible
+      }
+    )
+
+    return () => {
+      if (intersectionObserverRef.current) {
+        intersectionObserverRef.current.disconnect()
+      }
+      if (priorityUpdateTimeoutRef.current) {
+        clearTimeout(priorityUpdateTimeoutRef.current)
+      }
+    }
+  }, [viewMode, folderContents.documents])
+
+  // Observe grid items when they change
+  useEffect(() => {
+    if (viewMode !== 'grid' || !intersectionObserverRef.current) return
+
+    // Observe all grid items with data-document-id
+    const gridContainer = document.querySelector('.grid-view')
+    if (gridContainer) {
+      const items = gridContainer.querySelectorAll('.grid-item[data-document-id]')
+      items.forEach((item) => {
+        intersectionObserverRef.current?.observe(item)
+      })
+    }
+  }, [folderContents.documents, viewMode])
+
+  // Report visible documents to backend for priority scheduling
+  const reportVisibleDocuments = useCallback(async () => {
+    const visibleIds = Array.from(visibleDocumentIdsRef.current)
+    const folderIds = folderContents.documents.map(d => d.id)
+    
+    if (visibleIds.length === 0) return
+
+    try {
+      await api.prioritizeThumbnails(visibleIds, folderIds)
+    } catch (error) {
+      // Silently fail - thumbnail priority is not critical
+      console.debug('Failed to report visible documents:', error)
+    }
+  }, [folderContents.documents])
 
   const loadFolderTree = async () => {
     try {
