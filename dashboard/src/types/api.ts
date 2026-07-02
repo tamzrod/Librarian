@@ -523,3 +523,30 @@ export interface TracePhotoDetail {
 export interface TracePhotoDetailResponse {
   photo: TracePhotoDetail
 }
+
+// Plugin Types (Phase 1)
+
+export interface PluginInfo {
+  name: string
+  installed: boolean
+  enabled: boolean
+  job_type: string
+  description: string
+  category: string
+}
+
+export interface PluginListResponse {
+  plugins: PluginInfo[]
+  total: number
+}
+
+export interface PluginUpdateRequest {
+  enabled: boolean
+}
+
+export interface PluginUpdateResponse {
+  name: string
+  installed: boolean
+  enabled: boolean
+  message: string
+}

@@ -17,6 +17,7 @@ const operationsItems = [
   { path: '/queue', label: 'Queue', icon: '📋' },
   { path: '/activity', label: 'Activity', icon: '📜' },
   { path: '/extractions', label: 'Extraction', icon: '🔎' },
+  { path: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
 function Layout() {

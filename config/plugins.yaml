@@ -1,0 +1,8 @@
+photo_metadata:
+  enabled: true
+  category: metadata
+  description: Extract EXIF metadata from images (GPS, camera info, timestamps)
+thumbnail:
+  enabled: true
+  category: metadata
+  description: Generate thumbnail images for preview
