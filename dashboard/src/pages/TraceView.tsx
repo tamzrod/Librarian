@@ -111,9 +111,10 @@ export default function TraceView() {
         {/* Filter palette */}
         <FilterPalette onFiltersChange={handleFiltersChange} />
 
-        {/* Content area */}
-        <div className="trace-content">
-          <div className="trace-canvas">
+        {/* Workspace - contains map and event stream */}
+        <div className="trace-workspace">
+          {/* Map area */}
+          <div className="map-area">
             {viewMode === 'map' && (
               <MapCanvas
                 filters={filters}
@@ -122,38 +123,24 @@ export default function TraceView() {
               />
             )}
             {viewMode === 'timeline' && (
-              <div style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-muted, #666)',
-                fontSize: '14px'
-              }}>
+              <div className="placeholder-view">
                 Timeline view coming soon...
               </div>
             )}
             {viewMode === 'grid' && (
-              <div style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-muted, #666)',
-                fontSize: '14px'
-              }}>
+              <div className="placeholder-view">
                 Grid view coming soon...
               </div>
             )}
           </div>
-        </div>
 
-        {/* Event stream - docked to bottom */}
-        <EventStream
-          filters={filters}
-          onEventSelect={handleEventSelect}
-          selectedEventId={selectedDocumentId || undefined}
-        />
+          {/* Event stream - docked at bottom */}
+          <EventStream
+            filters={filters}
+            onEventSelect={handleEventSelect}
+            selectedEventId={selectedDocumentId || undefined}
+          />
+        </div>
       </div>
 
       {/* Photo popup */}
