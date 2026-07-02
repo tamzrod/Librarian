@@ -1517,12 +1517,16 @@ class PostgresBackend(StorageBackend):
         ARCHITECTURE REQUIREMENT: Job scheduling must depend on artifact_type.
         
         If job_types is None, the document's artifact_type is looked up and
-        the appropriate jobs are created based on the ARTIFACT_TYPE_JOBS mapping.
+        the appropriate jobs are created based on the plugin registry.
         
         This prevents binary artifacts (images, videos, archives, executables)
         from entering the text extraction pipeline, which causes:
         - "No content found for document XXX"
         - "PostgreSQL text fields cannot contain NUL bytes"
+        
+        P13 Plugin Registry:
+        - Only enabled plugins generate jobs
+        - Prevents queue pollution from unsupported job types
         
         ARTIFACT TYPE VALIDATION:
         - Image artifacts may never receive: extract_text, extract_entities, extract_events, extract_locations
@@ -1543,10 +1547,32 @@ class PostgresBackend(StorageBackend):
         
         # If job_types is not specified, determine based on artifact_type
         if job_types is None:
-            job_types = ARTIFACT_TYPE_JOBS.get(
-                artifact_type, 
-                ARTIFACT_TYPE_JOBS.get('unknown', [JobType.INVENTORY])
-            )
+            # P13: Use plugin registry to determine job types
+            try:
+                from registry.plugin_registry import get_plugin_registry
+                registry = get_plugin_registry()
+                job_types = registry.get_job_types_for_artifact(artifact_type)
+                
+                # For non-image artifacts, also include text extraction jobs
+                # (plugin registry only handles image/video plugins)
+                if artifact_type in ('text', 'document', 'structured'):
+                    job_types = ARTIFACT_TYPE_JOBS.get(
+                        artifact_type,
+                        [JobType.EXTRACT_TEXT]
+                    )
+                
+                # Fallback for unknown artifact types
+                if not job_types:
+                    job_types = [JobType.INVENTORY]
+                    
+            except ImportError:
+                # Fallback to hardcoded mapping if plugin registry unavailable
+                logger.warning("Plugin registry unavailable, falling back to hardcoded mapping")
+                job_types = ARTIFACT_TYPE_JOBS.get(
+                    artifact_type, 
+                    ARTIFACT_TYPE_JOBS.get('unknown', [JobType.INVENTORY])
+                )
+            
             logger.info(f"Creating jobs for document {document_id} based on artifact_type '{artifact_type}': {job_types}")
         
         # Filter out invalid jobs for this artifact type
