@@ -1,21 +1,30 @@
 # Operation EXIF - Implementation Waves
 
-## Status: Updated Priority Order
+## Status: Post-Implementation Audit
 
-**Last Updated:** 2026-07-01
+**Last Updated:** 2026-07-02
 
 ---
 
 ## Wave Overview
 
-This document defines the revised implementation waves for Operation EXIF, based on the re-prioritization that separates **Architectural Priority** from **Implementation Order**.
+This document defines the implementation waves for Operation EXIF, updated with actual implementation status.
 
-### Key Changes from Original Plan
+### Implementation Status (as of 2026-07-02)
 
-1. **E3 CANCELLED** - Replaced by E8 Map Aggregation Layer
-2. **E4 and E10 moved to Phase 0** - Documentation tasks with no dependencies
-3. **E7 made parallel with E2** - Independent feature
-4. **E5 and E6 moved to Phase 2** - Feature completion
+| Wave | Tasks | Status |
+|------|-------|--------|
+| Wave 0 | E1, E4, E10 | E1: Partial, E4: Complete, E10: Complete |
+| Wave 1 | E2, E7 | E2: Complete, E7: Partial |
+| Wave 2 | E5, E6 | E5: Complete, E6: Open (not implemented) |
+| Wave 3 | E8, E9 | Both Open |
+
+### Key Findings from Audit
+
+1. **E1 marked Complete but is actually Partial** - Infrastructure exists, no backfill
+2. **E7 marked Open but is actually Partial** - Worker exists, no retrieval API
+3. **E6 truly Open** - Job queued but no handler registered
+4. **E8, E9 truly Open** - Not implemented at all
 
 ---
 

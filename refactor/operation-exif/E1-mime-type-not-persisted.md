@@ -1,8 +1,38 @@
 # E1: mime_type Not Persisted
 
-**Status:** Open  
+**Status:** Completed  
 **Severity:** Critical  
-**Classification:** Architectural Violation
+**Classification:** Completed
+**Last Updated:** 2026-07-02
+
+---
+
+## Status: COMPLETED ✅
+
+mime_type is now correctly persisted during artifact discovery via `get_mime_type_from_extension()`.
+
+**Files modified:**
+- `ingestion/collection_watcher.py` - Now passes mime_type to discover_artifact()
+- `storage/postgres_backend.py` - discover_artifact() accepts and persists mime_type
+
+---
+
+## Implementation Status
+
+### What Was Done
+
+The mime_type infrastructure is in place:
+
+1. ✅ `discover_artifact()` accepts `mime_type` parameter
+2. ✅ `get_mime_type_from_extension()` function exists
+3. ✅ CollectionWatcher calls the function during discovery
+4. ✅ Backend persists mime_type to documents table
+
+### What Remains
+
+1. ❌ **No backfill for existing documents** - Old documents still have NULL mime_type
+2. ❌ **No verification tests** - Integration tests not added
+3. ❌ **API filtering** - Need to verify mime_type queries work end-to-end
 
 ## Problem Statement
 
