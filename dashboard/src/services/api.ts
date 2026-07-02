@@ -392,9 +392,13 @@ class LibrarianApiClient {
    */
   getThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
-    // thumbnailPath already includes ".thumbnails/" prefix, so we just prepend the base
     const base = this.client.defaults.baseURL || ''
-    return `${base}/thumbnails/${thumbnailPath}`
+    // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
+    // Backend expects just the filename after .thumbnails/, so we strip ".thumbnails/" prefix
+    // URL becomes /thumbnails/filename.jpg
+    // Backend then looks for /library/.thumbnails/filename.jpg
+    const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    return `${base}/thumbnails/${cleanPath}`
   }
 
   /**
@@ -471,11 +475,19 @@ class LibrarianApiClient {
 
   /**
    * Get the thumbnail URL for a trace photo.
+   * Note: thumbnailPath already includes the .thumbnails/ prefix from the database.
    */
   getTraceThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
     const base = this.client.defaults.baseURL || ''
-    return `${base}/thumbnails/${thumbnailPath}`
+    // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
+    // Backend expects just the filename after .thumbnails/, so we strip the leading "."
+    // URL becomes /thumbnails/thumbnails/docId_filename_thumb.jpg
+    // Backend then prepends .thumbnails/ to get: /library/.thumbnails/thumbnails/filename.jpg
+    // But actually backend adds .thumbnails/ again, so we need to strip the ".thumbnails/" part
+    // The cleanest fix: strip ".thumbnails/" prefix from path to get just the filename
+    const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    return `${base}/thumbnails/${cleanPath}`
   }
 }
 
