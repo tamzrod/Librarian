@@ -82,6 +82,29 @@ class StorageBackend(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def get_trace_filters(self) -> dict:
+        """Get available filters for the Trace view."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_trace_data(
+        self,
+        cameras: list = None,
+        collections: list = None,
+        years: list = None,
+        sources: list = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> dict:
+        """Get Trace data with filters applied."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_trace_photo_detail(self, document_id: int) -> dict:
+        """Get full photo metadata for Trace view."""
+        raise NotImplementedError()
+
 
 def validate_backend_instance(backend: StorageBackend) -> StorageBackend:
     """Validate that an initialized backend satisfies the StorageBackend ABC."""

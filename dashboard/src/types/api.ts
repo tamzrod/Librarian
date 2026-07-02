@@ -431,3 +431,95 @@ export interface DocumentDetail {
 export interface DocumentDetailResponse {
   document: DocumentDetail
 }
+
+// Trace View API Types (Operation TRACE v2)
+
+export interface TraceFilterOption {
+  id: string
+  label: string
+  count: number
+  checked: boolean
+}
+
+export interface TraceFilterGroup {
+  id: string
+  label: string
+  expanded: boolean
+  options: TraceFilterOption[]
+}
+
+export interface TraceFiltersResponse {
+  groups: TraceFilterGroup[]
+  total_items: number
+}
+
+export interface TraceMapMarker {
+  document_id: number
+  latitude: number
+  longitude: number
+  timestamp: string | null
+  camera: string | null
+  camera_make: string | null
+  camera_model: string | null
+  filename: string
+  thumbnail_path: string | null
+  altitude: number | null
+  collection_id: string | null
+  collection_name: string | null
+  year: number | null
+}
+
+export interface TraceEventItem {
+  document_id: number
+  timestamp: string | null
+  camera: string | null
+  location: string | null
+  latitude: number | null
+  longitude: number | null
+  filename: string
+  thumbnail_path: string | null
+  collection_name: string | null
+  year: number | null
+}
+
+export interface TraceDataResponse {
+  markers: TraceMapMarker[]
+  events: TraceEventItem[]
+  stats: {
+    total: number
+    with_gps: number
+    unique_cameras: number
+    year_range: { min: number | null; max: number | null }
+  }
+  pagination: {
+    total: number
+    limit: number
+    offset: number
+    returned: number
+  }
+}
+
+export interface TracePhotoDetail {
+  document_id: number
+  filename: string
+  path: string
+  timestamp: string | null
+  timestamp_digitized: string | null
+  gps_latitude: number | null
+  gps_longitude: number | null
+  gps_altitude: number | null
+  camera_make: string | null
+  camera_model: string | null
+  lens_model: string | null
+  width: number
+  height: number
+  orientation: number | null
+  file_format: string
+  thumbnail_path: string | null
+  collection_name: string | null
+  extracted_at: string | null
+}
+
+export interface TracePhotoDetailResponse {
+  photo: TracePhotoDetail
+}

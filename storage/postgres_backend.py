@@ -3190,3 +3190,428 @@ class PostgresBackend(StorageBackend):
         cur.close()
         conn.close()
         return results
+    # =============================================================================
+    # Trace View Methods (Operation TRACE v2)
+    # =============================================================================
+
+    def get_trace_filters(self) -> dict:
+        """
+        Get available filters for the Trace view.
+        
+        Returns collapsible filter groups for:
+        - Devices (cameras)
+        - Collections
+        - Years
+        - Sources
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            groups = []
+            
+            # Devices (cameras) group
+            cur.execute("""
+                SELECT 
+                    COALESCE(camera_make, 'Unknown') || ' ' || COALESCE(camera_model, '') as camera,
+                    COUNT(*) as count
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE d.status != 'DELETED'
+                GROUP BY camera_make, camera_model
+                ORDER BY count DESC
+            """)
+            camera_options = []
+            for row in cur.fetchall():
+                camera = row[0].strip()
+                if camera and camera != 'Unknown':
+                    camera_options.append({
+                        'id': camera,
+                        'label': camera,
+                        'count': row[1],
+                        'checked': True
+                    })
+            if camera_options:
+                groups.append({
+                    'id': 'devices',
+                    'label': 'Devices',
+                    'expanded': True,
+                    'options': camera_options
+                })
+            
+            # Collections group
+            cur.execute("""
+                SELECT 
+                    c.id::text,
+                    COALESCE(c.name, 'Uncategorized'),
+                    COUNT(DISTINCT d.id) as count
+                FROM collections c
+                JOIN documents d ON c.id = d.collection_id
+                WHERE d.status != 'DELETED'
+                GROUP BY c.id, c.name
+                ORDER BY count DESC
+            """)
+            collection_options = []
+            for row in cur.fetchall():
+                collection_options.append({
+                    'id': row[0],
+                    'label': row[1],
+                    'count': row[2],
+                    'checked': True
+                })
+            if collection_options:
+                groups.append({
+                    'id': 'collections',
+                    'label': 'Collections',
+                    'expanded': True,
+                    'options': collection_options
+                })
+            
+            # Years group
+            cur.execute("""
+                SELECT 
+                    EXTRACT(YEAR FROM pm.timestamp_original)::int as year,
+                    COUNT(*) as count
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE pm.timestamp_original IS NOT NULL
+                    AND d.status != 'DELETED'
+                GROUP BY EXTRACT(YEAR FROM pm.timestamp_original)
+                ORDER BY year DESC
+            """)
+            year_options = []
+            for row in cur.fetchall():
+                if row[0]:
+                    year_options.append({
+                        'id': str(row[0]),
+                        'label': str(row[0]),
+                        'count': row[1],
+                        'checked': True
+                    })
+            if year_options:
+                groups.append({
+                    'id': 'years',
+                    'label': 'Years',
+                    'expanded': True,
+                    'options': year_options
+                })
+            
+            # Sources group (GPS, OCR, AI, Manual based on metadata availability)
+            cur.execute("""
+                SELECT 
+                    (CASE 
+                        WHEN pm.gps_latitude IS NOT NULL THEN 'gps'
+                        ELSE NULL 
+                    END) as source,
+                    COUNT(*) as count
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE d.status != 'DELETED'
+                    AND pm.gps_latitude IS NOT NULL
+                GROUP BY source
+            """)
+            source_options = []
+            for row in cur.fetchall():
+                if row[0]:
+                    source_options.append({
+                        'id': row[0],
+                        'label': 'GPS EXIF',
+                        'count': row[1],
+                        'checked': True
+                    })
+            if source_options:
+                groups.append({
+                    'id': 'sources',
+                    'label': 'Sources',
+                    'expanded': False,
+                    'options': source_options
+                })
+            
+            # Get total count
+            cur.execute("SELECT COUNT(*) FROM documents WHERE status != 'DELETED'")
+            total_items = cur.fetchone()[0] or 0
+            
+            cur.close()
+            conn.close()
+            
+            return {
+                'groups': groups,
+                'total_items': total_items
+            }
+        except Exception as e:
+            logger.error(f"Error getting trace filters: {e}")
+            return {'groups': [], 'total_items': 0}
+
+    def get_trace_data(
+        self,
+        cameras: list = None,
+        collections: list = None,
+        years: list = None,
+        sources: list = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> dict:
+        """
+        Get Trace data with filters applied.
+        
+        Returns both map markers and event stream items.
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            # Build filter conditions
+            conditions = ["d.status != 'DELETED'"]
+            params = []
+            
+            # Camera filter
+            if cameras:
+                camera_placeholders = ','.join(['%s'] * len(cameras))
+                conditions.append(f"(pm.camera_make || ' ' || COALESCE(pm.camera_model, '')) IN ({camera_placeholders})")
+                params.extend(cameras)
+            
+            # Collection filter
+            if collections:
+                collection_placeholders = ','.join(['%s'] * len(collections))
+                conditions.append(f"d.collection_id IN ({collection_placeholders})")
+                params.extend(collections)
+            
+            # Year filter
+            if years:
+                year_placeholders = ','.join(['%s'] * len(years))
+                conditions.append(f"EXTRACT(YEAR FROM pm.timestamp_original)::int IN ({year_placeholders})")
+                params.extend(years)
+            
+            # Source filter (GPS only)
+            if sources:
+                if 'gps' in sources:
+                    conditions.append("pm.gps_latitude IS NOT NULL AND pm.gps_longitude IS NOT NULL")
+            
+            where_clause = " AND ".join(conditions)
+            
+            # Get total count
+            count_sql = f"""
+                SELECT COUNT(*)
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE {where_clause}
+            """
+            cur.execute(count_sql, params)
+            total = cur.fetchone()[0] or 0
+            
+            # Get map markers (photos with GPS)
+            markers_sql = f"""
+                SELECT 
+                    pm.document_id,
+                    pm.gps_latitude,
+                    pm.gps_longitude,
+                    pm.timestamp_original,
+                    pm.camera_make,
+                    pm.camera_model,
+                    d.path as filename,
+                    d.thumbnail_path,
+                    pm.gps_altitude,
+                    c.id as collection_id,
+                    c.name as collection_name,
+                    EXTRACT(YEAR FROM pm.timestamp_original)::int as year
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                LEFT JOIN collections c ON d.collection_id = c.id
+                WHERE {where_clause}
+                    AND pm.gps_latitude IS NOT NULL 
+                    AND pm.gps_longitude IS NOT NULL
+                ORDER BY pm.timestamp_original DESC
+                LIMIT %s OFFSET %s
+            """
+            marker_params = params + [limit, offset]
+            cur.execute(markers_sql, marker_params)
+            
+            markers = []
+            for row in cur.fetchall():
+                camera_make = row[4] or ''
+                camera_model = row[5] or ''
+                camera = f"{camera_make} {camera_model}".strip()
+                
+                markers.append({
+                    'document_id': row[0],
+                    'latitude': row[1],
+                    'longitude': row[2],
+                    'timestamp': row[3].isoformat() + 'Z' if row[3] else None,
+                    'camera': camera or None,
+                    'camera_make': row[4],
+                    'camera_model': row[5],
+                    'filename': row[6],
+                    'thumbnail_path': row[7],
+                    'altitude': row[8],
+                    'collection_id': str(row[9]) if row[9] else None,
+                    'collection_name': row[10],
+                    'year': row[11]
+                })
+            
+            # Get event stream items
+            events_sql = f"""
+                SELECT 
+                    pm.document_id,
+                    pm.timestamp_original,
+                    pm.camera_make,
+                    pm.camera_model,
+                    pm.gps_latitude,
+                    pm.gps_longitude,
+                    d.path as filename,
+                    d.thumbnail_path,
+                    c.name as collection_name,
+                    EXTRACT(YEAR FROM pm.timestamp_original)::int as year
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                LEFT JOIN collections c ON d.collection_id = c.id
+                WHERE {where_clause}
+                ORDER BY pm.timestamp_original DESC
+                LIMIT %s OFFSET %s
+            """
+            cur.execute(events_sql, marker_params)
+            
+            events = []
+            for row in cur.fetchall():
+                camera_make = row[2] or ''
+                camera_model = row[3] or ''
+                camera = f"{camera_make} {camera_model}".strip()
+                
+                events.append({
+                    'document_id': row[0],
+                    'timestamp': row[1].isoformat() + 'Z' if row[1] else None,
+                    'camera': camera or None,
+                    'location': None,
+                    'latitude': row[4],
+                    'longitude': row[5],
+                    'filename': row[6],
+                    'thumbnail_path': row[7],
+                    'collection_name': row[8],
+                    'year': row[9]
+                })
+            
+            # Get stats
+            stats_sql = f"""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN pm.gps_latitude IS NOT NULL THEN 1 END) as with_gps,
+                    COUNT(DISTINCT pm.camera_make || ' ' || COALESCE(pm.camera_model, '')) as unique_cameras,
+                    MIN(EXTRACT(YEAR FROM pm.timestamp_original)) as min_year,
+                    MAX(EXTRACT(YEAR FROM pm.timestamp_original)) as max_year
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                WHERE {where_clause}
+            """
+            cur.execute(stats_sql, params)
+            stats_row = cur.fetchone()
+            
+            cur.close()
+            conn.close()
+            
+            return {
+                'markers': markers,
+                'events': events,
+                'stats': {
+                    'total': stats_row[0] or 0,
+                    'with_gps': stats_row[1] or 0,
+                    'unique_cameras': stats_row[2] or 0,
+                    'year_range': {
+                        'min': int(stats_row[3]) if stats_row[3] else None,
+                        'max': int(stats_row[4]) if stats_row[4] else None
+                    }
+                },
+                'pagination': {
+                    'total': total,
+                    'limit': limit,
+                    'offset': offset,
+                    'returned': len(events)
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error getting trace data: {e}")
+            return {
+                'markers': [],
+                'events': [],
+                'stats': {
+                    'total': 0,
+                    'with_gps': 0,
+                    'unique_cameras': 0,
+                    'year_range': {'min': None, 'max': None}
+                },
+                'pagination': {
+                    'total': 0,
+                    'limit': limit,
+                    'offset': offset,
+                    'returned': 0
+                }
+            }
+
+    def get_trace_photo_detail(self, document_id: int) -> dict:
+        """
+        Get full photo metadata for Trace view.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            Dict with full photo metadata or None
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT 
+                    pm.document_id,
+                    d.path as filename,
+                    d.path,
+                    pm.timestamp_original,
+                    pm.timestamp_digitized,
+                    pm.gps_latitude,
+                    pm.gps_longitude,
+                    pm.gps_altitude,
+                    pm.camera_make,
+                    pm.camera_model,
+                    pm.lens_model,
+                    pm.width,
+                    pm.height,
+                    pm.orientation,
+                    pm.file_format,
+                    d.thumbnail_path,
+                    c.name as collection_name,
+                    pm.extracted_at
+                FROM photo_metadata pm
+                JOIN documents d ON pm.document_id = d.id
+                LEFT JOIN collections c ON d.collection_id = c.id
+                WHERE pm.document_id = %s
+            """, (document_id,))
+            
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if not row:
+                return None
+            
+            return {
+                'document_id': row[0],
+                'filename': row[1],
+                'path': row[2],
+                'timestamp': row[3].isoformat() + 'Z' if row[3] else None,
+                'timestamp_digitized': row[4].isoformat() + 'Z' if row[4] else None,
+                'gps_latitude': row[5],
+                'gps_longitude': row[6],
+                'gps_altitude': row[7],
+                'camera_make': row[8],
+                'camera_model': row[9],
+                'lens_model': row[10],
+                'width': row[11] or 0,
+                'height': row[12] or 0,
+                'orientation': row[13],
+                'file_format': row[14] or 'UNKNOWN',
+                'thumbnail_path': row[15],
+                'collection_name': row[16],
+                'extracted_at': row[17].isoformat() + 'Z' if row[17] else None
+            }
+        except Exception as e:
+            logger.error(f"Error getting trace photo detail: {e}")
+            return None

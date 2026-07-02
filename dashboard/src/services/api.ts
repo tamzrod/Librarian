@@ -23,6 +23,9 @@ import type {
   FolderTreeResponse,
   FolderContentsResponse,
   DocumentDetailResponse,
+  TraceFiltersResponse,
+  TraceDataResponse,
+  TracePhotoDetailResponse,
 } from '../types/api'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -417,6 +420,62 @@ class LibrarianApiClient {
     const ext = extension.toLowerCase()
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg']
     return imageExtensions.includes(ext)
+  }
+
+  // =========================================================================
+  // Trace View API (Operation TRACE v2)
+  // =========================================================================
+
+  /**
+   * Get available filters for the Trace view.
+   * Returns collapsible filter groups for devices, collections, years, and sources.
+   */
+  async getTraceFilters(): Promise<TraceFiltersResponse> {
+    return this.get<TraceFiltersResponse>('/api/v1/trace/filters')
+  }
+
+  /**
+   * Get Trace data with filters applied.
+   * @param cameras - Comma-separated list of camera IDs to filter
+   * @param collections - Comma-separated list of collection IDs to filter
+   * @param years - Comma-separated list of years to filter
+   * @param sources - Comma-separated list of sources to filter
+   * @param limit - Maximum results
+   * @param offset - Offset for pagination
+   */
+  async getTraceData(params: {
+    cameras?: string
+    collections?: string
+    years?: string
+    sources?: string
+    limit?: number
+    offset?: number
+  } = {}): Promise<TraceDataResponse> {
+    return this.get<TraceDataResponse>('/api/v1/trace/data', {
+      cameras: params.cameras,
+      collections: params.collections,
+      years: params.years,
+      sources: params.sources,
+      limit: params.limit || 100,
+      offset: params.offset || 0,
+    })
+  }
+
+  /**
+   * Get full photo metadata for Trace view.
+   * @param documentId - The document ID
+   */
+  async getTracePhoto(documentId: number): Promise<TracePhotoDetailResponse> {
+    return this.get<TracePhotoDetailResponse>(`/api/v1/trace/photo/${documentId}`)
+  }
+
+  /**
+   * Get the thumbnail URL for a trace photo.
+   */
+  getTraceThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
+    if (!thumbnailPath) return null
+    const base = this.client.defaults.baseURL || ''
+    return `${base}/thumbnails/${thumbnailPath}`
   }
 }
 
