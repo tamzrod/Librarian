@@ -389,15 +389,15 @@ class LibrarianApiClient {
 
   /**
    * Get the thumbnail URL for a document.
-   * @param thumbnailPath - The relative thumbnail path (e.g., ".thumbnails/1017_IMG_001_thumb.jpg")
+   * @param thumbnailPath - The relative thumbnail path (e.g., "thumbnails/1017_IMG_001_thumb.jpg")
    * @returns URL to fetch the thumbnail image
    */
   getThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
-    // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
-    // Backend expects just the filename after .thumbnails/, so we strip ".thumbnails/" prefix
-    // URL becomes /thumbnails/filename.jpg
-    const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    // thumbnailPath is like "thumbnails/docId_filename_thumb.jpg" (from database)
+    // Nginx proxy handles /thumbnails/ -> http://api:8000/thumbnails/
+    // If path already starts with thumbnails/, use as-is
+    const cleanPath = thumbnailPath.replace(/^thumbnails\//, '')
     // Handle base URL (which may be "/" or empty for relative URLs)
     const base = this.client.defaults.baseURL || '/'
     // Ensure no double slashes when base is "/"
@@ -481,13 +481,14 @@ class LibrarianApiClient {
 
   /**
    * Get the thumbnail URL for a trace photo.
-   * Note: thumbnailPath already includes the .thumbnails/ prefix from the database.
+   * Note: thumbnailPath is like "thumbnails/docId_filename_thumb.jpg" (from database).
    */
   getTraceThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
-    // thumbnailPath is like ".thumbnails/docId_filename_thumb.jpg"
-    // Backend expects just the filename after .thumbnails/, so we strip the prefix
-    const cleanPath = thumbnailPath.replace(/^\.thumbnails\//, '')
+    // thumbnailPath is like "thumbnails/docId_filename_thumb.jpg" (from database)
+    // Nginx proxy handles /thumbnails/ -> http://api:8000/thumbnails/
+    // If path already starts with thumbnails/, strip the prefix
+    const cleanPath = thumbnailPath.replace(/^thumbnails\//, '')
     // Handle base URL (which may be "/" or empty for relative URLs)
     const base = this.client.defaults.baseURL || '/'
     // Ensure no double slashes when base is "/"
