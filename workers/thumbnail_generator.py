@@ -4,21 +4,24 @@ Thumbnail generation handler for the worker.
 Phase E5: Thumbnail Persistence
 
 This module handles the 'generate_thumbnail' job type.
-It generates thumbnail images from source images and stores them on the filesystem.
+It generates thumbnail images from source images and stores them in Librarian-managed storage.
+
+Derived artifacts (thumbnails) are stored in /librarian-data/thumbnails
+NOT in the user's library directory.
 """
 
 import os
 import logging
 from pathlib import Path
 from typing import Optional
-from environment import get_library_root
+from environment import get_library_root, get_librarian_data_root
 from .base import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 # Thumbnail settings
 THUMBNAIL_SIZE = (256, 256)  # Max width/height for thumbnails
-THUMBNAIL_DIR = ".thumbnails"  # Directory name within library root
+THUMBNAIL_DIR = "thumbnails"  # Directory name within librarian data root
 
 
 class ThumbnailGenerator(BaseWorker):
@@ -32,16 +35,18 @@ class ThumbnailGenerator(BaseWorker):
     # Supported image extensions for thumbnail generation
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'}
 
-    def __init__(self, backend, library_root: str = None):
+    def __init__(self, backend, library_root: str = None, librarian_data_root: str = None):
         """
         Initialize the thumbnail generator.
 
         Args:
             backend: Storage backend
             library_root: Root path of the document library
+            librarian_data_root: Root path for Librarian-managed derived artifacts
         """
         self.backend = backend
         self.library_root = library_root or get_library_root()
+        self.librarian_data_root = librarian_data_root or get_librarian_data_root()
 
     def process(self, job: dict) -> dict:
         """
@@ -124,14 +129,14 @@ class ThumbnailGenerator(BaseWorker):
             document_id: Document ID for naming
 
         Returns:
-            Relative path to the generated thumbnail
+            Relative path to the generated thumbnail (relative to catalog root)
         """
         try:
             from PIL import Image
 
-            # Create thumbnail directory if it doesn't exist
-            library_root = Path(self.library_root)
-            thumbnail_dir = library_root / THUMBNAIL_DIR
+            # Create thumbnail directory in librarian data root
+            data_root = Path(self.librarian_data_root)
+            thumbnail_dir = data_root / THUMBNAIL_DIR
             thumbnail_dir.mkdir(parents=True, exist_ok=True)
 
             # Generate thumbnail filename
@@ -151,7 +156,7 @@ class ThumbnailGenerator(BaseWorker):
                 # Save thumbnail
                 img.save(thumbnail_full_path, 'JPEG', quality=85)
 
-            # Return relative path from library root
+            # Return relative path from librarian data root (catalog path)
             return str(Path(THUMBNAIL_DIR) / thumbnail_filename)
 
         except ImportError:
