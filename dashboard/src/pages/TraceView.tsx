@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import FilterPalette, { FilterState } from '../components/FilterPalette'
 import MapCanvas from '../components/MapCanvas'
 import EventStream from '../components/EventStream'
@@ -9,14 +10,25 @@ import './TraceView.css'
 
 type ViewMode = 'map' | 'timeline' | 'grid'
 
+/**
+ * TraceView - Unified view for map, timeline, and grid visualizations.
+ * Supports query parameter for direct navigation: ?view=map|timeline|grid
+ */
 export default function TraceView() {
+  const [searchParams] = useSearchParams()
   const [filters, setFilters] = useState<FilterState>({
     cameras: [],
     collections: [],
     years: [],
     sources: []
   })
-  const [viewMode, setViewMode] = useState<ViewMode>('map')
+  
+  // Initialize view mode from URL parameter (for backwards compatibility with /map, /timeline)
+  const urlViewParam = searchParams.get('view') as ViewMode | null
+  const initialViewMode: ViewMode = urlViewParam && ['map', 'timeline', 'grid'].includes(urlViewParam) 
+    ? urlViewParam 
+    : 'map'
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
   const [stats, setStats] = useState({
     total: 0,

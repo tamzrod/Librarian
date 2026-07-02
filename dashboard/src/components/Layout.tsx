@@ -6,8 +6,7 @@ import './Layout.css'
 const investigationItems = [
   { path: '/explorer', label: 'Explorer', icon: '🔍' },
   { path: '/trace', label: 'Trace', icon: '🧭' },
-  { path: '/timeline', label: 'Timeline', icon: '📅' },
-  { path: '/map', label: 'Map', icon: '🗺️' },
+  // Legacy routes /timeline and /map are deprecated - use /trace with view parameter instead
   { path: '/entities', label: 'Entities', icon: '🏷️' },
   { path: '/relationships', label: 'Relationships', icon: '🔗' },
 ]

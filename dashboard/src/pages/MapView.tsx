@@ -1,14 +1,14 @@
-import PlaceholderPage from './PlaceholderPage'
-import './PlaceholderPage.css'
+/**
+ * @deprecated Use TraceView with view="map" parameter instead.
+ * Routes: /trace?view=map
+ * 
+ * Legacy placeholder retained for backwards compatibility with existing bookmarks.
+ * Will be removed in a future version.
+ */
+import { Navigate } from 'react-router-dom'
 
 function MapView() {
-  return (
-    <PlaceholderPage
-      icon="🗺️"
-      title="Map View"
-      description="Explore geographic relationships and location data on an interactive map. Visualize where events and entities are connected across the world."
-    />
-  )
+  return <Navigate to="/trace?view=map" replace />
 }
 
 export default MapView
