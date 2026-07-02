@@ -7,6 +7,7 @@ Phase 3A: Implements the worker runtime that:
 - Handles lease management
 - Supports retry with backoff
 - Recovers from crashes via lease expiration
+- P15: Validates plugin/handler alignment at startup
 """
 
 import os
@@ -38,6 +39,7 @@ class Worker:
     - Exponential backoff: Failed jobs retry with increasing delays
     - Graceful shutdown: Releases active leases on SIGTERM
     - Multiple job types: Pluggable job handlers
+    - P15: Startup validation ensures scheduled jobs ⊆ registered handlers
     """
     
     def __init__(
@@ -46,7 +48,8 @@ class Worker:
         worker_id: str = None,
         poll_interval: float = 1.0,
         lease_seconds: int = 300,
-        lease_renewal_interval: int = 60
+        lease_renewal_interval: int = 60,
+        skip_plugin_validation: bool = False
     ):
         """
         Initialize the worker.
@@ -57,12 +60,14 @@ class Worker:
             poll_interval: Seconds to wait when no jobs available
             lease_seconds: How long to hold a lease before it expires
             lease_renewal_interval: How often to renew leases
+            skip_plugin_validation: Skip P15 validation (for testing)
         """
         self.backend = backend
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
         self.poll_interval = poll_interval
         self.lease_seconds = lease_seconds
         self.lease_renewal_interval = lease_renewal_interval
+        self.skip_plugin_validation = skip_plugin_validation
         
         # Job handlers: job_type -> handler function
         self._handlers: Dict[str, Callable] = {}
@@ -82,6 +87,59 @@ class Worker:
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_shutdown)
         signal.signal(signal.SIGINT, self._handle_shutdown)
+    
+    def validate_plugins(self) -> Dict[str, Any]:
+        """P15: Validate that enabled plugins have registered handlers.
+        
+        This ensures that scheduled jobs are always executable.
+        Logs warnings for any enabled plugins without handlers.
+        
+        Returns:
+            Dict with validation results:
+                - is_valid: True if all enabled plugins have handlers
+                - warnings: List of warning messages
+                - plugin_status: Status of each plugin
+        """
+        try:
+            from registry.plugin_registry import get_plugin_registry
+            registry = get_plugin_registry()
+            registered_handlers = set(self._handlers.keys())
+            result = registry.validate_against_handlers(registered_handlers)
+            
+            # Log warnings
+            for warning in result['warnings']:
+                logger.warning(warning)
+            
+            # Log plugin status
+            plugin_status = registry.get_all_plugins()
+            logger.info("Plugin status:")
+            for name, enabled in plugin_status.items():
+                plugin_info = registry.get_plugin_info(name)
+                status = "ENABLED" if enabled else "disabled"
+                has_handler = plugin_info['job_type'] in registered_handlers if plugin_info else False
+                handler_status = "✓" if has_handler else "✗ NO HANDLER"
+                logger.info(f"  [{status}] {name}: {handler_status}")
+            
+            if result['is_valid']:
+                logger.info("P15 validation PASSED: All enabled plugins have handlers")
+            else:
+                logger.warning("P15 validation FAILED: Some enabled plugins lack handlers")
+            
+            return {
+                'is_valid': result['is_valid'],
+                'warnings': result['warnings'],
+                'plugin_status': plugin_status,
+                'registered_handlers': list(registered_handlers),
+            }
+            
+        except ImportError:
+            logger.warning("Plugin registry not available, skipping P15 validation")
+            return {
+                'is_valid': True,
+                'warnings': ["Plugin registry not available"],
+                'plugin_status': {},
+                'registered_handlers': list(self._handlers.keys()),
+            }
     
     def register_handler(self, job_type: str, handler: Callable[[dict], Any]):
         """
@@ -103,6 +161,12 @@ class Worker:
         self._running = True
         self._stop_event.clear()
         logger.info(f"Worker {self.worker_id} starting...")
+        
+        # P15: Validate plugins against registered handlers
+        if not self.skip_plugin_validation:
+            validation_result = self.validate_plugins()
+            if not validation_result['is_valid']:
+                logger.error("Worker starting with misconfigured plugins - some jobs will fail!")
         
         # Run worker loop in a daemon thread so it doesn't block startup
         self._worker_thread = threading.Thread(target=self._run_loop, daemon=True)

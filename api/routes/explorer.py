@@ -89,6 +89,13 @@ class DocumentDetail(BaseModel):
     thumbnail_path: Optional[str] = Field(default=None, description="Relative path to generated thumbnail")
     # Processing status from jobs
     processing_status: list[ProcessingStatus] = Field(default_factory=list, description="Enrichment processing status")
+    # Photo metadata (P14: GPS Pipeline Verification)
+    latitude: Optional[float] = Field(default=None, description="GPS latitude (decimal degrees)")
+    longitude: Optional[float] = Field(default=None, description="GPS longitude (decimal degrees)")
+    altitude: Optional[float] = Field(default=None, description="GPS altitude (meters)")
+    camera_make: Optional[str] = Field(default=None, description="Camera manufacturer")
+    camera_model: Optional[str] = Field(default=None, description="Camera model")
+    date_taken: Optional[str] = Field(default=None, description="When photo was taken (ISO 8601)")
 
 
 class DocumentDetailResponse(BaseModel):
@@ -580,6 +587,26 @@ async def get_document_details(
                         label=JOB_TYPE_LABELS.get(job_type, job_type.replace('_', ' ').title())
                     ))
                 
+                # P14: Fetch photo metadata for images
+                latitude = None
+                longitude = None
+                altitude = None
+                camera_make = None
+                camera_model = None
+                date_taken = None
+                
+                if artifact_type == 'image' and hasattr(backend, 'get_photo_metadata'):
+                    photo_meta = backend.get_photo_metadata(document_id)
+                    if photo_meta:
+                        latitude = photo_meta.get('gps_latitude')
+                        longitude = photo_meta.get('gps_longitude')
+                        altitude = photo_meta.get('gps_altitude')
+                        camera_make = photo_meta.get('camera_make')
+                        camera_model = photo_meta.get('camera_model')
+                        ts_original = photo_meta.get('timestamp_original')
+                        if ts_original:
+                            date_taken = ts_original.isoformat() + 'Z' if hasattr(ts_original, 'isoformat') else str(ts_original)
+                
                 document = DocumentDetail(
                     id=doc_id,
                     name=filename,
@@ -595,7 +622,13 @@ async def get_document_details(
                     sha256=sha,
                     artifact_type=artifact_type,
                     thumbnail_path=thumbnail,  # E5: Thumbnail path
-                    processing_status=processing_status
+                    processing_status=processing_status,
+                    latitude=latitude,
+                    longitude=longitude,
+                    altitude=altitude,
+                    camera_make=camera_make,
+                    camera_model=camera_model,
+                    date_taken=date_taken
                 )
             
             cur.close()

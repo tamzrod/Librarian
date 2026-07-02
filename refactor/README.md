@@ -8,7 +8,11 @@ This folder tracks the approved refactor strategy for the Librarian codebase.
 
 Plans currently in progress or ready to begin implementation.
 
-No active plans at this time.
+| ID | Plan | Status | Notes |
+|----|------|--------|-------|
+| P13 | Plugin Registry | ✅ Completed | Plugin-aware job scheduling |
+| P14 | GPS Pipeline Verification | ✅ Completed | Explorer now shows GPS fields |
+| P15 | Scheduler Validation | ✅ Completed | Startup validation for plugin/handler alignment |
 
 ---
 
