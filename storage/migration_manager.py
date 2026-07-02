@@ -117,7 +117,7 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    TARGET_SCHEMA_VERSION = 9  # Corresponds to 009_add_missing_indexes.sql
+    TARGET_SCHEMA_VERSION = 10  # Corresponds to 010_thumbnails.sql
     
     def __init__(self, backend):
         """

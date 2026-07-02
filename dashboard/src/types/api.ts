@@ -422,6 +422,8 @@ export interface DocumentDetail {
   sha256: string | null
   // Artifact type classification
   artifact_type: string | null
+  // E5: Thumbnail path
+  thumbnail_path: string | null
   // Processing status from jobs
   processing_status: ProcessingStatus[]
 }

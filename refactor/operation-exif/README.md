@@ -1,7 +1,7 @@
 # Operation EXIF - Metadata Architecture Audit
 
 **Date:** 2026-07-01
-**Status:** Re-prioritization Complete
+**Status:** E5 Implementation Complete
 **Priority:** Architectural
 
 ## Executive Summary
@@ -387,6 +387,79 @@ E1 → E2 → E8 → E9
 
 ---
 
+## E5 Implementation Details (Completed)
+
+### Problem
+Image thumbnails were not being persisted or displayed in the Explorer. The `generate_thumbnail` job type was defined but the entire pipeline was incomplete:
+- Handler was registered but never called
+- Thumbnail files were not being created on disk
+- `thumbnail_path` column was missing from the database
+- API responses did not include thumbnail information
+- Frontend did not display thumbnails in grid view
+
+### Solution
+E5 implements the complete thumbnail pipeline:
+
+1. **Database Schema**: Added `thumbnail_path` column via migration `010_thumbnails.sql`
+2. **Worker Handler**: `ThumbnailGenerator` saves thumbnail path to database after generating file
+3. **API Serialization**: Explorer API includes `thumbnail_path` in document detail response
+4. **Frontend Display**: Grid view shows thumbnail images when available, falls back to icon
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `storage/migrations/010_thumbnails.sql` | **NEW** - Adds thumbnail_path column and index |
+| `storage/migration_manager.py` | Updated TARGET_SCHEMA_VERSION to 10 |
+| `workers/thumbnail_generator.py` | Saves thumbnail_path to database after file creation |
+| `api/routes/explorer.py` | Includes thumbnail_path in DocumentDetail response |
+| `dashboard/src/types/api.ts` | Added thumbnail_path to DocumentDetail interface |
+| `dashboard/src/services/api.ts` | Added getThumbnailUrl() helper |
+| `dashboard/src/pages/ArtifactExplorer.tsx` | GridDocumentItem component displays thumbnails |
+| `dashboard/src/pages/ArtifactExplorer.css` | Added thumbnail styling |
+
+### Pipeline Flow
+```
+Image discovered → generate_thumbnail job created → worker processes → 
+thumbnail stored in .thumbnails/ → path saved to documents.thumbnail_path → 
+API returns path → Explorer displays image
+```
+
+### Key Implementation Details
+
+1. **Thumbnail Generation** (`workers/thumbnail_generator.py`):
+   - Generates JPEG thumbnails at 256x256 max
+   - Saves to `.thumbnails/` directory relative to library root
+   - Filename format: `{document_id}_{original_name}_thumb.jpg`
+   - Handles RGBA images by converting to RGB
+
+2. **Database Persistence** (`workers/thumbnail_generator.py`):
+   - `ADD COLUMN IF NOT EXISTS` for forward compatibility
+   - Saves relative path (e.g., `.thumbnails/1017_IMG_001_thumb.jpg`)
+
+3. **API Serving** (`api/app.py`):
+   - `GET /thumbnails/{path}` serves thumbnail files
+   - Path is relative to library root `.thumbnails/` directory
+
+4. **Frontend Display** (`dashboard/src/pages/ArtifactExplorer.tsx`):
+   - `GridDocumentItem` component shows thumbnail when `thumbnail_path` is available
+   - Falls back to file type icon if thumbnail missing or fails to load
+   - Thumbnail URL constructed via `api.getThumbnailUrl()`
+
+### Rollback Strategy
+```bash
+# Drop the thumbnail_path column
+ALTER TABLE documents DROP COLUMN thumbnail_path;
+
+# Remove migration record
+DELETE FROM schema_migrations WHERE migration_name = '010_thumbnails.sql';
+
+# Update target schema version
+# In migration_manager.py: TARGET_SCHEMA_VERSION = 9
+```
+
+---
+
 ## Rollback Safety
 
 | Task | Rollback Complexity | Notes |
@@ -394,7 +467,7 @@ E1 → E2 → E8 → E9
 | E1 | **Low** | Remove mime_type from INSERT - non-breaking |
 | E2 | **Medium** | Depends on approach (Option A vs B) |
 | E4 | **None** | Documentation only |
-| E5 | **Low** | Drop thumbnail table |
+| E5 | **Low** | Drop thumbnail_path column |
 | E6 | **Low** | Drop OCR content or mark as unused |
 | E7 | **Low** | Mark embedding records as unused |
 | E8 | **Medium** | Remove aggregation layer |
