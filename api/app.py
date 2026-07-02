@@ -33,9 +33,6 @@ LIBRARY_ROOT = get_library_root()
 # Librarian data root from environment (derived artifacts - writable)
 LIBRARIAN_DATA_ROOT = get_librarian_data_root()
 
-# Thumbnail directory (stored in librarian data root)
-THUMBNAIL_DIR = "thumbnails"
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,12 +96,16 @@ app.include_router(settings.router, prefix="/api/v1")
 @app.get("/thumbnails/{path:path}", response_class=FileResponse)
 async def get_thumbnail(path: str):
     """
-    Serve thumbnail files.
+    Serve thumbnail files from librarian-managed storage.
 
     E5: Thumbnail endpoint for serving generated thumbnails.
     Thumbnails are stored in librarian-data/thumbnails directory.
+    
+    Browser request: /thumbnails/<filename>
+    Filesystem path: /librarian-data/thumbnails/<filename>
     """
-    thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / THUMBNAIL_DIR / path
+    # Serve from librarian-data/thumbnails directory
+    thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / "thumbnails" / path
     if thumbnail_full_path.exists():
         return FileResponse(str(thumbnail_full_path))
     return {"error": "Thumbnail not found"}, 404
