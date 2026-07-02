@@ -7,6 +7,7 @@ from typing import Iterable, Optional
 logger = logging.getLogger(__name__)
 
 DEFAULT_LIBRARY_ROOT = "/library"
+DEFAULT_LIBRARIAN_DATA_ROOT = "/librarian-data"
 DEFAULT_API_URL = "http://localhost:8000"
 
 _warned_aliases: set[tuple[str, str]] = set()
@@ -42,6 +43,14 @@ def get_library_root(default: str = DEFAULT_LIBRARY_ROOT) -> str:
     return get_env(
         "LIBRARIAN_LIBRARY_ROOT",
         aliases=("LIBRARY_ROOT",),
+        default=default,
+    ) or default
+
+
+def get_librarian_data_root(default: str = DEFAULT_LIBRARIAN_DATA_ROOT) -> str:
+    """Return the configured Librarian data root for derived artifacts."""
+    return get_env(
+        "LIBRARIAN_DATA_ROOT",
         default=default,
     ) or default
 

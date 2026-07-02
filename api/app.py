@@ -20,18 +20,21 @@ from api.routes import questions, collections, pipeline, operations, timeline, e
 from api.dependencies import get_storage_backend, MockBackend
 from storage.backend import StorageBackend
 from api.app_state import initialize_app, shutdown_app, get_app_state
-from environment import get_library_root
+from environment import get_library_root, get_librarian_data_root
 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Library root from environment
+# Library root from environment (user files - read-only)
 LIBRARY_ROOT = get_library_root()
 
-# Thumbnail directory (E5)
-THUMBNAIL_DIR = ".thumbnails"
+# Librarian data root from environment (derived artifacts - writable)
+LIBRARIAN_DATA_ROOT = get_librarian_data_root()
+
+# Thumbnail directory (stored in librarian data root)
+THUMBNAIL_DIR = "thumbnails"
 
 
 @asynccontextmanager
@@ -99,9 +102,9 @@ async def get_thumbnail(path: str):
     Serve thumbnail files.
 
     E5: Thumbnail endpoint for serving generated thumbnails.
-    Thumbnails are stored in .thumbnails directory relative to library root.
+    Thumbnails are stored in librarian-data/thumbnails directory.
     """
-    thumbnail_full_path = Path(LIBRARY_ROOT) / THUMBNAIL_DIR / path
+    thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / THUMBNAIL_DIR / path
     if thumbnail_full_path.exists():
         return FileResponse(str(thumbnail_full_path))
     return {"error": "Thumbnail not found"}, 404

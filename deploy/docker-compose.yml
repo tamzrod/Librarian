@@ -50,12 +50,14 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
+      - LIBRARIAN_DATA_ROOT=/librarian-data
     ports:
       - "${API_HOST_PORT:-${API_PORT:-8001}}:8000"
     volumes:
-      # Mount library root - RECURSIVE FILE DISCOVERY IS AUTOMATIC
-      # Read-write needed for thumbnail generation (.thumbnails directory)
-      - ${LIBRARY_PATH:-./volumes/library}:/library:rw
+      # Mount library root read-only (user files - do not modify)
+      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Mount writable volume for derived artifacts (thumbnails, cache, etc.)
+      - librarian_data:/librarian-data:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,10 +81,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
+      - LIBRARIAN_DATA_ROOT=/librarian-data
       - WORKER_ID=${WORKER_ID:-worker-1}
     volumes:
-      # Mount library root for content extraction and thumbnail generation
-      - ${LIBRARY_PATH:-./volumes/library}:/library:rw
+      # Mount library root read-only (user files - do not modify)
+      - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Mount writable volume for derived artifacts (thumbnails, cache, etc.)
+      - librarian_data:/librarian-data:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,4 +150,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  librarian_data:
     driver: local
