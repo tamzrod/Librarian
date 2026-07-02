@@ -8,6 +8,7 @@ interface MapCanvasProps {
   filters: FilterState
   onMarkerClick?: (marker: TraceMapMarker) => void
   selectedMarkerId?: number
+  centerOnMarkerId?: number
 }
 
 declare global {
@@ -16,10 +17,11 @@ declare global {
   }
 }
 
-export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: MapCanvasProps) {
+export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId, centerOnMarkerId }: MapCanvasProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
+  const markerDataRef = useRef<Map<number, TraceMapMarker>>(new Map())
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const [markers, setMarkers] = useState<TraceMapMarker[]>([])
   const [loading, setLoading] = useState(false)
@@ -116,12 +118,24 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
       if (filters.sources.length > 0) {
         params.append('sources', filters.sources.join(','))
       }
+      if (filters.startDate) {
+        params.append('start_date', filters.startDate)
+      }
+      if (filters.endDate) {
+        params.append('end_date', filters.endDate)
+      }
+      if (filters.includeUnknownDevice) {
+        params.append('include_unknown_device', 'true')
+      }
 
       const response = await api.getTraceData({
         cameras: params.get('cameras') || undefined,
         collections: params.get('collections') || undefined,
         years: params.get('years') || undefined,
         sources: params.get('sources') || undefined,
+        startDate: params.get('start_date') || undefined,
+        endDate: params.get('end_date') || undefined,
+        includeUnknownDevice: params.get('include_unknown_device') === 'true',
         limit: 500
       })
 
@@ -130,12 +144,31 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId }: 
         total: response.stats.total,
         withGps: response.stats.with_gps
       })
+
+      // Store marker data for later centering
+      markerDataRef.current.clear()
+      response.markers.forEach(marker => {
+        markerDataRef.current.set(marker.document_id, marker)
+      })
     } catch (error) {
       console.error('Failed to load markers:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Center map on a specific marker
+  useEffect(() => {
+    if (!centerOnMarkerId || !leafletMapRef.current) return
+
+    const marker = markerDataRef.current.get(centerOnMarkerId)
+    if (marker) {
+      leafletMapRef.current.setView([marker.latitude, marker.longitude], 14, {
+        animate: true,
+        duration: 0.5
+      })
+    }
+  }, [centerOnMarkerId, leafletLoaded])
 
   // Add markers to map
   useEffect(() => {

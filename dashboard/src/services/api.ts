@@ -450,6 +450,9 @@ class LibrarianApiClient {
    * @param collections - Comma-separated list of collection IDs to filter
    * @param years - Comma-separated list of years to filter
    * @param sources - Comma-separated list of sources to filter
+   * @param startDate - Start date filter (ISO format)
+   * @param endDate - End date filter (ISO format)
+   * @param includeUnknownDevice - Include photos with unknown device
    * @param limit - Maximum results
    * @param offset - Offset for pagination
    */
@@ -458,6 +461,9 @@ class LibrarianApiClient {
     collections?: string
     years?: string
     sources?: string
+    startDate?: string
+    endDate?: string
+    includeUnknownDevice?: boolean
     limit?: number
     offset?: number
   } = {}): Promise<TraceDataResponse> {
@@ -466,6 +472,9 @@ class LibrarianApiClient {
       collections: params.collections,
       years: params.years,
       sources: params.sources,
+      start_date: params.startDate,
+      end_date: params.endDate,
+      include_unknown_device: params.includeUnknownDevice,
       limit: params.limit || 100,
       offset: params.offset || 0,
     })
