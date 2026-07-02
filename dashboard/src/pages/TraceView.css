@@ -3,38 +3,40 @@
 .trace-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px); /* Subtract header height */
+  height: 100vh;
   overflow: hidden;
 }
 
 .trace-main {
   display: flex;
   flex: 1;
-  flex-direction: column; /* Stack content vertically */
-  min-height: 0; /* Allow flex child to shrink */
+  min-height: 0;
   overflow: hidden;
-  position: relative; /* For FilterPalette positioning */
 }
 
-.trace-content {
+.trace-workspace {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0; /* Allow flex child to shrink */
   overflow: hidden;
 }
 
-.trace-canvas {
-  flex: 1 1 auto; /* Grow to fill available space */
+.map-area {
+  flex: 1;
+  min-height: 0;
   position: relative;
   overflow: hidden;
-  min-height: 0; /* Critical for Leaflet map */
-  height: 100%; /* Ensure height propagates to map container */
 }
 
-/* Event stream docked at bottom */
-.event-stream {
-  flex-shrink: 0; /* Don't shrink - fixed height */
+.placeholder-view {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #666);
+  font-size: 14px;
+  background: var(--bg-primary, #1a1a1a);
 }
 
 /* View mode tabs */
@@ -45,6 +47,7 @@
   padding: 12px 16px;
   background: var(--bg-secondary, #242424);
   border-bottom: 1px solid var(--border-color, #333);
+  flex: 0 0 auto;
 }
 
 .trace-view-tab {
@@ -93,12 +96,6 @@
 }
 
 /* Responsive */
-@media (max-width: 1024px) {
-  .filter-palette {
-    width: 240px;
-  }
-}
-
 @media (max-width: 768px) {
   .trace-main {
     flex-direction: column;
@@ -110,5 +107,9 @@
     max-height: 200px;
     border-right: none;
     border-bottom: 1px solid var(--border-color, #333);
+  }
+
+  .trace-workspace {
+    flex-direction: column;
   }
 }
