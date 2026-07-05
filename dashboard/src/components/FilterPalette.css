@@ -172,36 +172,6 @@
   background: var(--accent-primary-hover, #42a5f5);
 }
 
-/* Year chips */
-.year-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 8px;
-}
-
-.year-chip {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.1s ease;
-  border: 1px solid var(--border-color, #404040);
-  color: var(--text-secondary, #b3b3b3);
-  background: transparent;
-}
-
-.year-chip:hover {
-  background: var(--bg-hover, #333);
-}
-
-.year-chip.active {
-  background: var(--accent-primary, #64b5f6);
-  border-color: var(--accent-primary, #64b5f6);
-  color: #1a1a1a;
-}
-
 /* Time Range Filters */
 .time-range-filters {
   padding: 8px;

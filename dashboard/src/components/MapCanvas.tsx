@@ -112,9 +112,6 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId, ce
       if (filters.collections.length > 0) {
         params.append('collections', filters.collections.join(','))
       }
-      if (filters.years.length > 0) {
-        params.append('years', filters.years.join(','))
-      }
       if (filters.sources.length > 0) {
         params.append('sources', filters.sources.join(','))
       }
@@ -131,7 +128,6 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId, ce
       const response = await api.getTraceData({
         cameras: params.get('cameras') || undefined,
         collections: params.get('collections') || undefined,
-        years: params.get('years') || undefined,
         sources: params.get('sources') || undefined,
         startDate: params.get('start_date') || undefined,
         endDate: params.get('end_date') || undefined,
