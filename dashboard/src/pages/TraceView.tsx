@@ -37,6 +37,7 @@ export default function TraceView() {
     : 'map'
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
+  const [openedDocumentId, setOpenedDocumentId] = useState<number | null>(null)
   const [stats, setStats] = useState({
     total: 0,
     withGps: 0,
@@ -145,7 +146,9 @@ export default function TraceView() {
     if (isPlaying) {
       stop()
     }
+    // User click updates both selected and opened
     setSelectedDocumentId(marker.document_id)
+    setOpenedDocumentId(marker.document_id)
     // Scroll film strip to this photo
     setScrollToThumbnailId(marker.document_id)
   }
@@ -155,7 +158,9 @@ export default function TraceView() {
     if (isPlaying) {
       stop()
     }
+    // User click updates both selected and opened
     setSelectedDocumentId(event.document_id)
+    setOpenedDocumentId(event.document_id)
     // Scroll film strip to this photo
     setScrollToThumbnailId(event.document_id)
   }
@@ -165,7 +170,9 @@ export default function TraceView() {
     if (isPlaying) {
       stop()
     }
+    // User click updates both selected and opened
     setSelectedDocumentId(item.document_id)
+    setOpenedDocumentId(item.document_id)
     // Trigger scroll for next render
     setScrollToThumbnailId(item.document_id)
     // Center map on this photo if it has GPS
@@ -175,7 +182,8 @@ export default function TraceView() {
   }
 
   const handlePopupClose = () => {
-    setSelectedDocumentId(null)
+    // Close modal only, keep highlight
+    setOpenedDocumentId(null)
   }
 
   // Clear scroll trigger after it's been used
@@ -292,10 +300,10 @@ export default function TraceView() {
         </div>
       </div>
 
-      {/* Photo popup */}
-      {selectedDocumentId && (
+      {/* Photo popup - only opens from user interaction, not during playback */}
+      {openedDocumentId && (
         <PhotoPopup
-          documentId={selectedDocumentId}
+          documentId={openedDocumentId}
           onClose={handlePopupClose}
         />
       )}
