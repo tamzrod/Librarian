@@ -1,14 +1,16 @@
 # Object Detection Plugin Metadata Schema
 
 **Plugin:** Object Detection  
-**Status:** 📋 Planned  
+**Status:** 📋 Architecture Planned  
 **Implementation:** Not Started
 
 ---
 
 ## Overview
 
-The Object Detection plugin will generate structured metadata following this JSON schema. This schema defines the canonical output format for all object detection operations.
+The Object Detection plugin generates structured metadata following this JSON schema. This schema defines the canonical output format for all object detection operations and remains stable regardless of which engine is used.
+
+**Key Design:** The `engine` field identifies the source. The output structure is the same for all engines.
 
 ---
 
@@ -31,14 +33,14 @@ The Object Detection plugin will generate structured metadata following this JSO
       "const": "1.0",
       "description": "Schema version"
     },
+    "engine": {
+      "type": "string",
+      "description": "Detection engine used (e.g., yolo-v8n, grounding-dino)"
+    },
     "document_id": {
       "type": "string",
       "format": "uuid",
       "description": "Document identifier in the system"
-    },
-    "model": {
-      "type": "string",
-      "description": "Detection model used (e.g., yolov8s)"
     },
     "processing_time_ms": {
       "type": "number",
@@ -98,7 +100,7 @@ The Object Detection plugin will generate structured metadata following this JSO
       "description": "Detection summary statistics"
     }
   },
-  "required": ["plugin", "version", "document_id", "objects"]
+  "required": ["plugin", "engine", "document_id", "objects"]
 }
 ```
 
@@ -106,14 +108,14 @@ The Object Detection plugin will generate structured metadata following this JSO
 
 ## Example Output
 
-### Full Output
+### Example with YOLOv8
 
 ```json
 {
   "plugin": "object-detection",
   "version": "1.0",
+  "engine": "yolo-v8n",
   "document_id": "550e8400-e29b-41d4-a716-446655440000",
-  "model": "yolov8s",
   "processing_time_ms": 245.5,
   "objects": [
     {
@@ -149,6 +151,42 @@ The Object Detection plugin will generate structured metadata following this JSO
       "has_dog": true,
       "has_car": true,
       "has_bicycle": false
+    }
+  }
+}
+```
+
+### Example with Grounding DINO (Open-Vocabulary)
+
+```json
+{
+  "plugin": "object-detection",
+  "version": "1.0",
+  "engine": "grounding-dino-base",
+  "document_id": "550e8400-e29b-41d4-a716-446655440001",
+  "processing_time_ms": 892.3,
+  "objects": [
+    {
+      "label": "solar_panel",
+      "confidence": 0.91,
+      "bbox": [50, 100, 400, 300]
+    },
+    {
+      "label": "transformer",
+      "confidence": 0.78,
+      "bbox": [900, 200, 80, 120]
+    }
+  ],
+  "summary": {
+    "total_objects": 2,
+    "object_counts": {
+      "solar_panel": 1,
+      "transformer": 1
+    },
+    "presence_flags": {
+      "has_solar_panel": true,
+      "has_transformer": true,
+      "has_inverter": false
     }
   }
 }
@@ -221,13 +259,14 @@ The Object Detection plugin will generate structured metadata following this JSO
 
 ## Database Storage
 
-The metadata will be stored in the `detections` table:
+The metadata is stored in the `detections` table:
 
 ```sql
 -- Detections table
 CREATE TABLE detections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES documents(id),
+    engine VARCHAR(50) NOT NULL,
     label VARCHAR(100) NOT NULL,
     confidence FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     bbox_x FLOAT NOT NULL,
@@ -240,7 +279,7 @@ CREATE TABLE detections (
 -- Document detection summary
 CREATE TABLE detection_summary (
     document_id UUID PRIMARY KEY REFERENCES documents(id),
-    model VARCHAR(50),
+    engine VARCHAR(50),
     processing_time_ms FLOAT,
     total_objects INTEGER,
     object_counts JSONB,
@@ -252,8 +291,11 @@ CREATE TABLE detection_summary (
 CREATE INDEX idx_detections_document ON detections(document_id);
 CREATE INDEX idx_detections_label ON detections(label);
 CREATE INDEX idx_detections_confidence ON detections(confidence);
+CREATE INDEX idx_detections_engine ON detections(engine);
 CREATE INDEX idx_detection_summary_total ON detection_summary(total_objects);
 ```
+
+**Note:** The `engine` column tracks which engine produced each detection, enabling multi-engine analysis of the same document.
 
 ---
 

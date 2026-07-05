@@ -109,12 +109,14 @@ Every plugin should follow this documentation structure:
 
 ```
 docs/plugins/<plugin-name>/
-├── README.md           # Overview, inputs, outputs, status
-├── capabilities.md     # Detailed capabilities and limitations
-├── metadata-schema.md  # JSON schema for plugin output
-├── architecture.md    # Technical architecture details
-├── roadmap.md         # Future improvements and features
-└── datasets.md        # Training/test datasets (if applicable)
+├── README.md              # Overview, inputs, outputs, status
+├── plugin-contract.md      # Integration requirements (for analysis plugins)
+├── engines.md             # Supported engines (for detection plugins)
+├── capabilities.md        # Detailed capabilities and limitations
+├── metadata-schema.md     # JSON schema for plugin output
+├── architecture.md        # Technical architecture details
+├── roadmap.md            # Future improvements and features
+└── datasets.md           # Training/test datasets (if applicable)
 ```
 
 ---

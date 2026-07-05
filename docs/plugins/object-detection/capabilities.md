@@ -1,68 +1,64 @@
 # Object Detection Plugin Capabilities
 
 **Plugin:** Object Detection  
-**Status:** 📋 Planned  
+**Status:** 📋 Architecture Documented  
 **Implementation:** Not Started
 
 ---
 
 ## Overview
 
-This document details the planned capabilities for the Object Detection plugin. All features described are planned but not yet implemented.
+This document details the planned capabilities for the Object Detection plugin. The plugin reports factual detections only—no interpretations, conclusions, or correlations are made.
+
+**Philosophy:** Librarian catalogs facts. Interpretation belongs to consumers (humans, AI agents, applications).
 
 ---
 
 ## Supported Object Classes
 
-### Core Classes
+**Note:** Supported classes depend on the detection engine. See [engines.md](./engines.md) for details.
 
-The plugin will support detection of the following object classes:
+### YOLOv8 (Fixed Classes)
 
-| Class | Category | Description |
-|-------|----------|-------------|
-| person | People | Human figures |
-| bicycle | Vehicle | Non-motorized two-wheelers |
-| motorcycle | Vehicle | Motorized two-wheelers |
-| car | Vehicle | Automobiles, passenger vehicles |
-| truck | Vehicle | Commercial trucks, lorries |
-| bus | Vehicle | Public transportation |
-| drone | Electronics | Unmanned aerial vehicles |
-| laptop | Electronics | Portable computers |
-| phone | Electronics | Mobile devices |
-| dog | Animal | Domestic dogs |
-| cat | Animal | Domestic cats |
-| bird | Animal | Various bird species |
+Standard COCO dataset classes:
 
-### Energy Infrastructure
+| Category | Classes |
+|----------|---------|
+| People | person |
+| Vehicles | bicycle, motorcycle, car, truck, bus |
+| Animals | dog, cat, bird |
+| Electronics | drone, laptop, phone |
+| Common | chair, couch, potted plant, dining table, tv |
 
-| Class | Category | Description |
-|-------|----------|-------------|
-| solar_panel | Energy | Photovoltaic panels |
-| transformer | Energy | Electrical transformers |
-| inverter | Energy | Power inverters |
+Full list: 80 COCO classes
 
-### Safety Equipment
+### Open-Vocabulary Engines
 
-| Class | Category | Description |
-|-------|----------|-------------|
-| helmet | Safety | Protective headgear |
-| vest | Safety | High-visibility vests |
-| goggles | Safety | Safety glasses/goggles |
-| gloves | Safety | Protective gloves |
+Engines like Grounding DINO and OWL-ViT can detect arbitrary classes based on text prompts:
 
-### Extended Classes (COCO)
+| Engine | Class Flexibility |
+|--------|-----------------|
+| Grounding DINO | Any text-described class |
+| OWL-ViT | Any text-described class |
 
-Additional COCO dataset classes may be supported:
+### Energy Infrastructure (Example)
 
-- backpack, umbrella, handbag, tie, suitcase
-- frisbee, skis, snowboard, sports ball, kite
-- baseball bat, baseball glove, skateboard, surfboard
-- tennis racket, bottle, wine glass, cup, fork, knife, spoon
-- bowl, banana, apple, sandwich, orange, broccoli, carrot
-- hot dog, pizza, donut, cake, chair, couch, potted plant
-- bed, dining table, toilet, tv, laptop, mouse, remote, keyboard
-- cell phone, microwave, oven, toaster, sink, refrigerator
-- book, clock, vase, scissors, teddy bear, hair drier, toothbrush
+These may require custom-trained models or open-vocabulary engines:
+
+| Class | Category | Detection Approach |
+|-------|----------|-------------------|
+| solar_panel | Energy | Fine-tuned model or text prompt |
+| transformer | Energy | Fine-tuned model or text prompt |
+| inverter | Energy | Fine-tuned model or text prompt |
+
+### Safety Equipment (Example)
+
+| Class | Category | Detection Approach |
+|-------|----------|-------------------|
+| helmet | Safety | COCO (if trained) or custom |
+| vest | Safety | Custom model or text prompt |
+
+See [datasets.md](./datasets.md) for training information.
 
 ---
 

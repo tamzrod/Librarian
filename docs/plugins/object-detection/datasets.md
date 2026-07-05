@@ -1,20 +1,24 @@
 # Object Detection Plugin Datasets
 
 **Plugin:** Object Detection  
-**Status:** 📋 Planned  
+**Status:** 📋 Architecture Documented  
 **Implementation:** Not Started
 
 ---
 
 ## Overview
 
-This document describes the candidate datasets for training and evaluating the Object Detection plugin.
+This document describes candidate datasets for training and evaluating the Object Detection plugin. Different engines may use different datasets.
+
+**Note:** Pretrained weights are available for most engines, reducing the need for custom training.
 
 ---
 
-## Candidate Datasets
+## Dataset Selection by Engine
 
-### COCO (Common Objects in Context)
+### YOLOv8
+
+**Primary Dataset:** COCO (Common Objects in Context)
 
 **Website:** https://cocodataset.org/  
 **License:** Creative Commons Attribution 4.0
@@ -27,9 +31,30 @@ This document describes the candidate datasets for training and evaluating the O
 | Annotations | 1.5M |
 | Train/Val/Test Split | 118K/5K/41K |
 
-**Use Case:** Primary dataset for general object detection.
+**Pretrained Weights Available:**
+```bash
+yolov8n.pt  # nano - fastest
+yolov8s.pt  # small - recommended
+yolov8m.pt  # medium - higher accuracy
+yolov8l.pt  # large - high accuracy
+yolov8x.pt  # extra-large - highest accuracy
+```
 
-**COCO Classes (80 total):**
+### Grounding DINO / OWL-ViT
+
+**Primary Dataset:** Open-vocabulary (no fixed dataset)
+
+These engines use language-image pretraining and can detect arbitrary classes without training.
+
+**For fine-tuning:**
+- COCO
+- Open Images
+- Custom annotated datasets
+
+---
+
+## COCO Classes (80 total)
+
 ```
 person, bicycle, car, motorcycle, airplane, bus, train, truck, boat,
 traffic light, fire hydrant, stop sign, parking meter, bench, bird,
@@ -98,31 +123,16 @@ clock, vase, scissors, teddy bear, hair drier, toothbrush
 
 ## Dataset Selection
 
-### Recommended: COCO
+**Philosophy:** Librarian does not recommend a specific dataset. Choose based on your requirements:
 
-**Rationale:**
-1. **Well-Supported**: YOLOv8 pretrained weights available for COCO
-2. **Balanced**: Good coverage of common objects
-3. **Proven**: Widely used benchmark
-4. **Efficient**: Reasonable dataset size
+| Requirement | Recommended Dataset |
+|-------------|---------------------|
+| General object detection | COCO |
+| Large vocabulary | Open Images |
+| Fine-grained categories | LVIS |
+| Custom domain | Custom + fine-tuning |
 
-**Pretrained Weights:**
-```bash
-# YOLOv8n (nano) - fastest
-yolov8n.pt
-
-# YOLOv8s (small) - recommended
-yolov8s.pt
-
-# YOLOv8m (medium) - higher accuracy
-yolov8m.pt
-
-# YOLOv8l (large) - high accuracy
-yolov8l.pt
-
-# YOLOv8x (extra-large) - highest accuracy
-yolov8x.pt
-```
+See [engines.md](./engines.md) for engine-specific recommendations.
 
 ---
 

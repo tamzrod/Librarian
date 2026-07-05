@@ -1,48 +1,57 @@
 # Object Detection Plugin Architecture
 
 **Plugin:** Object Detection  
-**Status:** 📋 Planned  
+**Status:** 📋 Architecture Planned  
 **Implementation:** Not Started
 
 ---
 
 ## Overview
 
-The Object Detection plugin will follow the standard plugin architecture pattern. This document describes the planned architecture for implementing object detection using YOLOv8.
+The Object Detection plugin follows the standard plugin architecture pattern with support for multiple detection engines. This document describes the architecture that enables engine abstraction while maintaining Librarian's fact-only philosophy.
+
+**Key Principle:** The plugin reports facts (detected objects) without interpretation. Correlation and reasoning are performed by consumers (humans, AI agents, applications).
 
 ---
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                   Object Detection Architecture                    │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │   Scanner    │───▶│   Worker     │───▶│   Backend    │       │
-│  │              │    │   Handler    │    │              │       │
-│  └──────────────┘    └──────────────┘    └──────────────┘       │
-│         │                  │                   │                  │
-│         │                  ▼                   │                  │
-│         │           ┌──────────────┐          │                  │
-│         │           │   YOLOv8    │          │                  │
-│         │           │    Model    │          │                  │
-│         │           └──────────────┘          │                  │
-│         │                                     │                  │
-│         ▼                                     ▼                  │
-│  ┌──────────────┐                      ┌──────────────┐         │
-│  │  documents   │                      │ detections   │         │
-│  │    table     │                      │    table     │         │
-│  └──────────────┘                      └──────────────┘         │
-│                                                   │              │
-│                                                   ▼              │
-│                                          ┌──────────────┐        │
-│                                          │     API      │        │
-│                                          │   Routes     │        │
-│                                          └──────────────┘        │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Object Detection Architecture                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐          │
+│  │   Scanner    │───▶│   Worker     │───▶│   Backend    │          │
+│  │              │    │   Handler    │    │              │          │
+│  └──────────────┘    └──────────────┘    └──────────────┘          │
+│         │                  │                   │                     │
+│         │                  │                   │                     │
+│         │                  ▼                   │                     │
+│         │         ┌─────────────────┐         │                     │
+│         │         │ Engine Interface │         │                     │
+│         │         └─────────────────┘         │                     │
+│         │         ┌──────┬──────┬──────┐     │                     │
+│         │         │      │      │      │     │                     │
+│         │         ▼      ▼      ▼      ▼     │                     │
+│         │     ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐│                     │
+│         │     │YOLO │ │DINO │ │ OWL │ │RT-  ││                     │
+│         │     │ v8  │ │     │ │ ViT │ │DETR ││                     │
+│         │     └─────┘ └─────┘ └─────┘ └─────┘│                     │
+│         │                                     │                     │
+│         ▼                                     ▼                     │
+│  ┌──────────────┐                      ┌──────────────┐            │
+│  │  documents   │                      │ detections   │            │
+│  │    table     │                      │    table     │            │
+│  └──────────────┘                      └──────────────┘            │
+│                                                    │                 │
+│                                                    ▼                 │
+│                                           ┌──────────────┐           │
+│                                           │     API      │           │
+│                                           │   Routes     │           │
+│                                           └──────────────┘           │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -57,7 +66,8 @@ The Object Detection plugin will follow the standard plugin architecture pattern
 
 **Responsibilities:**
 - Validate image files
-- Load and run model inference
+- Load detection engine (based on configuration)
+- Run inference through engine interface
 - Post-process detections (NMS, filtering)
 - Persist results to database
 - Handle errors gracefully
@@ -69,35 +79,50 @@ The Object Detection plugin will follow the standard plugin architecture pattern
 class ObjectDetectionWorker(BaseWorker):
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
     
-    def __init__(self, backend, model_path: str = "yolov8s.pt"):
+    def __init__(self, backend, config: dict):
         self.backend = backend
-        self.model = YOLO(model_path)
+        self.engine = self._load_engine(config.get('engine', 'yolo-v8n'))
+        self.confidence_threshold = config.get('confidence_threshold', 0.25)
     
     def process(self, job: dict) -> dict:
-        # Load image, run inference, save detections
+        # Load image, run inference via engine, save detections
         ...
 ```
 
-### 2. Detection Model
+### 2. Engine Interface (Abstraction Layer)
 
-**Framework:** Ultralytics YOLOv8
+**Purpose:** Enable multiple detection engines through a common interface
 
-**Model Options:**
-- `yolov8n.pt` - Nano (fastest, lowest accuracy)
-- `yolov8s.pt` - Small (balanced)
-- `yolov8m.pt` - Medium (higher accuracy)
-- `yolov8l.pt` - Large (high accuracy)
-- `yolov8x.pt` - Extra-large (highest accuracy)
-
-**Model Loading:**
 ```python
-from ultralytics import YOLO
-
-model = YOLO('yolov8s.pt')
-results = model.predict('image.jpg', conf=0.25)
+# Engine interface (abstract base)
+class DetectionEngine(ABC):
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Engine identifier (e.g., 'yolo-v8n')"""
+        
+    @property
+    @abstractmethod
+    def supported_classes(self) -> List[str]:
+        """Classes this engine can detect"""
+        
+    @abstractmethod
+    def detect(self, image_path: str, conf_threshold: float) -> List[Detection]:
+        """Run detection on image"""
 ```
 
-### 3. Post-Processing
+### 3. Supported Engines
+
+| Engine | Type | Classes | Strength |
+|--------|------|---------|----------|
+| YOLOv8 | Anchor-based CNN | 80 COCO | Speed |
+| Grounding DINO | Transformer | Open-vocabulary | Flexibility |
+| OWL-ViT | Vision Transformer | Open-vocabulary | HuggingFace integration |
+| RT-DETR | Transformer | 80 COCO | Speed + Accuracy balance |
+
+See [engines.md](./engines.md) for detailed engine documentation.
+
+### 4. Post-Processing
 
 **Non-Maximum Suppression (NMS):**
 - Remove duplicate detections
@@ -105,7 +130,7 @@ results = model.predict('image.jpg', conf=0.25)
 - IoU threshold: 0.45
 
 **Confidence Filtering:**
-- Filter detections below threshold
+- Filter detections below configured threshold
 - Default: 0.25
 
 **Aggregation:**
@@ -113,7 +138,7 @@ results = model.predict('image.jpg', conf=0.25)
 - Generate presence flags
 - Summary statistics
 
-### 4. Storage Backend
+### 5. Storage Backend
 
 **File:** `storage/postgres_backend.py` (planned updates)
 
@@ -127,6 +152,7 @@ results = model.predict('image.jpg', conf=0.25)
 CREATE TABLE detections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID REFERENCES documents(id),
+    engine VARCHAR(50),
     label VARCHAR(100) NOT NULL,
     confidence FLOAT NOT NULL,
     bbox_x FLOAT NOT NULL,
@@ -140,7 +166,7 @@ CREATE INDEX idx_detections_document ON detections(document_id);
 CREATE INDEX idx_detections_label ON detections(label);
 ```
 
-### 5. API Routes
+### 6. API Routes
 
 **File:** `api/routes/detections.py` (planned)
 
@@ -162,30 +188,45 @@ CREATE INDEX idx_detections_label ON detections(label);
          ↓
 4. Scheduler queues object_detection job
          ↓
-5. ObjectDetectionWorker processes job
+5. ObjectDetectionWorker picks up job
          ↓
-6. YOLOv8 model runs inference
+6. Worker loads configured detection engine
          ↓
-7. Post-processing (NMS, filtering)
+7. Engine runs inference (any: YOLO, DINO, OWL-ViT, RT-DETR)
          ↓
-8. Detections saved to database
+8. Worker normalizes output to standard format
          ↓
-9. API exposes to clients
+9. Post-processing (NMS, filtering)
+         ↓
+10. Detections saved to database
+         ↓
+11. API exposes to clients
 ```
+
+**Note:** Steps 6-8 enable engine abstraction. The output format is the same regardless of which engine is used.
 
 ---
 
 ## Dependencies
 
-### Required
+**Note:** Dependencies depend on which engine is selected. See [engines.md](./engines.md) for engine-specific requirements.
+
+### Common Dependencies
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| ultralytics | >= 8.0 | YOLOv8 model and inference |
-| torch | >= 2.0 | Deep learning framework |
-| torchvision | >= 0.15 | Model utilities |
 | Pillow | >= 9.0 | Image processing |
 | psycopg2 | >= 2.9 | PostgreSQL database |
+| numpy | >= 1.20 | Numerical operations |
+
+### Engine-Specific Dependencies
+
+| Engine | Dependencies |
+|--------|--------------|
+| YOLOv8 | ultralytics, torch, torchvision |
+| Grounding DINO | transformers, torch |
+| OWL-ViT | transformers, torch |
+| RT-DETR | transformers, torch |
 
 ### Optional (GPU Acceleration)
 
@@ -203,7 +244,7 @@ CREATE INDEX idx_detections_label ON detections(label);
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OBJECT_DETECTION_ENABLED` | false | Enable/disable plugin |
-| `OBJECT_DETECTION_MODEL` | yolov8s | Model variant |
+| `OBJECT_DETECTION_ENGINE` | yolo-v8n | Engine to use |
 | `OBJECT_DETECTION_CONF` | 0.25 | Confidence threshold |
 | `OBJECT_DETECTION_MAX_DET` | 100 | Maximum detections |
 
@@ -215,7 +256,7 @@ plugins:
   object_detection:
     enabled: false
     job_type: object_detection
-    model: yolov8s
+    engine: yolo-v8n  # or grounding-dino, owl-vit, rt-detr
     confidence_threshold: 0.25
     max_detections: 100
 ```
