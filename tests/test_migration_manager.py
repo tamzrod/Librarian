@@ -84,10 +84,10 @@ class TestMigrationManager:
         assert versions == sorted(versions)
     
     def test_target_schema_version(self):
-        """TARGET_SCHEMA_VERSION is 11 (from 011_plugin_foundation.sql)."""
+        """TARGET_SCHEMA_VERSION is 12 (from 012_object_detection.sql)."""
         from storage.migration_manager import MigrationManager
         
-        assert MigrationManager.TARGET_SCHEMA_VERSION == 11
+        assert MigrationManager.TARGET_SCHEMA_VERSION == 12
     
     def test_required_columns(self):
         """REQUIRED_COLUMNS includes artifact_type, exists_on_disk, deleted_at, lifecycle_state."""

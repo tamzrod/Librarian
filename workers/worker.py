@@ -328,6 +328,7 @@ def run_worker(backend, worker_id: str = None):
     from .embedding_generator import EmbeddingGenerator
     from .photo_metadata_extractor import PhotoMetadataExtractor
     from .thumbnail_generator import ThumbnailGenerator
+    from .object_detection_extractor import ObjectDetectionExtractor
     
     worker = Worker(backend, worker_id=worker_id)
     
@@ -339,6 +340,7 @@ def run_worker(backend, worker_id: str = None):
     worker.register_handler('generate_embeddings', EmbeddingGenerator(backend).process)
     worker.register_handler('extract_photo_metadata', PhotoMetadataExtractor(backend).process)
     worker.register_handler('generate_thumbnail', ThumbnailGenerator(backend).process)
+    worker.register_handler('object_detection', ObjectDetectionExtractor(backend).process)
     
     logger.info("Starting worker with all extraction handlers")
     worker.start()

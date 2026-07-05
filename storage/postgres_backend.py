@@ -3898,3 +3898,293 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting trace photo detail: {e}")
             return None
+
+    # =============================================================================
+    # Object Detection Methods (Operation Object Detection)
+    # =============================================================================
+
+    def save_detections(
+        self,
+        artifact_id: int,
+        detections: list,
+        plugin_name: str = None,
+        engine_name: str = None,
+        plugin_version: str = None,
+        processed_at: datetime = None,
+        artifact_hash: str = None
+    ) -> int:
+        """Save object detection observations to the database.
+
+        Operation Object Detection: Stores detections with provenance tracking.
+
+        Args:
+            artifact_id: ID of the artifact/document
+            detections: List of detection dicts with label, confidence, bbox
+            plugin_name: Plugin name for provenance (e.g., 'vision.object-detection.yolo')
+            engine_name: Engine name for provenance (e.g., 'yolo')
+            plugin_version: Plugin version for provenance (e.g., 'v8n')
+            processed_at: Timestamp when processing occurred
+            artifact_hash: Hash of the artifact for reprocessing detection
+
+        Returns:
+            Number of detections saved
+        """
+        if not detections:
+            return 0
+
+        from datetime import timezone
+        if processed_at is None:
+            processed_at = datetime.now(timezone.utc)
+
+        conn = self._get_connection()
+        cur = conn.cursor()
+        saved_count = 0
+
+        try:
+            for detection in detections:
+                cur.execute(
+                    """
+                    INSERT INTO object_detections (
+                        artifact_id, plugin_name, engine_name, plugin_version,
+                        processed_at, artifact_hash,
+                        label, confidence,
+                        bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                        bbox_norm_x1, bbox_norm_y1, bbox_norm_x2, bbox_norm_y2,
+                        source
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s
+                    )
+                    """,
+                    (
+                        artifact_id,
+                        plugin_name or 'vision.object-detection.yolo',
+                        engine_name or 'yolo',
+                        plugin_version or 'v8n',
+                        processed_at,
+                        artifact_hash,
+                        detection['label'],
+                        detection['confidence'],
+                        detection['bbox_x1'],
+                        detection['bbox_y1'],
+                        detection['bbox_x2'],
+                        detection['bbox_y2'],
+                        detection.get('bbox_norm_x1'),
+                        detection.get('bbox_norm_y1'),
+                        detection.get('bbox_norm_x2'),
+                        detection.get('bbox_norm_y2'),
+                        'yolo'
+                    )
+                )
+                saved_count += 1
+
+            conn.commit()
+            logger.info(f"Saved {saved_count} object detections for artifact {artifact_id}")
+            return saved_count
+
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error saving object detections: {e}")
+            raise
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_detections(self, artifact_id: int) -> list:
+        """Get all object detections for an artifact.
+
+        Args:
+            artifact_id: ID of the artifact/document
+
+        Returns:
+            List of detection dicts
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                SELECT
+                    id, artifact_id, plugin_name, engine_name, plugin_version,
+                    processed_at, artifact_hash,
+                    label, confidence,
+                    bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                    bbox_norm_x1, bbox_norm_y1, bbox_norm_x2, bbox_norm_y2,
+                    source, created_at
+                FROM object_detections
+                WHERE artifact_id = %s AND deleted_at IS NULL
+                ORDER BY confidence DESC
+                """,
+                (artifact_id,)
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [
+                {
+                    'id': row[0],
+                    'artifact_id': row[1],
+                    'plugin_name': row[2],
+                    'engine_name': row[3],
+                    'plugin_version': row[4],
+                    'processed_at': row[5].isoformat() if row[5] else None,
+                    'artifact_hash': row[6],
+                    'label': row[7],
+                    'confidence': float(row[8]),
+                    'bbox_x1': row[9],
+                    'bbox_y1': row[10],
+                    'bbox_x2': row[11],
+                    'bbox_y2': row[12],
+                    'bbox_norm_x1': float(row[13]) if row[13] else None,
+                    'bbox_norm_y1': float(row[14]) if row[14] else None,
+                    'bbox_norm_x2': float(row[15]) if row[15] else None,
+                    'bbox_norm_y2': float(row[16]) if row[16] else None,
+                    'source': row[17],
+                    'created_at': row[18].isoformat() if row[18] else None,
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error getting detections: {e}")
+            return []
+
+    def search_detections_by_label(self, label: str, limit: int = 100) -> list:
+        """Search for artifacts by detected object label.
+
+        Operation Object Detection: Enables object=car style queries.
+
+        Args:
+            label: Object label to search for (e.g., 'car', 'person')
+            limit: Maximum number of results
+
+        Returns:
+            List of artifact IDs with that detection
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            # Search for unique labels (aggregated)
+            cur.execute(
+                """
+                SELECT DISTINCT ON (artifact_id)
+                    artifact_id,
+                    label,
+                    MAX(confidence) as max_confidence,
+                    COUNT(*) as detection_count
+                FROM object_detections
+                WHERE label ILIKE %s AND deleted_at IS NULL
+                GROUP BY artifact_id, label
+                ORDER BY artifact_id, MAX(confidence) DESC
+                LIMIT %s
+                """,
+                (f'%{label}%', limit)
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [
+                {
+                    'artifact_id': row[0],
+                    'label': row[1],
+                    'max_confidence': float(row[2]),
+                    'detection_count': row[3],
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error searching detections: {e}")
+            return []
+
+    def delete_detections(self, artifact_id: int) -> int:
+        """Soft delete all detections for an artifact (for reprocessing).
+
+        Args:
+            artifact_id: ID of the artifact
+
+        Returns:
+            Number of detections deleted
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                UPDATE object_detections
+                SET deleted_at = CURRENT_TIMESTAMP
+                WHERE artifact_id = %s AND deleted_at IS NULL
+                """,
+                (artifact_id,)
+            )
+            deleted_count = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            logger.info(f"Soft deleted {deleted_count} detections for artifact {artifact_id}")
+            return deleted_count
+
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            logger.error(f"Error deleting detections: {e}")
+            raise
+
+    def get_unique_labels(self, artifact_id: int = None) -> list:
+        """Get all unique object labels in the system or for an artifact.
+
+        Args:
+            artifact_id: Optional artifact ID to filter by
+
+        Returns:
+            List of unique label strings
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            if artifact_id:
+                cur.execute(
+                    """
+                    SELECT DISTINCT label
+                    FROM object_detections
+                    WHERE artifact_id = %s AND deleted_at IS NULL
+                    ORDER BY label
+                    """,
+                    (artifact_id,)
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT DISTINCT label
+                    FROM object_detections
+                    WHERE deleted_at IS NULL
+                    ORDER BY label
+                    """
+                )
+
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [row[0] for row in rows]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error getting unique labels: {e}")
+            return []

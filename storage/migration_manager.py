@@ -117,7 +117,7 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    TARGET_SCHEMA_VERSION = 11  # Corresponds to 011_plugin_foundation.sql
+    TARGET_SCHEMA_VERSION = 12  # Corresponds to 012_object_detection.sql
     
     def __init__(self, backend):
         """
