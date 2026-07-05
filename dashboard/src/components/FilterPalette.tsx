@@ -10,7 +10,6 @@ interface FilterPaletteProps {
 export interface FilterState {
   cameras: string[]
   collections: string[]
-  years: string[]
   sources: string[]
   startDate: string | null
   endDate: string | null
@@ -180,11 +179,10 @@ function calculatePresetDates(preset: TimePreset): { startDate: string | null; e
 export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
   const [filterGroups, setFilterGroups] = useState<TraceFilterGroup[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['devices', 'collections', 'years', 'timeRange']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['devices', 'collections', 'timeRange']))
   const [filters, setFilters] = useState<FilterState>({
     cameras: [],
     collections: [],
-    years: [],
     sources: [],
     startDate: null,
     endDate: null,
@@ -213,7 +211,6 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
       const initialFilters: FilterState = {
         cameras: [],
         collections: [],
-        years: [],
         sources: [],
         startDate: null,
         endDate: null,
@@ -334,10 +331,6 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
     })
   }
 
-  const toggleYear = (year: string) => {
-    toggleOption('years', year)
-  }
-
   const handleStartDateChange = (value: string) => {
     toggleOption('startDate', value)
   }
@@ -362,7 +355,6 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
     const clearedFilters: FilterState = {
       cameras: [],
       collections: [],
-      years: [],
       sources: [],
       startDate: null,
       endDate: null,
@@ -430,19 +422,7 @@ export default function FilterPalette({ onFiltersChange }: FilterPaletteProps) {
               </span>
             </div>
             <div className={`filter-group-options ${expandedGroups.has(group.id) ? 'expanded' : ''}`}>
-              {group.id === 'years' ? (
-                <div className="year-chips">
-                  {group.options.map(option => (
-                    <button
-                      key={option.id}
-                      className={`year-chip ${filters.years.includes(option.id) ? 'active' : ''}`}
-                      onClick={() => toggleYear(option.id)}
-                    >
-                      {option.label} ({option.count})
-                    </button>
-                  ))}
-                </div>
-              ) : group.id === 'timeRange' ? (
+              {group.id === 'timeRange' ? (
                 <div className="time-range-filters">
                   {/* Time Presets */}
                   <div className="time-presets">
