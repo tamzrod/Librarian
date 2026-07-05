@@ -6,6 +6,8 @@ Phase 1A: Evidence Timeline - Photo Metadata Extraction
 This module handles the 'extract_photo_metadata' job type.
 It extracts deterministic EXIF metadata from image files.
 
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
+
 DO NOT IMPLEMENT:
 - OCR
 - Face recognition
@@ -35,10 +37,17 @@ class PhotoMetadataExtractor(BaseWorker):
     
     Phase 1A: Only extracts EXIF metadata present in the image file.
     No AI inference, no OCR, no object detection.
+    
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
     
     # Supported image extensions for Phase 1A
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif'}
+    
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'metadata.exif.pillow'  # Fully qualified namespace
+    ENGINE_NAME = 'pillow-exif'           # Engine identifier
+    PLUGIN_VERSION = '1.0.0'              # Plugin version
     
     def __init__(self, backend, library_root: str = None):
         """

@@ -1257,6 +1257,38 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error getting document for photo: {e}")
             return None
     
+    def get_artifact_hash(self, document_id: int) -> Optional[str]:
+        """
+        Get the SHA256 hash of an artifact for provenance tracking.
+        
+        Operation Plugin Foundation: Added for provenance tracking.
+        Every observation should include the hash of its source artifact.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            SHA256 hash of the artifact, or None if not found
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                "SELECT sha256 FROM documents WHERE id = %s",
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if row and row[0]:
+                return f"sha256:{row[0]}"
+            return None
+        except Exception as e:
+            logger.error(f"Error getting artifact hash: {e}")
+            return None
+    
     def get_content(self, document_id: int) -> dict:
         """Get extracted content for a document.
         

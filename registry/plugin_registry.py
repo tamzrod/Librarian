@@ -2,10 +2,12 @@
 Plugin Registry for Job Scheduling.
 
 P13/P17: Plugin Registry - Controls which plugins generate jobs.
+Operation Plugin Foundation: Added plugin identity fields (namespace, type, engine, version)
 
 This module provides:
 - Plugin discovery (detects which plugins have handlers)
 - Persistent plugin configuration (from config/plugins.yaml)
+- Plugin identity (namespace, type, engine, version) for provenance tracking
 - Integration with job scheduling
 - Only installed plugins appear in the registry
 
@@ -15,6 +17,12 @@ Plugin Architecture:
 - Only enabled plugins generate jobs
 - Prevents queue pollution from unsupported job types
 - Clear separation between scheduling and execution
+
+Plugin Identity (Operation Plugin Foundation):
+- Every plugin has a namespace: category.type.engine (e.g., metadata.exif.pillow)
+- Every plugin has a type: exif, ocr, object-detection, etc.
+- Every plugin has an engine: pillow, tesseract, yolo, etc.
+- Every plugin has a version: 1.0.0, etc.
 """
 
 import logging
@@ -25,50 +33,98 @@ logger = logging.getLogger(__name__)
 
 # Plugin definitions - metadata about each known plugin
 # These define what COULD exist, but only INSTALLED plugins appear in the registry
+#
+# Operation Plugin Foundation: Added identity fields:
+# - namespace: Fully qualified name (e.g., metadata.exif.pillow)
+# - type: Plugin type (e.g., exif, ocr)
+# - engine: Engine name (e.g., pillow-exif)
+# - version: Plugin version (e.g., 1.0.0)
 PLUGIN_DEFINITIONS = {
     'photo_metadata': {
         'job_type': 'extract_photo_metadata',
         'description': 'Extract EXIF metadata from images (GPS, camera info, timestamps)',
         'category': 'metadata',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'metadata.exif.pillow',
+        'type': 'exif',
+        'engine': 'pillow-exif',
+        'version': '1.0.0',
     },
     'thumbnail': {
         'job_type': 'generate_thumbnail',
         'description': 'Generate thumbnail images for preview',
         'category': 'metadata',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'metadata.thumbnail.pillow',
+        'type': 'thumbnail',
+        'engine': 'pillow-thumbnail',
+        'version': '1.0.0',
     },
     'ocr': {
         'job_type': 'run_ocr',
         'description': 'Optical character recognition',
         'category': 'vision',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'vision.ocr.tesseract',
+        'type': 'ocr',
+        'engine': 'tesseract',
+        'version': '1.0.0',
     },
     'object_detection': {
         'job_type': 'object_detection',
         'description': 'Detect objects in images',
         'category': 'vision',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'vision.object-detection.yolo',
+        'type': 'object-detection',
+        'engine': 'yolo',
+        'version': '1.0.0',
     },
     'transcription': {
         'job_type': 'transcription',
         'description': 'Transcribe audio/video to text',
         'category': 'audio',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'audio.transcription.whisper',
+        'type': 'transcription',
+        'engine': 'whisper',
+        'version': '1.0.0',
     },
     'embeddings': {
         'job_type': 'generate_embeddings',
         'description': 'Generate vector embeddings',
         'category': 'embeddings',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'embeddings.openai',
+        'type': 'embeddings',
+        'engine': 'openai-ada002',
+        'version': '1.0.0',
     },
 }
 
 
 class Plugin:
-    """Represents an installed plugin with its configuration."""
+    """
+    Represents an installed plugin with its configuration.
+    
+    Operation Plugin Foundation: Added identity fields (namespace, type, engine, version)
+    for provenance tracking.
+    """
     
     def __init__(self, name: str, job_type: str, enabled: bool = False, 
-                 description: str = "", category: str = "general"):
+                 description: str = "", category: str = "general",
+                 namespace: str = None, type: str = None, 
+                 engine: str = None, version: str = None):
         self.name = name
         self.job_type = job_type
         self.enabled = enabled
         self.description = description
         self.category = category
+        # Operation Plugin Foundation: Identity fields
+        self.namespace = namespace or name  # Fully qualified name (e.g., metadata.exif.pillow)
+        self.type = type or category        # Plugin type (e.g., exif)
+        self.engine = engine               # Engine name (e.g., pillow-exif)
+        self.version = version or "1.0.0"  # Plugin version
 
 
 def _discover_installed_plugins() -> set[str]:
@@ -171,12 +227,18 @@ class PluginRegistry:
                 # Default: only photo_metadata is enabled
                 enabled = (plugin_name == 'photo_metadata')
             
+            # Operation Plugin Foundation: Pass identity fields
             plugin = Plugin(
                 name=plugin_name,
                 job_type=defn.get('job_type', ''),
                 enabled=enabled,
                 description=defn.get('description', ''),
                 category=defn.get('category', 'general'),
+                # Identity fields
+                namespace=defn.get('namespace'),
+                type=defn.get('type'),
+                engine=defn.get('engine'),
+                version=defn.get('version'),
             )
             self._plugins[plugin_name] = plugin
         
@@ -363,6 +425,7 @@ class PluginRegistry:
         plugin = self._plugins.get(plugin_name)
         if not plugin:
             return None
+        # Operation Plugin Foundation: Include identity fields
         return {
             'name': plugin.name,
             'job_type': plugin.job_type,
@@ -370,6 +433,11 @@ class PluginRegistry:
             'description': plugin.description,
             'category': plugin.category,
             'installed': True,
+            # Identity fields (Operation Plugin Foundation)
+            'namespace': plugin.namespace,
+            'type': plugin.type,
+            'engine': plugin.engine,
+            'version': plugin.version,
         }
     
     def validate_against_handlers(self, registered_handlers: set) -> dict:
