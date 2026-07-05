@@ -1,0 +1,72 @@
+/* PlaybackControls - Minimal playback UI */
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #242424);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+}
+
+.playback-controls-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.playback-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary, #333);
+  color: var(--text-secondary, #b3b3b3);
+}
+
+.playback-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #444);
+  color: var(--text-primary, #fff);
+}
+
+.playback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playback-btn-play.active {
+  background: var(--accent-primary, #64b5f6);
+  color: #1a1a1a;
+}
+
+.playback-btn-play:not(.active):hover:not(:disabled) {
+  background: var(--accent-primary, #64b5f6);
+  color: #1a1a1a;
+}
+
+.playback-btn-stop.active {
+  background: var(--accent-secondary, #ef5350);
+  color: #fff;
+}
+
+.playback-controls-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #b3b3b3);
+}
+
+.playback-position {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary, #333);
+  border-radius: 4px;
+}

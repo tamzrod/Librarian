@@ -5,6 +5,8 @@ import MapCanvas from '../components/MapCanvas'
 import EventStream from '../components/EventStream'
 import FilmStrip from '../components/FilmStrip'
 import PhotoPopup from '../components/PhotoPopup'
+import PlaybackControls from '../components/PlaybackControls'
+import { usePlaybackController } from '../hooks/usePlaybackController'
 import { api } from '../services/api'
 import type { TraceMapMarker, TraceEventItem } from '../types/api'
 import './TraceView.css'
@@ -44,6 +46,16 @@ export default function TraceView() {
   const [centerOnMarkerId, setCenterOnMarkerId] = useState<number | undefined>()
   const [filmStripCollapsed] = useState(false)
 
+  // Playback state - minimal implementation for architectural spike
+  const [thumbnails, setThumbnails] = useState<TraceEventItem[]>([])
+  const {
+    mode: playbackMode,
+    currentIndex: playbackIndex,
+    isPlaying,
+    play,
+    stop,
+  } = usePlaybackController(thumbnails.length)
+
   // Load stats on mount
   useEffect(() => {
     api.getTraceData({ limit: 1 })
@@ -59,23 +71,100 @@ export default function TraceView() {
       })
   }, [])
 
+  // Load thumbnails for playback synchronization
+  useEffect(() => {
+    // Stop playback when filters change - thumbnails array will reset
+    if (isPlaying) {
+      stop()
+    }
+    loadPlaybackThumbnails()
+  }, [filters])
+
+  const loadPlaybackThumbnails = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (filters.cameras.length > 0) params.append('cameras', filters.cameras.join(','))
+      if (filters.collections.length > 0) params.append('collections', filters.collections.join(','))
+      if (filters.years.length > 0) params.append('years', filters.years.join(','))
+      if (filters.sources.length > 0) params.append('sources', filters.sources.join(','))
+      if (filters.startDate) params.append('start_date', filters.startDate)
+      if (filters.endDate) params.append('end_date', filters.endDate)
+      if (filters.includeUnknownDevice) params.append('include_unknown_device', 'true')
+
+      const response = await api.getTraceData({
+        cameras: params.get('cameras') || undefined,
+        collections: params.get('collections') || undefined,
+        years: params.get('years') || undefined,
+        sources: params.get('sources') || undefined,
+        startDate: params.get('start_date') || undefined,
+        endDate: params.get('end_date') || undefined,
+        includeUnknownDevice: params.get('include_unknown_device') === 'true',
+        limit: 200
+      })
+
+      // Sort chronologically (oldest first)
+      const sorted = [...response.events].sort((a, b) => {
+        if (!a.timestamp && !b.timestamp) return 0
+        if (!a.timestamp) return 1
+        if (!b.timestamp) return -1
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      })
+
+      setThumbnails(sorted)
+    } catch (error) {
+      console.error('Failed to load playback thumbnails:', error)
+    }
+  }
+
+  // Playback synchronization effect
+  // When playback index changes, sync FilmStrip scroll and MapCanvas center
+  useEffect(() => {
+    if (playbackMode === 'playing' && thumbnails.length > 0) {
+      const currentItem = thumbnails[playbackIndex]
+      if (currentItem) {
+        // Update selected document
+        setSelectedDocumentId(currentItem.document_id)
+        
+        // Trigger filmstrip scroll
+        setScrollToThumbnailId(currentItem.document_id)
+        
+        // If has GPS, center map
+        if (currentItem.latitude && currentItem.longitude) {
+          setCenterOnMarkerId(currentItem.document_id)
+        }
+      }
+    }
+  }, [playbackIndex, playbackMode, thumbnails])
+
   const handleFiltersChange = (newFilters: FilterState) => {
     setFilters(newFilters)
   }
 
   const handleMarkerClick = (marker: TraceMapMarker) => {
+    // User interaction takes precedence - stop playback immediately
+    if (isPlaying) {
+      stop()
+    }
     setSelectedDocumentId(marker.document_id)
     // Scroll film strip to this photo
     setScrollToThumbnailId(marker.document_id)
   }
 
   const handleEventSelect = (event: TraceEventItem) => {
+    // User interaction takes precedence - stop playback immediately
+    if (isPlaying) {
+      stop()
+    }
     setSelectedDocumentId(event.document_id)
     // Scroll film strip to this photo
     setScrollToThumbnailId(event.document_id)
   }
 
   const handleThumbnailClick = (item: TraceEventItem) => {
+    // User interaction takes precedence - stop playback immediately
+    if (isPlaying) {
+      stop()
+    }
     setSelectedDocumentId(item.document_id)
     // Trigger scroll for next render
     setScrollToThumbnailId(item.document_id)
@@ -144,6 +233,15 @@ export default function TraceView() {
             <span>cameras</span>
           </div>
         </div>
+
+        {/* Playback Controls - Minimal implementation for architectural spike */}
+        <PlaybackControls
+          isPlaying={isPlaying}
+          currentIndex={playbackIndex}
+          totalItems={thumbnails.length}
+          onPlay={play}
+          onStop={stop}
+        />
       </div>
 
       {/* Main content area */}
