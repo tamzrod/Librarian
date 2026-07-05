@@ -5,8 +5,8 @@
   flex-direction: column;
   background: var(--bg-secondary, #242424);
   border-top: 1px solid var(--border-color, #333);
-  height: 180px;
-  min-height: 180px;
+  height: 320px;
+  min-height: 320px;
 }
 
 .film-strip-header {
@@ -82,8 +82,8 @@
 .film-strip-frame {
   position: relative;
   flex: 0 0 auto;
-  width: 120px;
-  height: 130px;
+  width: 140px;
+  height: 250px;
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;

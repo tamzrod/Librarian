@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import FilterPalette, { FilterState } from '../components/FilterPalette'
 import MapCanvas from '../components/MapCanvas'
-import EventStream from '../components/EventStream'
 import FilmStrip from '../components/FilmStrip'
 import PhotoPopup from '../components/PhotoPopup'
 import PlaybackControls from '../components/PlaybackControls'
@@ -153,18 +152,6 @@ export default function TraceView() {
     setScrollToThumbnailId(marker.document_id)
   }
 
-  const handleEventSelect = (event: TraceEventItem) => {
-    // User interaction takes precedence - stop playback immediately
-    if (isPlaying) {
-      stop()
-    }
-    // User click updates both selected and opened
-    setSelectedDocumentId(event.document_id)
-    setOpenedDocumentId(event.document_id)
-    // Scroll film strip to this photo
-    setScrollToThumbnailId(event.document_id)
-  }
-
   const handleThumbnailClick = (item: TraceEventItem) => {
     // User interaction takes precedence - stop playback immediately
     if (isPlaying) {
@@ -257,7 +244,7 @@ export default function TraceView() {
         {/* Filter palette */}
         <FilterPalette onFiltersChange={handleFiltersChange} />
 
-        {/* Workspace - contains map, film strip, and event stream */}
+        {/* Workspace - contains map and film strip */}
         <div className="trace-workspace">
           {/* Map area */}
           <div className="map-area">
@@ -290,13 +277,6 @@ export default function TraceView() {
               scrollToThumbnailId={scrollToThumbnailId}
             />
           )}
-
-          {/* Event stream - docked at bottom */}
-          <EventStream
-            filters={filters}
-            onEventSelect={handleEventSelect}
-            selectedEventId={selectedDocumentId || undefined}
-          />
         </div>
       </div>
 
