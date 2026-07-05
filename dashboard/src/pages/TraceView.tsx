@@ -51,8 +51,13 @@ export default function TraceView() {
     mode: playbackMode,
     currentIndex: playbackIndex,
     isPlaying,
+    isPaused,
+    playbackSpeed,
     play,
+    pause,
+    resume,
     stop,
+    setSpeed,
   } = usePlaybackController(thumbnails.length)
 
   // Load stats on mount
@@ -73,7 +78,7 @@ export default function TraceView() {
   // Load thumbnails for playback synchronization
   useEffect(() => {
     // Stop playback when filters change - thumbnails array will reset
-    if (isPlaying) {
+    if (isPlaying || isPaused) {
       stop()
     }
     loadPlaybackThumbnails()
@@ -115,8 +120,9 @@ export default function TraceView() {
 
   // Playback synchronization effect
   // When playback index changes, sync FilmStrip scroll and MapCanvas center
+  // Works for both playing and paused states
   useEffect(() => {
-    if (playbackMode === 'playing' && thumbnails.length > 0) {
+    if ((playbackMode === 'playing' || playbackMode === 'paused') && thumbnails.length > 0) {
       const currentItem = thumbnails[playbackIndex]
       if (currentItem) {
         // Update selected document
@@ -139,7 +145,7 @@ export default function TraceView() {
 
   const handleMarkerClick = (marker: TraceMapMarker) => {
     // User interaction takes precedence - stop playback immediately
-    if (isPlaying) {
+    if (isPlaying || isPaused) {
       stop()
     }
     // User click updates both selected and opened
@@ -151,7 +157,7 @@ export default function TraceView() {
 
   const handleThumbnailClick = (item: TraceEventItem) => {
     // User interaction takes precedence - stop playback immediately
-    if (isPlaying) {
+    if (isPlaying || isPaused) {
       stop()
     }
     // User click updates both selected and opened
@@ -226,13 +232,18 @@ export default function TraceView() {
           </div>
         </div>
 
-        {/* Playback Controls - Minimal implementation for architectural spike */}
+        {/* Playback Controls - P18 Enhanced with pause and speed control */}
         <PlaybackControls
           isPlaying={isPlaying}
+          isPaused={isPaused}
           currentIndex={playbackIndex}
           totalItems={thumbnails.length}
+          playbackSpeed={playbackSpeed}
           onPlay={play}
+          onPause={pause}
+          onResume={resume}
           onStop={stop}
+          onSpeedChange={setSpeed}
         />
       </div>
 
