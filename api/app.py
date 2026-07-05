@@ -93,7 +93,7 @@ app.include_router(settings.router, prefix="/api/v1")
 
 
 # E5: Thumbnail serving endpoint
-@app.get("/thumbnails/{path:path}", response_class=FileResponse)
+@app.get("/thumbnails/{path:path}")
 async def get_thumbnail(path: str):
     """
     Serve thumbnail files from librarian-managed storage.
@@ -104,11 +104,28 @@ async def get_thumbnail(path: str):
     Browser request: /thumbnails/<filename>
     Filesystem path: /librarian-data/thumbnails/<filename>
     """
+    # Validate LIBRARIAN_DATA_ROOT is set
+    if not LIBRARIAN_DATA_ROOT:
+        logger.error("LIBRARIAN_DATA_ROOT not configured")
+        return JSONResponse({"error": "Thumbnail service misconfigured"}, status_code=500)
+    
+    # Ensure path is a safe string (prevent path traversal)
+    safe_path = str(path).replace("..", "")
+    
     # Serve from librarian-data/thumbnails directory
-    thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / "thumbnails" / path
-    if thumbnail_full_path.exists():
-        return FileResponse(str(thumbnail_full_path))
-    return {"error": "Thumbnail not found"}, 404
+    thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / "thumbnails" / safe_path
+    
+    if not thumbnail_full_path.is_absolute():
+        logger.error(f"Invalid thumbnail path construction: {thumbnail_full_path}")
+        return JSONResponse({"error": "Invalid thumbnail path"}, status_code=500)
+    
+    if thumbnail_full_path.exists() and thumbnail_full_path.is_file():
+        return FileResponse(
+            str(thumbnail_full_path),
+            media_type="image/jpeg",
+            filename=thumbnail_full_path.name
+        )
+    return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
 
 
 @app.get("/")
