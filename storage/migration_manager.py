@@ -117,7 +117,7 @@ class MigrationManager:
     ]
     
     # Target schema version (derived from latest migration)
-    TARGET_SCHEMA_VERSION = 10  # Corresponds to 010_thumbnails.sql
+    TARGET_SCHEMA_VERSION = 11  # Corresponds to 011_plugin_foundation.sql
     
     def __init__(self, backend):
         """

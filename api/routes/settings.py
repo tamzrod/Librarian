@@ -26,6 +26,11 @@ class PluginInfo(BaseModel):
     job_type: str = Field(description="The job type this plugin generates")
     description: str = Field(description="Human-readable description")
     category: str = Field(default="general", description="Plugin category")
+    # Operation Plugin Foundation: Identity fields for provenance
+    namespace: Optional[str] = Field(default=None, description="Fully qualified plugin namespace (e.g., 'metadata.exif.pillow')")
+    type: Optional[str] = Field(default=None, description="Plugin type (e.g., 'exif', 'ocr')")
+    engine: Optional[str] = Field(default=None, description="Engine name (e.g., 'pillow-exif')")
+    version: Optional[str] = Field(default=None, description="Plugin version (e.g., '1.0.0')")
 
 
 class PluginListResponse(BaseModel):
@@ -72,6 +77,10 @@ async def list_plugins() -> PluginListResponse:
             job_type=p['job_type'],
             description=p['description'],
             category=p.get('category', 'general'),
+            namespace=p.get('namespace'),
+            type=p.get('type'),
+            engine=p.get('engine'),
+            version=p.get('version'),
         )
         for p in plugins_data
     ]
@@ -116,6 +125,10 @@ async def get_plugin(plugin_name: str) -> PluginInfo:
         job_type=plugin_info['job_type'],
         description=plugin_info['description'],
         category=plugin_info.get('category', 'general'),
+        namespace=plugin_info.get('namespace'),
+        type=plugin_info.get('type'),
+        engine=plugin_info.get('engine'),
+        version=plugin_info.get('version'),
     )
 
 

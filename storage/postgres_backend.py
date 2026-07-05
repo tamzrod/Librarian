@@ -836,9 +836,21 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error saving content: {e}")
             return False
 
-    def save_photo_metadata(self, document_id: int, metadata: dict) -> bool:
+    def save_photo_metadata(
+        self,
+        document_id: int,
+        metadata: dict,
+        plugin_name: str = None,
+        engine_name: str = None,
+        plugin_version: str = None,
+        processed_at: datetime = None,
+        artifact_hash: str = None
+    ) -> bool:
         """Save photo metadata for a document (Phase 1A: Evidence Timeline).
-        
+
+        Operation Plugin Foundation: Now supports provenance tracking via plugin_name,
+        engine_name, plugin_version, processed_at, and artifact_hash fields.
+
         Args:
             document_id: ID of the document (must be an image)
             metadata: Dict containing extracted EXIF data:
@@ -856,20 +868,34 @@ class PostgresBackend(StorageBackend):
                 - orientation: Image orientation
                 - file_format: Image format (JPEG, PNG, etc.)
                 - raw_exif: Raw EXIF data as dict
-                
+            plugin_name: Plugin that produced this observation (e.g., 'metadata.exif.pillow')
+            engine_name: Engine used by plugin (e.g., 'pillow-exif')
+            plugin_version: Version of the plugin (e.g., '1.0.0')
+            processed_at: When this observation was created (defaults to now)
+            artifact_hash: SHA256 hash of source artifact for integrity
+
         Returns:
             True if save succeeded
         """
         try:
             conn = self._get_connection()
             cur = conn.cursor()
-            extracted_at = _to_postgres_timestamp(datetime.now(timezone.utc))
-            
+
+            # Provenance defaults (Operation Plugin Foundation)
+            plugin_name = plugin_name or 'metadata.exif.pillow'
+            engine_name = engine_name or 'pillow-exif'
+            plugin_version = plugin_version or '1.0.0'
+            processed_at = processed_at or datetime.now(timezone.utc)
+            artifact_hash = artifact_hash
+
             # Convert timestamps
             ts_original = _to_postgres_timestamp(metadata.get('timestamp_original'))
             ts_digitized = _to_postgres_timestamp(metadata.get('timestamp_digitized'))
             ts_metadata = _to_postgres_timestamp(metadata.get('timestamp_metadata'))
-            
+            ts_processed = _to_postgres_timestamp(processed_at)
+
+            # Operation Plugin Foundation: Use new provenance columns
+            # UNIQUE constraint is now (document_id, plugin_name, engine_name) for multi-engine support
             cur.execute(
                 """
                 INSERT INTO photo_metadata (
@@ -887,13 +913,15 @@ class PostgresBackend(StorageBackend):
                     height,
                     orientation,
                     file_format,
-                    extraction_method,
-                    extraction_version,
-                    raw_exif,
-                    extracted_at
+                    plugin_name,
+                    engine_name,
+                    plugin_version,
+                    processed_at,
+                    artifact_hash,
+                    raw_exif
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (document_id) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (document_id, plugin_name, engine_name) DO UPDATE SET
                     timestamp_original = EXCLUDED.timestamp_original,
                     timestamp_digitized = EXCLUDED.timestamp_digitized,
                     timestamp_metadata = EXCLUDED.timestamp_metadata,
@@ -907,8 +935,12 @@ class PostgresBackend(StorageBackend):
                     height = EXCLUDED.height,
                     orientation = EXCLUDED.orientation,
                     file_format = EXCLUDED.file_format,
-                    raw_exif = EXCLUDED.raw_exif,
-                    extracted_at = EXCLUDED.extracted_at
+                    plugin_name = EXCLUDED.plugin_name,
+                    engine_name = EXCLUDED.engine_name,
+                    plugin_version = EXCLUDED.plugin_version,
+                    processed_at = EXCLUDED.processed_at,
+                    artifact_hash = EXCLUDED.artifact_hash,
+                    raw_exif = EXCLUDED.raw_exif
                 """,
                 (
                     document_id,
@@ -925,17 +957,19 @@ class PostgresBackend(StorageBackend):
                     metadata.get('height'),
                     metadata.get('orientation'),
                     metadata.get('file_format'),
-                    'exif',
-                    '1.0.0',
+                    plugin_name,
+                    engine_name,
+                    plugin_version,
+                    ts_processed,
+                    artifact_hash,
                     psycopg.types.json.Jsonb(metadata.get('raw_exif', {})) if metadata.get('raw_exif') else None,
-                    extracted_at
                 )
             )
             conn.commit()
             cur.close()
             conn.close()
-            
-            logger.info(f"Saved photo metadata for document {document_id}")
+
+            logger.info(f"Saved photo metadata for document {document_id} (plugin: {plugin_name}, engine: {engine_name})")
             return True
         except Exception as e:
             logger.error(f"Error saving photo metadata: {e}")

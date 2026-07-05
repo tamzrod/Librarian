@@ -338,7 +338,11 @@ class PluginRegistry:
                     'enabled': True,
                     'job_type': 'extract_photo_metadata',
                     'description': '...',
-                    'category': 'metadata'
+                    'category': 'metadata',
+                    'namespace': 'metadata.exif.pillow',
+                    'type': 'exif',
+                    'engine': 'pillow-exif',
+                    'version': '1.0.0'
                 },
                 ...
             ]
@@ -351,6 +355,10 @@ class PluginRegistry:
                 'job_type': p.job_type,
                 'description': p.description,
                 'category': p.category,
+                'namespace': p.namespace,
+                'type': p.type,
+                'engine': p.engine,
+                'version': p.version,
             }
             for p in self._plugins.values()
         ]

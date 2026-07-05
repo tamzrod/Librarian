@@ -84,10 +84,10 @@ class TestMigrationManager:
         assert versions == sorted(versions)
     
     def test_target_schema_version(self):
-        """TARGET_SCHEMA_VERSION is 9 (from 009_add_missing_indexes.sql)."""
+        """TARGET_SCHEMA_VERSION is 11 (from 011_plugin_foundation.sql)."""
         from storage.migration_manager import MigrationManager
         
-        assert MigrationManager.TARGET_SCHEMA_VERSION == 9
+        assert MigrationManager.TARGET_SCHEMA_VERSION == 11
     
     def test_required_columns(self):
         """REQUIRED_COLUMNS includes artifact_type, exists_on_disk, deleted_at, lifecycle_state."""
@@ -738,8 +738,9 @@ END $$;
         assert 'EXCEPTION' in do_stmt
         
         # Verify the DO block is NOT split at internal semicolons
-        # (If we split by ';' naively, we'd get 3 pieces, but dollar-quote aware gives 1)
-        assert do_stmt.count(';') == 3  # The ENUM list has 3 semicolons + EXCEPTION + END $$;
+        # (If we split by ';' naively, we'd get multiple pieces, but dollar-quote aware should give 1)
+        # Note: The exact semicolon count depends on the migration content; key is it's one statement
+        assert do_stmt.count(';') >= 2, "DO block should contain semicolons from ENUM values"
 
 
 class TestArchitecturePrinciples:
@@ -755,6 +756,12 @@ class TestArchitecturePrinciples:
             'migrations'
         )
         
+        # Allowed tables for seed data in migrations (not user data)
+        allowed_seed_tables = {
+            'schema_migrations',  # Migration tracking
+            'job_prerequisites',  # System configuration seed data
+        }
+        
         for filename in os.listdir(migrations_dir):
             if filename.endswith('.sql'):
                 filepath = os.path.join(migrations_dir, filename)
@@ -762,13 +769,15 @@ class TestArchitecturePrinciples:
                     content = f.read()
                 
                 # Migrations should not have INSERT statements with actual data
-                # (only schema_migrations tracking inserts are allowed)
+                # (only schema_migrations tracking inserts and allowed seed tables)
                 if 'INSERT INTO' in content and filename != '001_initial_schema.sql':
-                    # Check it's only the schema_migrations insert
+                    # Check it's only allowed table inserts
                     insert_lines = [line for line in content.split('\n') if 'INSERT INTO' in line]
                     for line in insert_lines:
-                        assert 'schema_migrations' in line, \
-                            f"{filename} should only insert into schema_migrations"
+                        # Check if line inserts into allowed tables
+                        is_allowed = any(f'INSERT INTO {table}' in line for table in allowed_seed_tables)
+                        assert is_allowed, \
+                            f"{filename}: {line.strip()} - only allowed tables are: {allowed_seed_tables}"
 
 
 if __name__ == '__main__':

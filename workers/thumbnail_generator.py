@@ -8,6 +8,8 @@ It generates thumbnail images from source images and stores them in Librarian-ma
 
 Derived artifacts (thumbnails) are stored in /librarian-data/thumbnails
 NOT in the user's library directory.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import os
@@ -30,10 +32,17 @@ class ThumbnailGenerator(BaseWorker):
 
     This is a job handler that can be registered with the Worker.
     It handles the 'generate_thumbnail' job type.
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
 
     # Supported image extensions for thumbnail generation
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'}
+
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'metadata.thumbnail.pillow'  # Fully qualified namespace
+    ENGINE_NAME = 'pillow-thumbnail'           # Engine identifier
+    PLUGIN_VERSION = '1.0.0'                  # Plugin version
 
     def __init__(self, backend, library_root: str = None, librarian_data_root: str = None):
         """

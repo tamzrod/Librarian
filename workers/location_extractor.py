@@ -4,6 +4,8 @@ Location extraction handler for the worker.
 Phase 4: Implements the extract_locations job type.
 
 This extracts location references from document content.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import logging
@@ -16,10 +18,17 @@ logger = logging.getLogger(__name__)
 class LocationExtractor(BaseWorker):
     """
     Extracts location references from document content.
-    
+
     This is a job handler that can be registered with the Worker.
     It handles the 'extract_locations' job type.
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
+
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'content.location.heuristic'  # Fully qualified namespace
+    ENGINE_NAME = 'heuristic-parser'          # Engine identifier
+    PLUGIN_VERSION = '1.0.0'                # Plugin version
     
     def __init__(self, backend):
         """
