@@ -140,6 +140,12 @@ class ObjectDetectionExtractor(BaseWorker):
             # Get provenance for Operation Plugin Foundation
             provenance = self.get_provenance(document_id)
 
+            # Reprocessing: Soft-delete existing detections for this artifact
+            # This ensures same artifact+plugin+engine replaces observations
+            deleted_count = self.backend.delete_detections(document_id)
+            if deleted_count > 0:
+                logger.info(f"Soft-deleted {deleted_count} existing detections for document {document_id}")
+
             # Save detections to database
             saved_count = self._save_detections(artifact_id=document_id, detections=detections, provenance=provenance)
 
@@ -172,7 +178,25 @@ class ObjectDetectionExtractor(BaseWorker):
 
         except Exception as e:
             logger.error(f"Object detection failed for document {document_id}: {e}")
-            raise
+            # Graceful failure: Update document status to failed
+            try:
+                self.backend.transition_document_status(
+                    document_id,
+                    'FAILED',
+                    job_id=job_id,
+                    error_message=str(e)
+                )
+            except Exception as status_error:
+                logger.error(f"Failed to update document status: {status_error}")
+            # Return error result instead of raising
+            # This allows worker to continue processing other jobs
+            return {
+                'document_id': document_id,
+                'objects_detected': 0,
+                'unique_labels': [],
+                'labels_with_count': {},
+                'error': str(e)
+            }
 
     def _is_supported_image(self, extension: str) -> bool:
         """Check if file extension is a supported image type."""
