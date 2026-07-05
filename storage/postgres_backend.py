@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 import psycopg
 from .backend import StorageBackend
 
