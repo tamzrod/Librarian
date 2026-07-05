@@ -1,14 +1,16 @@
 # Object Detection Plugin Roadmap
 
 **Plugin:** Object Detection  
-**Status:** 📋 Planned  
+**Status:** 📋 Architecture Documented  
 **Implementation:** Not Started
 
 ---
 
 ## Overview
 
-This document outlines the roadmap for implementing the Object Detection plugin. All items described are planned for future implementation.
+This document outlines the roadmap for implementing the Object Detection plugin. The architecture is now documented with support for multiple engines.
+
+**Current Phase:** Architecture documentation (complete)
 
 ---
 
