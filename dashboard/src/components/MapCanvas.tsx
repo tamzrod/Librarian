@@ -157,15 +157,17 @@ export default function MapCanvas({ filters, onMarkerClick, selectedMarkerId, ce
     }
   }
 
-  // Center map on a specific marker
+  // Center map on a specific marker with smooth animation
   useEffect(() => {
     if (!centerOnMarkerId || !leafletMapRef.current) return
 
     const marker = markerDataRef.current.get(centerOnMarkerId)
     if (marker) {
-      leafletMapRef.current.setView([marker.latitude, marker.longitude], 14, {
+      // Use flyTo for smooth animation that preserves zoom level
+      // Animation duration: 400ms (shorter than 1s playback interval)
+      leafletMapRef.current.flyTo([marker.latitude, marker.longitude], leafletMapRef.current.getZoom(), {
         animate: true,
-        duration: 0.5
+        duration: 0.4
       })
     }
   }, [centerOnMarkerId, leafletLoaded])
