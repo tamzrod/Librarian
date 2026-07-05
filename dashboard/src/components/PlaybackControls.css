@@ -1,4 +1,4 @@
-/* PlaybackControls - Minimal playback UI */
+/* PlaybackControls - P18 Enhanced playback UI */
 
 .playback-controls {
   display: flex;
@@ -55,12 +55,62 @@
   color: #fff;
 }
 
+/* Speed control styles */
+.playback-controls-speed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-color, #333);
+}
+
+.playback-speed-label {
+  font-size: 11px;
+  color: var(--text-secondary, #b3b3b3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.playback-speed-options {
+  display: flex;
+  gap: 2px;
+}
+
+.playback-speed-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary, #333);
+  color: var(--text-secondary, #b3b3b3);
+  min-width: 32px;
+}
+
+.playback-speed-btn:hover:not(:disabled):not(.active) {
+  background: var(--bg-hover, #444);
+  color: var(--text-primary, #fff);
+}
+
+.playback-speed-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playback-speed-btn.active {
+  background: var(--accent-primary, #64b5f6);
+  color: #1a1a1a;
+}
+
 .playback-controls-info {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   color: var(--text-secondary, #b3b3b3);
+  margin-left: auto;
 }
 
 .playback-position {
