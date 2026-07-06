@@ -119,3 +119,27 @@ docker compose up -d
 - Dashboard: http://localhost:3100
 - API: http://localhost:8001
 - API Docs: http://localhost:8001/docs
+
+## Architecture and Operations Documentation
+
+For AI agents and developers investigating issues, the following documentation provides authoritative guidance:
+
+### Evidence and Storage Lifecycle
+- [Evidence Lifecycle](architecture/evidence-lifecycle.md) — Three-tier persistence architecture defining authoritative (Tier 0), regeneratable (Tier 1), and replaceable (Tier 2) data
+- [Storage Lifecycle Matrix](architecture/storage-lifecycle-matrix.md) — Behavior of each storage component across rebuild, reset, and nuclear reset operations
+- [Derived Artifact Contract](architecture/derived-artifact-contract.md) — Rules for handling regeneratable artifacts that may or may not exist at runtime
+
+### Debugging and Investigation
+- [Runtime-First Debugging](operations/runtime-first-debugging.md) — Debugging priority order and runtime evidence hierarchy
+- [Runtime-First Investigation Rules](agents/runtime-first-investigation-rules.md) — Rules for AI agents investigating issues (trust runtime over configuration)
+
+### Plugin Development
+- [Plugin Contract](plugins/plugin-contract.md) — Required plugin declarations for dependencies, cache, artifacts, and database tables
+
+### Key Principles
+
+1. **Runtime state always overrides configuration** — `docker inspect` output takes precedence over docker-compose files
+2. **Missing derived artifacts are valid** — Thumbnails, embeddings, and OCR output may be absent without being errors
+3. **Evidence is immutable** — Original documents and checksums must never be modified
+4. **Never infer mounts from configuration** — Always verify with `docker inspect` before assuming volumes are mounted
+5. **Never propose fixes before proving runtime state** — Inspect containers, volumes, logs, database, and filesystem first
