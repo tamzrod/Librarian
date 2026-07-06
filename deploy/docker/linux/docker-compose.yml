@@ -34,10 +34,22 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
+      # Plugin dependency and cache paths
+      - PLUGIN_DEPENDENCIES_ROOT=/plugin-dependencies
+      - PLUGIN_CACHE_ROOT=/plugin-cache
+      # Common cache persistence environment variables
+      - TORCH_HOME=/plugin-cache/torch
+      - HF_HOME=/plugin-cache/huggingface
+      - TRANSFORMERS_CACHE=/plugin-cache/transformers
+      - PIP_CACHE_DIR=/plugin-cache/pip
     ports:
       - "${API_HOST_PORT:-${API_PORT:-8001}}:8000"
     volumes:
       - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Plugin dependencies (models, language packs, etc.) - persistent
+      - plugin_dependencies:/plugin-dependencies:rw
+      # Plugin cache (pip, wheels, huggingface, torch, etc.) - persistent
+      - plugin_cache:/plugin-cache:rw
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,4 +89,10 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  # Plugin dependency storage - persists models, language packs, external assets
+  plugin_dependencies:
+    driver: local
+  # Plugin cache storage - persists pip, wheels, huggingface, torch caches
+  plugin_cache:
     driver: local

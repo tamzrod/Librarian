@@ -10,6 +10,10 @@ DEFAULT_LIBRARY_ROOT = "/library"
 DEFAULT_LIBRARIAN_DATA_ROOT = "/librarian-data"
 DEFAULT_API_URL = "http://localhost:8000"
 
+# Plugin dependency and cache paths
+DEFAULT_PLUGIN_DEPENDENCIES_ROOT = "/plugin-dependencies"
+DEFAULT_PLUGIN_CACHE_ROOT = "/plugin-cache"
+
 _warned_aliases: set[tuple[str, str]] = set()
 
 
@@ -51,6 +55,30 @@ def get_librarian_data_root(default: str = DEFAULT_LIBRARIAN_DATA_ROOT) -> str:
     """Return the configured Librarian data root for derived artifacts."""
     return get_env(
         "LIBRARIAN_DATA_ROOT",
+        default=default,
+    ) or default
+
+
+def get_plugin_dependencies_root(default: str = DEFAULT_PLUGIN_DEPENDENCIES_ROOT) -> str:
+    """Return the configured plugin dependencies root for persistent plugin assets.
+    
+    Plugin dependencies include models, language packs, external databases, and
+    other assets required by plugins that should persist across rebuilds and resets.
+    """
+    return get_env(
+        "PLUGIN_DEPENDENCIES_ROOT",
+        default=default,
+    ) or default
+
+
+def get_plugin_cache_root(default: str = DEFAULT_PLUGIN_CACHE_ROOT) -> str:
+    """Return the configured plugin cache root for runtime caches.
+    
+    Plugin cache includes pip cache, wheel cache, huggingface cache, torch cache,
+    and other runtime data that can be regenerated if needed.
+    """
+    return get_env(
+        "PLUGIN_CACHE_ROOT",
         default=default,
     ) or default
 
