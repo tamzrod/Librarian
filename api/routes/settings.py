@@ -31,6 +31,10 @@ class PluginInfo(BaseModel):
     type: Optional[str] = Field(default=None, description="Plugin type (e.g., 'exif', 'ocr')")
     engine: Optional[str] = Field(default=None, description="Engine name (e.g., 'pillow-exif')")
     version: Optional[str] = Field(default=None, description="Plugin version (e.g., '1.0.0')")
+    # Operation Plugin Visibility Refactor: Lifecycle status
+    status: str = Field(default="enabled", description="Plugin lifecycle status: enabled, disabled, missing_dependencies, error")
+    missing_dependencies: list = Field(default_factory=list, description="List of missing package names")
+    error_message: Optional[str] = Field(default=None, description="Error message if plugin has an error")
 
 
 class PluginListResponse(BaseModel):
@@ -59,12 +63,12 @@ class PluginUpdateResponse(BaseModel):
 )
 async def list_plugins() -> PluginListResponse:
     """
-    Get all installed plugins with their current configuration.
+    Get all plugins with their current configuration and status.
     
-    Only installed plugins are returned. Non-existent plugins do not appear.
+    Returns all defined plugins, including those with missing dependencies.
     
     Returns:
-        List of plugins with their enabled status
+        List of plugins with their enabled status and lifecycle state
     """
     registry = get_plugin_registry()
     plugins_data = registry.get_installed_plugins()
@@ -81,6 +85,9 @@ async def list_plugins() -> PluginListResponse:
             type=p.get('type'),
             engine=p.get('engine'),
             version=p.get('version'),
+            status=p.get('status', 'enabled'),
+            missing_dependencies=p.get('missing_dependencies', []),
+            error_message=p.get('error_message'),
         )
         for p in plugins_data
     ]
@@ -129,6 +136,9 @@ async def get_plugin(plugin_name: str) -> PluginInfo:
         type=plugin_info.get('type'),
         engine=plugin_info.get('engine'),
         version=plugin_info.get('version'),
+        status=plugin_info.get('status', 'enabled'),
+        missing_dependencies=plugin_info.get('missing_dependencies', []),
+        error_message=plugin_info.get('error_message'),
     )
 
 

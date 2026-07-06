@@ -538,6 +538,15 @@ export interface PluginInfo {
   job_type: string
   description: string
   category: string
+  // Identity fields (Operation Plugin Foundation)
+  namespace?: string
+  type?: string
+  engine?: string
+  version?: string
+  // Status fields (Operation Plugin Visibility Refactor)
+  status?: string
+  missing_dependencies?: string[]
+  error_message?: string | null
 }
 
 export interface PluginListResponse {
