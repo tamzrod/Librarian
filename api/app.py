@@ -103,6 +103,10 @@ async def get_thumbnail(path: str):
     
     Browser request: /thumbnails/<filename>
     Filesystem path: /librarian-data/thumbnails/<filename>
+    
+    Note: nginx proxy_pass strips the /thumbnails/ prefix, so 'path' already
+    contains the full relative path including 'thumbnails/' if stored with it.
+    We strip any leading 'thumbnails/' to avoid double path segments.
     """
     # Validate LIBRARIAN_DATA_ROOT is set
     if not LIBRARIAN_DATA_ROOT:
@@ -111,6 +115,13 @@ async def get_thumbnail(path: str):
     
     # Ensure path is a safe string (prevent path traversal)
     safe_path = str(path).replace("..", "")
+    
+    # Strip leading 'thumbnails/' to avoid double path segments
+    # nginx proxy_pass with trailing slash strips /thumbnails/ from the URL
+    # If database stored 'thumbnails/xxx.jpg' and frontend calls /thumbnails/thumbnails/xxx.jpg,
+    # nginx sends 'thumbnails/xxx.jpg' which would create /librarian-data/thumbnails/thumbnails/xxx.jpg
+    if safe_path.startswith("thumbnails/"):
+        safe_path = safe_path[len("thumbnails/"):]
     
     # Serve from librarian-data/thumbnails directory
     thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / "thumbnails" / safe_path
