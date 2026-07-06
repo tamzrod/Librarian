@@ -30,6 +30,15 @@ class JobType:
     TRANSCRIPTION = 'transcription'
     INVENTORY = 'inventory'
 
+# Cache-producing job types - these jobs generate filesystem artifacts that can be
+# deleted, requiring job regeneration even after COMPLETED status.
+# Filesystem existence is authoritative, not job history.
+CACHE_JOB_TYPES = {
+    JobType.GENERATE_THUMBNAIL,
+    JobType.OBJECT_DETECTION,
+    JobType.TRANSCRIPTION,
+}
+
 
 # Artifact type to job types mapping
 # Each artifact type only gets jobs appropriate for its format
@@ -1520,6 +1529,10 @@ class PostgresBackend(StorageBackend):
                   worker_version: str = None, scan_snapshot_id: int = None) -> int:
         """Create a new job for a document with duplicate prevention and dependency handling.
         
+        For cache-producing job types, COMPLETED jobs are treated as non-existent to allow
+        regeneration when the cache artifact is missing. Filesystem existence is authoritative,
+        not job history.
+        
         Args:
             document_id: ID of the document to process
             job_type: Type of job
@@ -1531,13 +1544,53 @@ class PostgresBackend(StorageBackend):
             Job ID if created, None on failure or if duplicate exists
         """
         try:
-            # Check for existing active job of this type
-            if self.is_duplicate_job(document_id, job_type):
-                logger.info(f"Skipping duplicate job: document={document_id} job={job_type}")
-                return None
-            
             conn = self._get_connection()
             cur = conn.cursor()
+            
+            # For cache jobs, re-queue COMPLETED jobs instead of skipping
+            # This handles the case where cache artifacts were deleted externally
+            if job_type in CACHE_JOB_TYPES:
+                cur.execute(
+                    """
+                    UPDATE document_jobs
+                    SET status = %s, priority = %s, worker_id = NULL, 
+                        claimed_at = NULL, started_at = NULL, lease_until = NULL,
+                        attempt_count = 0, error_message = NULL, next_retry_at = NULL
+                    WHERE document_id = %s 
+                      AND job_type = %s
+                      AND status = 'COMPLETED'
+                    RETURNING id
+                    """,
+                    (JobStatus.QUEUED, priority, document_id, job_type)
+                )
+                row = cur.fetchone()
+                if row:
+                    job_id = row[0]
+                    conn.commit()
+                    logger.info(f"Re-queued completed cache job {job_id}: {job_type} for document {document_id}")
+                    cur.close()
+                    conn.close()
+                    return job_id
+            
+            # Check for existing active job of this type (QUEUED, IN_PROGRESS, BLOCKED)
+            cur.execute(
+                """
+                SELECT id FROM document_jobs
+                WHERE document_id = %s 
+                  AND job_type = %s
+                  AND status IN ('QUEUED', 'IN_PROGRESS', 'BLOCKED')
+                LIMIT 1
+                """,
+                (document_id, job_type)
+            )
+            existing = cur.fetchone()
+            
+            if existing:
+                logger.info(f"Skipping duplicate job: document={document_id} job={job_type}")
+                cur.close()
+                conn.close()
+                return None
+            
             created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
             
             # Insert job - database will also prevent duplicates via unique constraint
@@ -2325,8 +2378,12 @@ class PostgresBackend(StorageBackend):
     def create_or_update_thumbnail_job(self, document_id: int, priority: int = 50) -> int:
         """Create or update priority of a thumbnail generation job for a document.
         
-        If a job already exists in QUEUED status, updates its priority.
+        If a job exists in QUEUED or IN_PROGRESS status, updates its priority.
+        If a job exists in COMPLETED status, re-queues it for regeneration.
         If no job exists, creates a new one with the specified priority.
+        
+        Filesystem existence is authoritative - if thumbnail is missing, job is regenerated
+        regardless of COMPLETED history.
         
         Args:
             document_id: ID of the document
@@ -2336,9 +2393,29 @@ class PostgresBackend(StorageBackend):
             Job ID if created/updated, None on failure
         """
         try:
-            # First check if job exists in QUEUED status
             conn = self._get_connection()
             cur = conn.cursor()
+            
+            # First check for IN_PROGRESS job
+            cur.execute(
+                """
+                SELECT id, priority FROM document_jobs
+                WHERE document_id = %s 
+                  AND job_type = 'generate_thumbnail'
+                  AND status = 'IN_PROGRESS'
+                LIMIT 1
+                """,
+                (document_id,)
+            )
+            row = cur.fetchone()
+            
+            if row:
+                # Job is in progress - don't interfere, just return the job_id
+                cur.close()
+                conn.close()
+                return row[0]
+            
+            # Check for QUEUED job - update priority if needed
             cur.execute(
                 """
                 SELECT id, priority FROM document_jobs
@@ -2370,11 +2447,30 @@ class PostgresBackend(StorageBackend):
                 conn.close()
                 return job_id
             
-            # No existing job - create new one
-            cur.close()
+            # Check for COMPLETED job - re-queue it for regeneration
+            cur.execute(
+                """
+                UPDATE document_jobs
+                SET status = %s, priority = %s, worker_id = NULL, 
+                    claimed_at = NULL, started_at = NULL, lease_until = NULL,
+                    attempt_count = 0, error_message = NULL, next_retry_at = NULL
+                WHERE document_id = %s 
+                  AND job_type = 'generate_thumbnail'
+                  AND status = 'COMPLETED'
+                RETURNING id
+                """,
+                (JobStatus.QUEUED, priority, document_id)
+            )
+            row = cur.fetchone()
+            if row:
+                conn.commit()
+                logger.info(f"Re-queued completed thumbnail job {row[0]} for document {document_id}")
+                cur.close()
+                conn.close()
+                return row[0]
             
+            # No existing job - create new one
             created_at = _to_postgres_timestamp(datetime.now(timezone.utc))
-            cur = conn.cursor()
             cur.execute(
                 """
                 INSERT INTO document_jobs (document_id, job_type, priority, status, created_at)
