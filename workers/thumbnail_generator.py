@@ -1,15 +1,25 @@
 """
 Thumbnail generation handler for the worker.
 
-Phase E5: Thumbnail Persistence
-
 This module handles the 'generate_thumbnail' job type.
 It generates thumbnail images from source images and stores them in Librarian-managed storage.
 
-Derived artifacts (thumbnails) are stored in /librarian-data/thumbnails
-NOT in the user's library directory.
+THUMBNAIL CONTRACT (Tier 1B - Disposable Cache):
+================================================
+Thumbnails are NOT evidence.
+Thumbnails are NOT expensive artifacts.
+Thumbnails are CACHE.
 
-Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
+If a thumbnail disappears, regenerate it.
+
+Key characteristics:
+- Generation cost: Low (<1 second CPU)
+- External dependencies: None
+- Recovery framework: NOT REQUIRED
+- Integrity audits: NOT REQUIRED
+- Missing thumbnail = cache miss, NOT corruption
+
+See docs/architecture/derived-artifact-contract.md for the full tier classification.
 """
 
 import os
@@ -33,7 +43,14 @@ class ThumbnailGenerator(BaseWorker):
     This is a job handler that can be registered with the Worker.
     It handles the 'generate_thumbnail' job type.
 
-    Operation Plugin Foundation: Added plugin identity fields for provenance.
+    TIER 1B - DISPOSABLE CACHE:
+    This worker produces Tier 1B artifacts (disposable cache).
+    - Thumbnails are cheap to generate (<1 second CPU)
+    - No external dependencies required
+    - No recovery framework needed
+    - Missing thumbnails are cache misses, not corruption
+
+    See docs/architecture/derived-artifact-contract.md for the full contract.
     """
 
     # Supported image extensions for thumbnail generation

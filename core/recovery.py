@@ -2,11 +2,17 @@
 Derived Artifact Recovery Framework for Librarian.
 
 This module provides a generic framework for detecting and repairing missing
-derived artifacts (thumbnails, embeddings, OCR, object detection, transcription).
+Tier 1A derived artifacts (embeddings, OCR, object detection, transcription).
+
+TIER CLASSIFICATION:
+- Tier 1A (Derived Artifacts): Expensive to generate, require recovery frameworks
+  Examples: embeddings, OCR, object_detection, transcription, geolocation
+- Tier 1B (Disposable Cache): Cheap to generate, no recovery needed
+  Examples: thumbnails, previews - see workers/thumbnail_generator.py
 
 ARCHITECTURE PRINCIPLES:
 - Artifact is authoritative. The filesystem contains the ground truth.
-- Derived artifacts are optional and recoverable.
+- Tier 1A optional data is expensive to regenerate; recovery is a convenience.
 - Metadata in the database is a cache that can be regenerated.
 - Recovery never modifies healthy artifacts or creates unnecessary work.
 
@@ -16,14 +22,17 @@ The framework supports:
 - Reporting: Providing detailed status of artifact health
 
 USAGE:
-    from core.recovery import ThumbnailRecovery
+    from core.recovery import get_recovery_handler
 
-    recovery = ThumbnailRecovery(backend)
-    report = recovery.detect()
-    print(report.summary())
+    handler = get_recovery_handler('embedding', backend)
+    if handler:
+        report = handler.detect()
+        print(report.summary())
+        if report.missing:
+            handler.repair(report.missing)
 
-    if report.missing:
-        recovery.repair(report.missing)
+NOTE: Thumbnails (Tier 1B) are NOT supported by this framework.
+Use workers/thumbnail_generator.py for thumbnail handling.
 """
 
 import os
@@ -368,106 +377,21 @@ class BaseArtifactRecovery(ABC):
         return report
 
 
-class ThumbnailRecovery(BaseArtifactRecovery):
-    """
-    Recovery handler for thumbnail artifacts.
-
-    Thumbnail artifacts are stored in /librarian-data/thumbnails/
-    Metadata is stored in documents.thumbnail_path
-    """
-
-    ARTIFACT_TYPE = "thumbnail"
-    ARTIFACT_SUBDIR = "thumbnails"
-
-    def get_artifact_metadata(self) -> List[Dict[str, Any]]:
-        """Get all thumbnail metadata from documents table."""
-        try:
-            conn = self.backend._get_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, thumbnail_path
-                FROM documents
-                WHERE thumbnail_path IS NOT NULL
-            """)
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
-
-            return [
-                {'document_id': row[0], 'thumbnail_path': row[1]}
-                for row in rows
-            ]
-        except Exception as e:
-            logger.error(f"Error getting thumbnail metadata: {e}")
-            return []
-
-    def get_artifact_path_field(self) -> str:
-        return "thumbnail_path"
-
-    def is_supported_artifact(self, document_id: int) -> bool:
-        """Check if document is an image type that supports thumbnails."""
-        try:
-            conn = self.backend._get_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT artifact_type FROM documents WHERE id = %s",
-                (document_id,)
-            )
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
-
-            if row:
-                return row[0] in ('image', 'video')
-            return False
-        except Exception as e:
-            logger.error(f"Error checking document type for {document_id}: {e}")
-            return False
-
-    def clear_artifact_metadata(self, document_id: int) -> bool:
-        """Clear thumbnail_path for a document."""
-        try:
-            conn = self.backend._get_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE documents
-                SET thumbnail_path = NULL
-                WHERE id = %s
-            """, (document_id,))
-            conn.commit()
-            affected = cur.rowcount
-            cur.close()
-            conn.close()
-
-            return affected > 0
-        except Exception as e:
-            logger.error(f"Error clearing thumbnail metadata for {document_id}: {e}")
-            return False
-
-    def requeue_artifact_job(self, document_id: int) -> Optional[int]:
-        """Requeue generate_thumbnail job for a document."""
-        try:
-            # Cancel any existing thumbnail jobs
-            self.backend.cancel_jobs_for_document(document_id, 'generate_thumbnail')
-
-            # Create a new job
-            return self.backend.create_job(
-                document_id=document_id,
-                job_type='generate_thumbnail',
-                priority=50  # Medium priority for recovery jobs
-            )
-        except Exception as e:
-            logger.error(f"Error requeuing thumbnail job for {document_id}: {e}")
-            return None
-
-
-# Registry of available recovery handlers
+# Registry of available recovery handlers (Tier 1A artifacts only)
+#
+# NOTE: Thumbnails (Tier 1B) are NOT registered here because:
+# - Thumbnails are disposable cache, not derived artifacts
+# - Missing thumbnails are cache misses, not corruption
+# - Thumbnail regeneration happens on-demand via the UI
+# - No recovery framework is needed or appropriate
+#
+# See docs/architecture/derived-artifact-contract.md for the full tier classification.
 RECOVERY_HANDLERS = {
-    'thumbnail': ThumbnailRecovery,
-    # Future handlers can be added here:
+    # Tier 1A handlers - expensive artifacts that warrant recovery:
     # 'embedding': EmbeddingRecovery,
     # 'ocr': OCRRecovery,
     # 'object_detection': ObjectDetectionRecovery,
+    # 'transcription': TranscriptionRecovery,
 }
 
 
@@ -476,11 +400,15 @@ def get_recovery_handler(artifact_type: str, backend) -> Optional[BaseArtifactRe
     Get a recovery handler for an artifact type.
 
     Args:
-        artifact_type: Type of artifact ('thumbnail', 'embedding', etc.)
+        artifact_type: Type of artifact ('embedding', 'ocr', 'object_detection', etc.)
         backend: Storage backend instance
 
     Returns:
-        Recovery handler instance, or None if not supported
+        Recovery handler instance, or None if not supported (including thumbnails)
+
+    Note:
+        Thumbnails (Tier 1B) are not supported by this function.
+        Thumbnail regeneration happens on-demand, not via recovery framework.
     """
     handler_class = RECOVERY_HANDLERS.get(artifact_type.lower())
     if handler_class:

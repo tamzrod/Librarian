@@ -1,10 +1,16 @@
 """
 CLI commands for Librarian derived artifact recovery.
 
+This CLI manages recovery for Tier 1A derived artifacts only.
+Thumbnails (Tier 1B) are NOT supported - they regenerate on demand.
+
 Usage:
-    python -m core.cli repair thumbnails [--dry-run] [--fix]
     python -m core.cli repair list
-    python -m core.cli detect thumbnails
+    python -m core.cli repair embedding [--fix]
+    python -m core.cli detect embedding
+
+NOTE: Thumbnails are not managed by this CLI. They are disposable cache
+that regenerates automatically on demand. See docs/architecture/derived-artifact-contract.md
 """
 
 import argparse
@@ -31,20 +37,33 @@ def setup_logging(verbose: bool = False):
 
 
 def cmd_list(args):
-    """List available artifact types for recovery."""
-    print("\nAvailable artifact types for recovery:\n")
+    """List available artifact types for recovery (Tier 1A only)."""
+    print("\nAvailable artifact types for recovery (Tier 1A only):\n")
     print(f"  {'Artifact Type':<20} {'Handler':<20}")
     print(f"  {'-'*20} {'-'*20}")
     
-    for artifact_type in RECOVERY_HANDLERS:
-        print(f"  {artifact_type:<20} {RECOVERY_HANDLERS[artifact_type].__name__}")
+    if not RECOVERY_HANDLERS:
+        print("  (No Tier 1A handlers currently registered)")
+        print("  See docs/architecture/derived-artifact-contract.md for tier classification.")
+    else:
+        for artifact_type in RECOVERY_HANDLERS:
+            print(f"  {artifact_type:<20} {RECOVERY_HANDLERS[artifact_type].__name__}")
     
+    print()
+    print("NOTE: Thumbnails are Tier 1B and NOT managed by this CLI.")
+    print("      Thumbnails regenerate automatically on demand.")
     print()
 
 
 def cmd_detect(args):
     """Detect artifact state for an artifact type."""
     setup_logging(args.verbose)
+    
+    if not args.artifact_type:
+        print("Error: artifact_type is required for detect command")
+        print("Run 'librarian list' to see available types.")
+        print("\nNOTE: Thumbnails are Tier 1B and regenerate on demand - no detect needed.")
+        return 1
     
     backend = get_backend(args)
     if not backend:
@@ -53,7 +72,12 @@ def cmd_detect(args):
     handler = get_recovery_handler(args.artifact_type, backend)
     if not handler:
         print(f"Error: Unknown artifact type: {args.artifact_type}")
-        print(f"Available types: {', '.join(RECOVERY_HANDLERS.keys())}")
+        if RECOVERY_HANDLERS:
+            print(f"Available types: {', '.join(RECOVERY_HANDLERS.keys())}")
+        else:
+            print("No Tier 1A recovery handlers are currently registered.")
+            print("See docs/architecture/derived-artifact-contract.md")
+        print("\nNOTE: Thumbnails are Tier 1B and NOT managed by this CLI.")
         return 1
     
     print(f"\nDetecting {args.artifact_type} artifacts...")
@@ -102,6 +126,12 @@ def cmd_repair(args):
     """Repair missing artifacts for an artifact type."""
     setup_logging(args.verbose)
     
+    if not args.artifact_type:
+        print("Error: artifact_type is required for repair command")
+        print("Run 'librarian list' to see available types.")
+        print("\nNOTE: Thumbnails are Tier 1B and regenerate on demand - no repair needed.")
+        return 1
+    
     backend = get_backend(args)
     if not backend:
         return 1
@@ -109,7 +139,12 @@ def cmd_repair(args):
     handler = get_recovery_handler(args.artifact_type, backend)
     if not handler:
         print(f"Error: Unknown artifact type: {args.artifact_type}")
-        print(f"Available types: {', '.join(RECOVERY_HANDLERS.keys())}")
+        if RECOVERY_HANDLERS:
+            print(f"Available types: {', '.join(RECOVERY_HANDLERS.keys())}")
+        else:
+            print("No Tier 1A recovery handlers are currently registered.")
+            print("See docs/architecture/derived-artifact-contract.md")
+        print("\nNOTE: Thumbnails are Tier 1B and NOT managed by this CLI.")
         return 1
     
     # First detect missing artifacts
@@ -199,8 +234,8 @@ def main():
     repair_parser.add_argument(
         'artifact_type',
         nargs='?',
-        default='thumbnail',
-        help='Artifact type to repair (default: thumbnail)'
+        default=None,
+        help='Artifact type to repair (e.g., embedding, ocr)'
     )
     repair_parser.add_argument(
         '--fix',
@@ -222,8 +257,8 @@ def main():
     detect_parser.add_argument(
         'artifact_type',
         nargs='?',
-        default='thumbnail',
-        help='Artifact type to detect (default: thumbnail)'
+        default=None,
+        help='Artifact type to detect (e.g., embedding, ocr)'
     )
     
     # List command
