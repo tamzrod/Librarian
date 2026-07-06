@@ -1747,9 +1747,56 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error claiming job: {e}")
             return None
     
+    def cancel_jobs_for_document(self, document_id: int, job_type: str = None) -> int:
+        """Cancel all jobs for a document, optionally filtering by job type.
+
+        This is used by the artifact recovery system to clear stale jobs
+        before requeuing new ones.
+
+        Args:
+            document_id: ID of the document
+            job_type: Optional job type to filter by (e.g., 'generate_thumbnail')
+
+        Returns:
+            Number of jobs cancelled
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            now = _to_postgres_timestamp(datetime.now(timezone.utc))
+
+            if job_type:
+                cur.execute("""
+                    UPDATE document_jobs
+                    SET status = %s, completed_at = %s
+                    WHERE document_id = %s
+                    AND job_type = %s
+                    AND status IN ('QUEUED', 'IN_PROGRESS')
+                """, (JobStatus.CANCELLED, now, document_id, job_type))
+            else:
+                cur.execute("""
+                    UPDATE document_jobs
+                    SET status = %s, completed_at = %s
+                    WHERE document_id = %s
+                    AND status IN ('QUEUED', 'IN_PROGRESS')
+                """, (JobStatus.CANCELLED, now, document_id))
+
+            cancelled = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            logger.debug(f"Cancelled {cancelled} jobs for document {document_id}" +
+                        (f" (type: {job_type})" if job_type else ""))
+            return cancelled
+
+        except Exception as e:
+            logger.error(f"Error cancelling jobs for document {document_id}: {e}")
+            return 0
+
     def complete_job(self, job_id: int, success: bool = True, error_message: str = None) -> bool:
         """Mark a job as completed or failed (Phase 3C: retry logic).
-        
+
         Args:
             job_id: ID of the job to complete
             success: True if job succeeded, False if failed
