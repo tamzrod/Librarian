@@ -74,6 +74,6 @@ CREATE INDEX IF NOT EXISTS idx_object_detections_deleted_at ON object_detections
 CREATE INDEX IF NOT EXISTS idx_object_detections_label_artifact ON object_detections(label, artifact_id);
 
 -- Insert migration record
-INSERT INTO schema_migrations (version, applied_at, description)
-VALUES (12, CURRENT_TIMESTAMP, 'Add object detection table and indexes')
-ON CONFLICT (version) DO NOTHING;
+INSERT INTO schema_migrations (migration_name)
+VALUES ('012_object_detection.sql')
+ON CONFLICT (migration_name) DO NOTHING;
