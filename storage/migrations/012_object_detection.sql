@@ -21,7 +21,7 @@ $$;
 -- This table stores individual object detection observations
 CREATE TABLE IF NOT EXISTS object_detections (
     id SERIAL PRIMARY KEY,
-    artifact_id INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+    artifact_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     
     -- Operation Plugin Foundation: Provenance fields
     plugin_name VARCHAR(255) NOT NULL,
