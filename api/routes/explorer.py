@@ -7,7 +7,7 @@ Models a familiar file-browser experience similar to VSCode, Finder, or Windows 
 import os
 from typing import Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
