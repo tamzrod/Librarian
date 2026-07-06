@@ -100,10 +100,24 @@ async def get_thumbnail(path: str):
 
     E5: Thumbnail endpoint for serving generated thumbnails.
     Thumbnails are stored in librarian-data/thumbnails directory.
-    
+
+    API CONTRACT - Cache Miss Handling:
+    ================================
+    Thumbnails are DISPOSABLE CACHE, not evidence.
+    A missing thumbnail is a CACHE MISS, NOT corruption.
+
+    If file exists:
+        - Return thumbnail
+    If file missing:
+        - Return placeholder image (1x1 pixel JPEG)
+        - Optionally queue regeneration job (if document_id can be extracted)
+
+    The database thumbnail_path is ADVISORY ONLY.
+    Filesystem existence is AUTHORITATIVE.
+
     Browser request: /thumbnails/<filename>
     Filesystem path: /librarian-data/thumbnails/<filename>
-    
+
     Note: nginx proxy_pass strips the /thumbnails/ prefix, so 'path' already
     contains the full relative path including 'thumbnails/' if stored with it.
     We strip any leading 'thumbnails/' to avoid double path segments.
@@ -112,31 +126,126 @@ async def get_thumbnail(path: str):
     if not LIBRARIAN_DATA_ROOT:
         logger.error("LIBRARIAN_DATA_ROOT not configured")
         return JSONResponse({"error": "Thumbnail service misconfigured"}, status_code=500)
-    
+
     # Ensure path is a safe string (prevent path traversal)
     safe_path = str(path).replace("..", "")
-    
+
     # Strip leading 'thumbnails/' to avoid double path segments
     # nginx proxy_pass with trailing slash strips /thumbnails/ from the URL
     # If database stored 'thumbnails/xxx.jpg' and frontend calls /thumbnails/thumbnails/xxx.jpg,
     # nginx sends 'thumbnails/xxx.jpg' which would create /librarian-data/thumbnails/thumbnails/xxx.jpg
     if safe_path.startswith("thumbnails/"):
         safe_path = safe_path[len("thumbnails/"):]
-    
+
     # Serve from librarian-data/thumbnails directory
     thumbnail_full_path = Path(LIBRARIAN_DATA_ROOT) / "thumbnails" / safe_path
-    
+
     if not thumbnail_full_path.is_absolute():
         logger.error(f"Invalid thumbnail path construction: {thumbnail_full_path}")
         return JSONResponse({"error": "Invalid thumbnail path"}, status_code=500)
-    
+
+    # CACHE MISS HANDLING: Check filesystem existence
+    # This is the authoritative check - database thumbnail_path is advisory only
     if thumbnail_full_path.exists() and thumbnail_full_path.is_file():
+        # Cache hit - return the thumbnail
         return FileResponse(
             str(thumbnail_full_path),
             media_type="image/jpeg",
             filename=thumbnail_full_path.name
         )
-    return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
+
+    # Cache miss - thumbnail file does not exist on filesystem
+    # This is NOT corruption - thumbnails are disposable cache
+    logger.info(f"Thumbnail cache miss: {thumbnail_full_path}")
+
+    # Try to extract document_id from filename (format: {doc_id}_{original_name}_thumb.jpg)
+    document_id = _extract_document_id_from_thumbnail_filename(safe_path)
+
+    # Attempt to queue regeneration job
+    if document_id:
+        queue_regeneration = os.environ.get("THUMBNAIL_AUTO_REGENERATE", "true").lower() == "true"
+        if queue_regeneration:
+            try:
+                _queue_thumbnail_regeneration(document_id)
+                logger.info(f"Queued thumbnail regeneration for document {document_id}")
+            except Exception as e:
+                logger.warning(f"Failed to queue thumbnail regeneration: {e}")
+
+    # Return placeholder image
+    return _get_thumbnail_placeholder()
+
+
+def _extract_document_id_from_thumbnail_filename(filename: str) -> Optional[int]:
+    """
+    Extract document ID from thumbnail filename.
+
+    Thumbnail filename format: {document_id}_{original_name}_thumb.jpg
+    Example: 1017_IMG_001_thumb.jpg -> document_id = 1017
+
+    Returns:
+        Document ID as integer, or None if extraction fails
+    """
+    try:
+        # Get just the filename (not path)
+        name = filename.rsplit("/", 1)[-1] if "/" in filename else filename
+        # Remove extension
+        name = name.rsplit(".", 1)[0]
+        # Remove _thumb suffix
+        if name.endswith("_thumb"):
+            name = name[:-6]
+        # Split by underscore and get first part (document ID)
+        parts = name.split("_")
+        if parts:
+            return int(parts[0])
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def _queue_thumbnail_regeneration(document_id: int):
+    """
+    Queue a thumbnail regeneration job for a document.
+
+    This is called when a cache miss is detected.
+    """
+    from api.app_state import get_app_state
+
+    state = get_app_state()
+    if state.backend and hasattr(state.backend, 'create_jobs_for_document'):
+        # Create generate_thumbnail job with high priority
+        job_ids = state.backend.create_jobs_for_document(document_id, ['generate_thumbnail'])
+        if job_ids:
+            logger.info(f"Created thumbnail regeneration job {job_ids[0]} for document {document_id}")
+
+
+def _get_thumbnail_placeholder() -> FileResponse:
+    """
+    Return a 1x1 pixel placeholder JPEG image.
+
+    This is returned when a thumbnail is not found (cache miss).
+    The placeholder is embedded as bytes to avoid external dependencies.
+    """
+    # 1x1 pixel gray JPEG (valid JPEG format)
+    # This is a minimal valid JPEG file
+    import io
+    PLACEHOLDER_JPEG = (
+        b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00'
+        b'\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n'
+        b'\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d'
+        b'\x1a\x1c\x1c\x20\x1c#\x1c ,#\x1c\x1c\x1c\x1c\x1c\x1c\x1c\x1c\x1c'
+        b'\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00'
+        b'\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        b'\x00\x00\x00\x00\x00'
+        b'\xff\xc4\x00\x14\x10\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        b'\x00\x00\x00\x00\x00'
+        b'\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xd2\xcf '
+        b'\xff\xd9'
+    )
+    return FileResponse(
+        io.BytesIO(PLACEHOLDER_JPEG),
+        media_type="image/jpeg",
+        filename="placeholder.jpg"
+    )
 
 
 @app.get("/")
