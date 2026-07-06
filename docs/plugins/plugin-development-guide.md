@@ -9,6 +9,48 @@
 
 This guide documents how to create new plugins for Librarian. A plugin transforms artifacts into structured evidence through the processing pipeline.
 
+## Artifact Tier Classification
+
+Every plugin produces an artifact that falls into one of two tiers:
+
+| Tier | Name | Characteristics | Recovery Required | Examples |
+|------|------|-----------------|------------------|----------|
+| **1A** | Derived Artifacts | Expensive to generate, may require GPU/models, recovery justified | Yes | embeddings, OCR, object detection |
+| **1B** | Disposable Cache | Cheap to regenerate, no external dependencies | No | thumbnails, previews |
+
+### Tier 1A Plugins (Derived Artifacts)
+
+**When to use:**
+- Plugin requires GPU or significant computation
+- Plugin uses external APIs or models
+- Plugin output is expensive to regenerate
+- Losing the output is a cache miss (NOT corruption)
+
+**Requirements:**
+- Must provide recovery handler for the artifact
+- Must implement integrity auditing
+- Must document regeneration cost
+
+### Tier 1B Plugins (Disposable Cache)
+
+**When to use:**
+- Plugin output is cheap to generate (<1 second CPU)
+- Plugin has no external dependencies
+- Plugin output is purely for UX (not evidence)
+- Losing the output should trigger automatic regeneration
+
+**Requirements:**
+- NO recovery handler
+- NO integrity auditing
+- Must provide placeholder while regenerating
+- Document that output is disposable cache
+
+**Examples of Tier 1B:**
+- Thumbnail generation (see [Thumbnail Contract](../../architecture/derived-artifact-contract.md#thumbnail-specific-contract))
+- Preview image generation
+- Resized image generation
+- Filmstrip generation
+
 ## Plugin Anatomy
 
 ```
@@ -818,3 +860,9 @@ def process(self, document_id, artifact_path):
 ---
 
 *This guide provides the complete lifecycle for creating Librarian plugins.*
+
+---
+
+## Glossary
+
+See [Architecture Glossary](../architecture/glossary.md) for definitions of key terms including artifact, cache miss, enrichment, and corruption.

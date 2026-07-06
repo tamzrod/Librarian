@@ -2,109 +2,149 @@
 
 ## Overview
 
-This document describes the derived artifact recovery system for Librarian. The system provides detection and repair capabilities for missing or orphaned derived artifacts such as thumbnails, embeddings, OCR results, and object detection data.
+This document describes the optional recovery system for expensive optional data in Librarian.
+
+> **IMPORTANT: This is NOT about corruption.**
+> 
+> Missing optional data (embedding, OCR, object detection) is ALWAYS a cache miss, NEVER corruption.
+> 
+> Recovery is provided for efficiency, not because missing data is corruption.
+
+See [Derived Artifact Contract](../architecture/derived-artifact-contract.md) for the authoritative statement.
+
+---
+
+## Core Principle
+
+**Artifact is authoritative. Everything else is optional.**
+
+| Category | Authority | Missing = |
+|----------|-----------|------------|
+| Original artifact | Authoritative | **CORRUPTION** |
+| Embedding | Optional | Cache miss |
+| OCR | Optional | Cache miss |
+| Object Detection | Optional | Cache miss |
+| Thumbnail | Optional | Cache miss |
+
+**Recovery framework exists for EFFICIENCY, not because it's corruption.**
+
+When optional data is missing:
+1. Expensive optional data: Recovery framework requeues jobs efficiently
+2. Cheap optional data (thumbnails): On-demand regeneration suffices
+
+---
+
+## What IS Recovery
+
+Recovery is a convenience feature for expensive optional data.
+
+It allows:
+- Efficient bulk requeuing of expensive regeneration jobs
+- Detection of missing expensive data
+- Prioritized job scheduling for recovery
+
+**Recovery does NOT mean the data was corrupted.**
+
+---
+
+## Supported Data Types
+
+This recovery framework covers **expensive optional data only**.
+
+| Artifact Type | Generation Cost | Missing = | Recovery |
+|---------------|----------------|-----------|----------|
+| embedding | High | Cache miss | Provided |
+| ocr | High | Cache miss | Provided |
+| object_detection | High | Cache miss | Provided |
+| transcription | High | Cache miss | Provided |
+| geolocation | Medium | Cache miss | Provided |
+| thumbnail | Low | Cache miss | **NOT Provided** |
+| preview | Low | Cache miss | **NOT Provided** |
+
+> **Thumbnails and other cheap optional data are NOT managed by this framework.**
+> They are cheap to regenerate and handled by on-demand regeneration.
+
+---
 
 ## Architecture Principles
 
 ### Core Tenets
 
-1. **Artifact is authoritative**: The filesystem contains ground truth for derived artifacts.
-2. **Metadata is a cache**: Database records are regeneratable from source artifacts.
-3. **Selective repair**: Only missing artifacts are repaired; healthy artifacts are never regenerated.
-4. **Idempotent operations**: Recovery can be run multiple times safely.
+1. **Artifact is authoritative**: The original artifact is ground truth.
+2. **Optional data is advisory**: Embeddings, OCR, etc. are not evidence.
+3. **Missing = cache miss**: Optional data missing is NOT corruption.
+4. **Recovery = efficiency**: Recovery exists to efficiently requeue expensive jobs.
+5. **Selective repair**: Only missing data is requeued; healthy data is never regenerated.
 
 ### Design Philosophy
 
-Derived artifacts (thumbnails, embeddings, OCR, etc.) are:
+Expensive optional data (embeddings, OCR, object detection):
 - **Optional**: The system functions without them; they enhance but don't block operation
-- **Recoverable**: Any derived artifact can be regenerated from its source
-- **Volatile**: May be lost due to volume deletion, plugin upgrades, or accidental deletion
+- **Not evidence**: They are advisory metadata, not authoritative
+- **Expensive to regenerate**: API calls, model inference, GPU usage
+- **Recovery is a convenience**: Efficient bulk requeuing, not corruption repair
 
-The database contains metadata (paths, references) that becomes stale when artifacts are lost. Recovery synchronizes the metadata with filesystem reality.
-
-## Artifact Types
-
-The system supports recovery for the following artifact types:
-
-| Artifact Type | Storage Location | Metadata Field | Supported Documents |
-|---------------|-----------------|----------------|---------------------|
-| thumbnail | `/librarian-data/thumbnails/` | `documents.thumbnail_path` | images, videos |
-| embedding | `/librarian-data/embeddings/` | `documents.embedding_path` | text, structured |
-| ocr | `/librarian-data/ocr/` | `documents.ocr_path` | images, documents |
-| object_detection | `/librarian-data/detections/` | `documents.detection_path` | images, videos |
-| transcription | `/librarian-data/transcriptions/` | `documents.transcription_path` | audio, video |
+---
 
 ## Detection Workflow
 
 ### Purpose
 
-Detection identifies the state of all artifacts without making changes. It categorizes artifacts as:
+Detection identifies the state of expensive optional data. It is informational only.
+
+### Classification
+
+Detection categorizes optional data as:
 
 - **VALID**: Both metadata and file exist and match
-- **MISSING**: Metadata exists but file is missing (orphaned metadata)
+- **MISSING**: Metadata exists but file is missing (stale metadata)
 - **ORPHAN**: File exists but no metadata reference
-- **PENDING**: Neither metadata nor file exists (expected state for unprocessed documents)
+- **PENDING**: Neither metadata nor file exists (expected - not enriched yet)
 
-### Detection Process
-
-```
-1. List all files in artifact storage directory
-   ↓
-2. Query database for all artifact metadata records
-   ↓
-3. For each metadata record:
-   - If file exists → VALID
-   - If file missing → MISSING
-   ↓
-4. For each filesystem file:
-   - If not referenced in metadata → ORPHAN
-```
-
-### Example Output
+### What Detection Tells You
 
 ```
-================================================================
-Detection Results: thumbnail
-================================================================
-  Total documents scanned:     5591
-  Total files on disk:        1
-  Valid artifacts:             1
-  Missing artifacts:           5590
-  Orphan files:                0
-  Health percentage:           0.02%
+Detection shows: "5491 embeddings MISSING"
+                    ↓
+This means: 5491 cache misses
+This is NOT: Corruption
+This needs: Optional regeneration (if desired)
 ```
+
+---
 
 ## Recovery Workflow
 
 ### Purpose
 
-Recovery repairs missing artifacts by:
-1. Clearing stale metadata
-2. Requeuing generation jobs
+Recovery efficiently requeues expensive regeneration jobs for missing optional data.
+
+**This is NOT repairing corruption. This is requeuing cache misses.**
 
 ### Recovery Process
 
 ```
-1. Run detection to identify MISSING artifacts
+1. Run detection to identify MISSING expensive data
    ↓
-2. For each MISSING artifact:
-   a. Clear thumbnail_path in documents table (set to NULL)
-   b. Cancel any existing queued/in-progress jobs for this artifact
-   c. Create new job with priority 50 (medium priority)
+2. For each MISSING record:
+   a. Clear stale metadata (optional)
+   b. Create new job with appropriate priority
    ↓
-3. Report results (repaired, failed, skipped)
+3. Report results
 ```
 
 ### Safety Mechanisms
 
 - **Dry-run mode**: Always run with `--dry-run` first to preview changes
-- **Selective repair**: Only MISSING artifacts are touched
+- **Selective repair**: Only MISSING data is touched
 - **No deletion**: Orphan files are reported but not automatically deleted
 - **Idempotent**: Can be run multiple times safely
 
+---
+
 ## CLI Usage
 
-### List Available Artifact Types
+### List Available Data Types
 
 ```bash
 python -m core.cli list
@@ -112,65 +152,71 @@ python -m core.cli list
 
 Output:
 ```
-Available artifact types for recovery:
+Available data types for optional recovery:
 
-  Artifact Type          Handler                
-  --------------------   --------------------
-  thumbnail              ThumbnailRecovery     
+  Artifact Type          Missing =           Recovery Provided
+  --------------------   -----------------   ----------------
+  embedding              Cache miss          Yes
+  ocr                    Cache miss          Yes
+  object_detection       Cache miss          Yes
+  transcription          Cache miss          Yes
+
+NOTE: Thumbnails are cheap - use on-demand regeneration instead.
 ```
 
-### Detect Artifact State
+### Detect State
 
 ```bash
-# Detect thumbnails (default)
-python -m core.cli detect thumbnail
+# Detect embeddings (example)
+python -m core.cli detect embedding
 
 # Detect with verbose output
-python -m core.cli detect thumbnail -v
-
-# Detect with custom database connection
-python -m core.cli detect thumbnail --db-host localhost --db-port 5432
+python -m core.cli detect embedding -v
 ```
 
-### Repair Missing Artifacts
+### Repair Missing Data
 
 ```bash
 # Dry run (default) - shows what would be done
-python -m core.cli repair thumbnail
+python -m core.cli repair embedding
 
-# Execute repairs
-python -m core.cli repair thumbnail --fix
+# Execute
+python -m core.cli repair embedding --fix
 ```
+
+---
 
 ## Expected States
 
 ### Healthy State
 
-After successful recovery:
-
 ```
 ================================================================
-Detection Results: thumbnail
+Detection Results: embedding
 ================================================================
   Total documents scanned:     5591
   Total files on disk:        5591
-  Valid artifacts:             5591
-  Missing artifacts:           0
-  Orphan files:                0
-  Health percentage:           100.0%
+  Valid:                       5591
+  Missing:                        0
+  Orphan files:                   0
 ```
 
-### Post-Recovery Job Queue
+### Cache Miss State
 
-After repair, jobs are queued for regeneration:
+```
+================================================================
+Detection Results: embedding
+================================================================
+  Total documents scanned:     5591
+  Total files on disk:          100
+  Valid:                         100
+  Missing:                      5491  ← Cache misses (NOT corruption)
+  Orphan files:                    0
+```
 
-| Priority | Purpose | Typical Source |
-|----------|---------|----------------|
-| 100 | Viewport thumbnails | User browsing |
-| 50 | Recovered artifacts | Recovery repair |
-| 10 | Background generation | Initial processing |
+**Both states are valid.** Missing = cache miss, not corruption.
 
-Workers will process priority 50 jobs as they become available.
+---
 
 ## Failure Modes
 
@@ -186,196 +232,92 @@ Workers will process priority 50 jobs as they become available.
 
 | Failure | Cause | Resolution |
 |---------|-------|------------|
-| Cannot clear metadata | Database constraint | Manual database update required |
 | Cannot requeue job | Duplicate job exists | Already handled by job cancellation |
-| Source file missing | Document deleted | Artifact cannot be recovered; metadata cleared |
+| Source file missing | Document deleted | Metadata cleared automatically |
 
-### Recovery Scenarios
-
-#### Lost Thumbnails Volume
-
-**Symptom**: Detection shows all thumbnails MISSING
-```
-Missing artifacts: 5590
-Health percentage: 0.02%
-```
-
-**Recovery**:
-1. Mount new `/librarian-data` volume
-2. Run `python -m core.cli repair thumbnail --fix`
-3. Workers regenerate all thumbnails
-
-**Timeline**: Depends on worker capacity; can take hours for large libraries
-
-#### Partial Volume Loss
-
-**Symptom**: Detection shows some thumbnails MISSING
-```
-Missing artifacts: 500
-Health percentage: 91.1%
-```
-
-**Recovery**:
-1. Run `python -m core.cli repair thumbnail --fix`
-2. Only 500 jobs are requeued
-
-#### Plugin Upgrade
-
-**Symptom**: New plugin version generates incompatible artifacts
-```
-Valid artifacts: 5591 (may be corrupted by new version)
-Orphan files: 5591 (old format)
-```
-
-**Recovery**:
-1. Plan: Decide whether to regenerate or keep old artifacts
-2. If regenerating: Clear metadata, then run repair
-3. New jobs will use new plugin version
+---
 
 ## Runtime Validation
 
-### Quick Health Check
+### Quick Check
 
 ```bash
-# Check thumbnail health
-python -m core.cli detect thumbnail | grep "Health percentage"
+# Check optional data state
+python -m core.cli detect embedding | grep "Missing"
 ```
 
-### Detailed Validation
+### What Missing Means
 
-```bash
-# Full detection with verbose output
-python -m core.cli detect thumbnail -v
-```
+> Missing optional data = Cache miss (NOT corruption)
+> 
+> Missing = The data hasn't been generated yet, or was regenerated.
+> 
+> This is expected behavior for optional data.
 
-### Integration Testing
-
-To verify the recovery system works:
-
-1. Create a test document
-2. Generate its thumbnail
-3. Verify thumbnail exists
-4. Manually delete the thumbnail file
-5. Run detection - should show 1 MISSING
-6. Run repair
-7. Verify job is queued
-8. Wait for worker to process
-9. Verify thumbnail regenerated
+---
 
 ## API Integration
-
-For programmatic access, use the recovery module directly:
 
 ```python
 from storage.postgres_backend import PostgresBackend
 from core.recovery import get_recovery_handler
 
 backend = PostgresBackend()
-handler = get_recovery_handler('thumbnail', backend)
 
-# Detect
-report = handler.detect()
-print(f"Missing: {len(report.missing)}")
+# Get handler for expensive optional data
+handler = get_recovery_handler('embedding', backend)
 
-# Repair
-if report.missing:
-    handler.repair(report.missing, dry_run=False)
+if handler:
+    report = handler.detect()
+    print(f"Missing: {len(report.missing)} (cache misses)")
+    
+    # Requeue if desired (for efficiency)
+    if report.missing:
+        handler.repair(report.missing, dry_run=False)
 
 backend.close()
 ```
 
+---
+
 ## Extending the Framework
 
-To add support for a new artifact type:
+To add support for new expensive optional data:
 
 1. Create a new class inheriting from `BaseArtifactRecovery`
 2. Implement required abstract methods
 3. Register in `RECOVERY_HANDLERS` dict
 
-```python
-class EmbeddingRecovery(BaseArtifactRecovery):
-    ARTIFACT_TYPE = "embedding"
-    ARTIFACT_SUBDIR = "embeddings"
+**IMPORTANT:** Only add expensive optional data here.
 
-    def get_artifact_metadata(self):
-        # Query embeddings table
-        pass
+**DO NOT add:**
+- Thumbnails (use on-demand regeneration)
+- Previews (use on-demand regeneration)
+- Any cheap-to-regenerate data
 
-    def get_artifact_path_field(self):
-        return "embedding_path"
-
-    def is_supported_artifact(self, document_id):
-        # Check if text/structured type
-        pass
-
-    def clear_artifact_metadata(self, document_id):
-        # Clear embedding_path
-        pass
-
-    def requeue_artifact_job(self, document_id):
-        # Requeue generate_embeddings job
-        pass
-```
+---
 
 ## Security Considerations
 
-- **Read-only detection**: Detection queries only; no modifications
+- **Read-only detection**: Detection queries only; no modifications unless --fix is used
 - **Controlled repairs**: Only metadata cleared and jobs requeued
 - **No file deletion**: Orphan files are never automatically deleted
 - **Audit trail**: All operations logged with document IDs
 
-## Monitoring
-
-### Log Format
-
-```
-2024-01-15 10:30:00 - INFO - Detection complete: 1 valid, 5590 missing, 0 orphans for thumbnail
-2024-01-15 10:30:05 - INFO - Cleared metadata for document 1234
-2024-01-15 10:30:05 - INFO - Requeued job 5678 for document 1234
-```
-
-### Metrics to Track
-
-- `librarian_artifact_health{type}`: Health percentage per artifact type
-- `librarian_artifact_missing{type}`: Count of missing artifacts
-- `librarian_recovery_jobs_created{type}`: Jobs created by recovery
-
-## Troubleshooting
-
-### "Cannot open directory" Error
-
-**Cause**: `/librarian-data` volume not mounted
-
-**Solution**:
-```bash
-# Check if directory exists
-ls -la /librarian-data
-
-# Check volume mounts in docker-compose
-docker inspect librarian-api | grep -A10 Mounts
-```
-
-### "Zero valid artifacts" Warning
-
-**Cause**: Expected state after volume loss
-
-**Solution**: Run recovery to requeue missing artifacts
-
-### Recovery Jobs Not Processing
-
-**Cause**: Workers may be paused or scaled to zero
-
-**Solution**:
-```bash
-# Check worker status
-docker ps | grep librarian-worker
-
-# Check job queue
-curl http://localhost:8001/api/v1/jobs/status
-```
+---
 
 ## References
 
-- [Artifact Inventory Model](../architecture/artifact-inventory.md)
-- [Operation Plugin Foundation](./operation-plugin-foundation/)
-- [Deployment Lifecycle Audit](./deployment-lifecycle-audit.md)
+- [Derived Artifact Contract](../architecture/derived-artifact-contract.md) - Authority vs cost principles
+- [Storage Lifecycle Matrix](../architecture/storage-lifecycle-matrix.md) - Artifact classification
+- [Artifact Lifecycle](../architecture/artifact-lifecycle.md) - Document lifecycle
+
+---
+
+*This document describes convenience recovery for expensive optional data. Missing optional data is always a cache miss, never corruption.
+
+---
+
+## Glossary
+
+See [Architecture Glossary](../architecture/glossary.md) for definitions of key terms.

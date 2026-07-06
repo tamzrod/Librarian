@@ -1,5 +1,10 @@
 # Artifact Lifecycle
 
+**Version**: 2.0  
+**Last Updated**: 2026-07-06
+
+---
+
 ## Overview
 
 This document describes the canonical lifecycle of artifacts in Librarian, from discovery to archival.
@@ -8,42 +13,49 @@ The database is the canonical inventory of known artifacts. The database is no l
 
 ---
 
-## Core Principle: Discovery Precedes Understanding
+## Core Principle: Authority vs Cost
 
-Artifacts are discovered first. Understanding arrives later through independent enrichment workers.
+**Artifact is authoritative.**
 
-**A file does not need to be understood to exist.**
-**A file does not need a parser to become an artifact.**
+Everything attached to artifact is optional metadata, cache, or enrichment.
+
+**Generation cost changes recovery strategy.**
+
+**Generation cost does NOT change authority level.**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AUTHORITY MODEL                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  AUTHORITATIVE:                                                    │
+│  • Original artifact file                                           │
+│  • Document row in database                                        │
+│  • SHA256 hash                                                     │
+│                                                                     │
+│  OPTIONAL (ALL same authority level - NONE):                       │
+│  • embeddings (expensive to regenerate)                           │
+│  • OCR (expensive to regenerate)                                   │
+│  • object detection (expensive to regenerate)                        │
+│  • transcription (expensive to regenerate)                          │
+│  • thumbnails (cheap to regenerate)                                │
+│  • previews (cheap to regenerate)                                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Architectural Model
+## What IS Corruption
 
-### Previous Assumption (Incorrect)
+Corruption only exists when:
 
-```
-Filesystem
-    ↓
-Parser
-    ↓
-Database record created
-```
+- Original evidence missing (artifact file deleted)
+- Document row missing (database record deleted)
+- SHA256 mismatch (artifact modified)
+- Artifact identity mismatch (path/content mismatch)
 
-### New Architecture (Correct)
-
-```
-Filesystem
-    ↓
-CollectionWatcher
-    ↓
-Document record created immediately
-    ↓
-Parser selection
-    ↓
-Worker enrichment
-    ↓
-Knowledge accumulation
-```
+**Missing optional data (embedding, OCR, thumbnail) is ALWAYS a cache miss, NEVER corruption.**
 
 ---
 
@@ -53,6 +65,15 @@ Knowledge accumulation
 **Knowledge is mutable.**
 
 The artifact exists independently of our understanding of it.
+
+---
+
+## Discovery Precedes Understanding
+
+Artifacts are discovered first. Understanding arrives later through independent enrichment workers.
+
+**A file does not need to be understood to exist.**
+**A file does not need a parser to become an artifact.**
 
 ---
 
@@ -112,22 +133,33 @@ Parser registry identifies the artifact type based on file extension.
 - Document identity never changes
 - Parser selection is based on extension mapping
 
-### 3. ENRICHED
+### 3. ENRICHED (Optional)
 
 **State:** `CONTENT_EXTRACTED`, `ENTITY_EXTRACTED`, etc.
 
-Independent workers add knowledge to existing artifacts.
+Workers add knowledge to artifacts asynchronously. All enrichment is optional.
 
 **Worker Examples:**
 
-| Worker | Enrichment |
-|--------|------------|
-| hash | md5, sha1, sha256 |
-| exif | camera, GPS, timestamp |
-| ocr | extracted text |
-| object_detection | detected objects |
-| embedding | vector representation |
-| entity_extraction | named entities |
+| Worker | Enrichment | Authority | Cost |
+|--------|------------|-----------|------|
+| hash | md5, sha1, sha256 | Optional | Low |
+| exif | camera, GPS, timestamp | Optional | Low |
+| ocr | extracted text | Optional | High |
+| object_detection | detected objects | Optional | High |
+| embedding | vector representation | Optional | High |
+| entity_extraction | named entities | Optional | Medium |
+| thumbnail | preview image | Optional | Low |
+
+**Critical Distinction:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ALL enrichment is OPTIONAL                                       │
+│ Missing enrichment = cache miss (NOT corruption)                 │
+│ Recovery strategy depends on cost, not authority                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 **Characteristics:**
 - Workers operate using `document_id`
@@ -135,6 +167,7 @@ Independent workers add knowledge to existing artifacts.
 - Workers only enrich existing documents
 - Workers may run independently and asynchronously
 - Workers never depend on other workers
+- Missing enrichment is NEVER corruption
 
 ### 4. ARCHIVED
 
@@ -224,6 +257,7 @@ Workers enrich artifacts.
 - may run independently
 - may run asynchronously
 - never depend on other workers
+- produce OPTIONAL enrichment (never authoritative)
 
 ### Explorer
 
@@ -254,11 +288,11 @@ Dropping a file into the library immediately produces:
 **Even if:**
 - ✗ no parser exists
 - ✗ no worker exists
-- ✗ no preview exists
 - ✗ no enrichment exists
 
 **The artifact exists because it was observed.**
 **Understanding is optional.**
+**Missing enrichment is always a cache miss, never corruption.**
 
 ---
 
@@ -273,6 +307,7 @@ Analysis
 
 Evidence enters inventory immediately.
 Analysis continues over time.
+Optional enrichment does not affect authority.
 ```
 
 ---
@@ -283,13 +318,9 @@ Analysis continues over time.
 DISCOVERED
     ↓ METADATA_INDEXED
 METADATA_INDEXED
-    ↓ CONTENT_EXTRACTED
-CONTENT_EXTRACTED
-    ↓ ENTITY_EXTRACTED
-ENTITY_EXTRACTED
-    ↓ EMBEDDED
-EMBEDDED
-    ↓ COMPLETE
+    ↓ (optional enrichment)
+[ENRICHED] - optional, may be expensive or cheap
+    ↓
 COMPLETE
     ↓ (archived)
 ARCHIVED
@@ -299,12 +330,61 @@ ARCHIVED
 
 ---
 
+## Thumbnail Specific Contract
+
+Thumbnails are **optional enrichment** and follow this contract:
+
+```
+UI requests thumbnail
+    ↓
+Thumbnail exists?
+    YES → return thumbnail
+    NO  → queue generate_thumbnail job
+           return placeholder image
+```
+
+**Worker Contract:**
+```
+generate_thumbnail job flow:
+    1. generate thumbnail
+    2. save thumbnail
+    3. verify thumbnail exists
+    4. mark job COMPLETE
+
+A thumbnail job must NEVER be marked COMPLETE unless the file exists.
+```
+
+**Database Contract:**
+`documents.thumbnail_path` is advisory metadata only.
+- Does NOT guarantee file existence
+- Does NOT guarantee cache validity
+- Filesystem is the source of truth for thumbnail existence
+
+**Success Criteria:**
+> Deleting every thumbnail file in the system should NOT be considered corruption.
+> The only consequence should be placeholder images appearing temporarily
+> and thumbnails regenerating automatically on demand.
+
+---
+
 ## Failure Handling
 
 **Parser failure:** Artifact creation proceeds with `artifact_type: unknown`
 
 **Worker failure:** Artifact remains in current state; retry is scheduled
 
+**Missing enrichment:** Cache miss - regenerate on demand (NOT corruption)
+
 **CollectionWatcher failure:** System alerts; discovery resumes on recovery
 
 **Database failure:** System degraded; discovery buffers locally
+
+---
+
+## References
+
+- [Derived Artifact Contract](./derived-artifact-contract.md) - Authority vs cost principles
+- [Storage Lifecycle Matrix](./storage-lifecycle-matrix.md) - Artifact classification
+- [Derived Artifact Recovery](../operations/derived-artifact-recovery.md) - Recovery for expensive optional data
+- [Plugin Development Guide](../plugins/plugin-development-guide.md)
+- [Architecture Glossary](./glossary.md) - Semantic definitions and terminology
