@@ -78,11 +78,22 @@ class ThumbnailGenerator(BaseWorker):
         """
         Generate a thumbnail for an image document.
 
+        This worker implements the thumbnail contract:
+        1. Generate thumbnail
+        2. Save thumbnail to filesystem
+        3. Verify file exists AND has size > 0
+        4. Only then update database and mark COMPLETE
+
+        A job must NEVER reach COMPLETE before filesystem verification.
+
         Args:
             job: Job dict with document_id and job_type
 
         Returns:
             Dict with generation results
+
+        Raises:
+            RuntimeError: If thumbnail file cannot be verified on filesystem
         """
         document_id = job['document_id']
         job_id = job['id']
@@ -122,15 +133,25 @@ class ThumbnailGenerator(BaseWorker):
             # Generate and save thumbnail
             thumbnail_path = self._generate_thumbnail(full_path, document_id)
 
-            # Save thumbnail path to database (in documents table)
+            # CRITICAL: Verify filesystem state BEFORE updating database
+            # This is the "Worker Contract" - COMPLETE must never occur before filesystem verification
+            full_thumbnail_path = Path(self.librarian_data_root) / thumbnail_path
+            if not self._verify_thumbnail_filesystem(full_thumbnail_path):
+                raise RuntimeError(
+                    f"Thumbnail filesystem verification failed for {full_thumbnail_path}. "
+                    f"Job will NOT be marked complete until file exists with size > 0."
+                )
+
+            # Only update database after filesystem verification passes
             self._save_thumbnail_path(document_id, thumbnail_path)
 
-            logger.info(f"Successfully generated thumbnail for document {document_id}: {thumbnail_path}")
+            logger.info(f"Successfully generated and verified thumbnail for document {document_id}: {thumbnail_path}")
 
             return {
                 'document_id': document_id,
                 'thumbnail_path': thumbnail_path,
-                'success': True
+                'success': True,
+                'verified': True
             }
 
         except Exception as e:
@@ -227,3 +248,40 @@ class ThumbnailGenerator(BaseWorker):
         except Exception as e:
             logger.error(f"Error saving thumbnail path for document {document_id}: {e}")
             raise
+
+    def _verify_thumbnail_filesystem(self, thumbnail_full_path: Path) -> bool:
+        """
+        Verify that a thumbnail file exists on the filesystem with size > 0.
+
+        This is the critical verification step in the Worker Contract.
+        We MUST verify filesystem existence before marking a job COMPLETE.
+
+        Args:
+            thumbnail_full_path: Full filesystem path to the thumbnail
+
+        Returns:
+            True if file exists and has size > 0, False otherwise
+        """
+        try:
+            # Check file exists
+            if not thumbnail_full_path.exists():
+                logger.warning(f"Thumbnail file does not exist: {thumbnail_full_path}")
+                return False
+
+            # Check it is a file (not a directory)
+            if not thumbnail_full_path.is_file():
+                logger.warning(f"Thumbnail path is not a file: {thumbnail_full_path}")
+                return False
+
+            # Check file size > 0
+            file_size = thumbnail_full_path.stat().st_size
+            if file_size == 0:
+                logger.warning(f"Thumbnail file has zero size: {thumbnail_full_path}")
+                return False
+
+            logger.debug(f"Thumbnail filesystem verification passed: {thumbnail_full_path} ({file_size} bytes)")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error verifying thumbnail filesystem state: {e}")
+            return False
