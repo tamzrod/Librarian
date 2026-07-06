@@ -21,6 +21,14 @@ const CATEGORY_ICONS: Record<string, string> = {
   general: '⚙️',
 }
 
+// Status display names and classes
+const STATUS_CONFIG: Record<string, { label: string; className: string; canToggle: boolean }> = {
+  enabled: { label: 'Enabled', className: 'enabled', canToggle: true },
+  disabled: { label: 'Disabled', className: 'disabled', canToggle: true },
+  missing_dependencies: { label: 'Missing Dependencies', className: 'warning', canToggle: false },
+  error: { label: 'Error', className: 'error', canToggle: false },
+}
+
 function Settings() {
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,7 +51,13 @@ function Settings() {
     fetchPlugins()
   }, [fetchPlugins])
 
-  const handleToggle = async (pluginName: string, currentEnabled: boolean) => {
+  const handleToggle = async (pluginName: string, currentEnabled: boolean, status: string) => {
+    // Don't toggle plugins that can't be toggled
+    const config = STATUS_CONFIG[status] || STATUS_CONFIG.disabled
+    if (!config.canToggle) {
+      return
+    }
+    
     setUpdating(pluginName)
     try {
       await api.updatePlugin(pluginName, !currentEnabled)
@@ -120,30 +134,47 @@ function Settings() {
                   <span className="category-label">{CATEGORY_LABELS[category] || category}</span>
                 </h3>
                 <div className="plugin-list">
-                  {pluginsByCategory[category].map(plugin => (
+                  {pluginsByCategory[category].map(plugin => {
+                    const status = plugin.status || (plugin.enabled ? 'enabled' : 'disabled')
+                    const statusInfo = STATUS_CONFIG[status] || STATUS_CONFIG.disabled
+                    
+                    return (
                     <div key={plugin.name} className="plugin-item">
                       <div className="plugin-info">
                         <div className="plugin-header">
                           <span className="plugin-name">
                             {formatPluginName(plugin.name)}
                           </span>
-                          {plugin.enabled && (
-                            <span className="plugin-badge enabled">Enabled</span>
-                          )}
-                          {!plugin.enabled && (
-                            <span className="plugin-badge disabled">Disabled</span>
-                          )}
+                          <span className={`plugin-badge ${statusInfo.className}`}>
+                            {statusInfo.label}
+                          </span>
                         </div>
                         <p className="plugin-description">{plugin.description}</p>
                         <span className="plugin-job-type">Job type: {plugin.job_type}</span>
+                        {plugin.missing_dependencies && plugin.missing_dependencies.length > 0 && (
+                          <div className="plugin-dependencies">
+                            <span className="dependency-label">Requires:</span>
+                            <span className="dependency-list">
+                              {plugin.missing_dependencies.map((dep, i) => (
+                                <code key={i} className="dependency-package">{dep}</code>
+                              ))}
+                            </span>
+                          </div>
+                        )}
+                        {plugin.error_message && (
+                          <div className="plugin-error">
+                            <span className="error-icon">⚠️</span>
+                            <span>{plugin.error_message}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="plugin-controls">
                         <label className="toggle-switch">
                           <input
                             type="checkbox"
                             checked={plugin.enabled}
-                            onChange={() => handleToggle(plugin.name, plugin.enabled)}
-                            disabled={updating === plugin.name}
+                            onChange={() => handleToggle(plugin.name, plugin.enabled, status)}
+                            disabled={updating === plugin.name || !statusInfo.canToggle}
                           />
                           <span className="toggle-slider"></span>
                         </label>
@@ -152,7 +183,7 @@ function Settings() {
                         )}
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             ))}

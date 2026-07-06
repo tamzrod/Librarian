@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 import psycopg
 from .backend import StorageBackend
 
@@ -836,9 +837,21 @@ class PostgresBackend(StorageBackend):
             logger.error(f"Error saving content: {e}")
             return False
 
-    def save_photo_metadata(self, document_id: int, metadata: dict) -> bool:
+    def save_photo_metadata(
+        self,
+        document_id: int,
+        metadata: dict,
+        plugin_name: str = None,
+        engine_name: str = None,
+        plugin_version: str = None,
+        processed_at: datetime = None,
+        artifact_hash: str = None
+    ) -> bool:
         """Save photo metadata for a document (Phase 1A: Evidence Timeline).
-        
+
+        Operation Plugin Foundation: Now supports provenance tracking via plugin_name,
+        engine_name, plugin_version, processed_at, and artifact_hash fields.
+
         Args:
             document_id: ID of the document (must be an image)
             metadata: Dict containing extracted EXIF data:
@@ -856,20 +869,34 @@ class PostgresBackend(StorageBackend):
                 - orientation: Image orientation
                 - file_format: Image format (JPEG, PNG, etc.)
                 - raw_exif: Raw EXIF data as dict
-                
+            plugin_name: Plugin that produced this observation (e.g., 'metadata.exif.pillow')
+            engine_name: Engine used by plugin (e.g., 'pillow-exif')
+            plugin_version: Version of the plugin (e.g., '1.0.0')
+            processed_at: When this observation was created (defaults to now)
+            artifact_hash: SHA256 hash of source artifact for integrity
+
         Returns:
             True if save succeeded
         """
         try:
             conn = self._get_connection()
             cur = conn.cursor()
-            extracted_at = _to_postgres_timestamp(datetime.now(timezone.utc))
-            
+
+            # Provenance defaults (Operation Plugin Foundation)
+            plugin_name = plugin_name or 'metadata.exif.pillow'
+            engine_name = engine_name or 'pillow-exif'
+            plugin_version = plugin_version or '1.0.0'
+            processed_at = processed_at or datetime.now(timezone.utc)
+            artifact_hash = artifact_hash
+
             # Convert timestamps
             ts_original = _to_postgres_timestamp(metadata.get('timestamp_original'))
             ts_digitized = _to_postgres_timestamp(metadata.get('timestamp_digitized'))
             ts_metadata = _to_postgres_timestamp(metadata.get('timestamp_metadata'))
-            
+            ts_processed = _to_postgres_timestamp(processed_at)
+
+            # Operation Plugin Foundation: Use new provenance columns
+            # UNIQUE constraint is now (document_id, plugin_name, engine_name) for multi-engine support
             cur.execute(
                 """
                 INSERT INTO photo_metadata (
@@ -887,13 +914,15 @@ class PostgresBackend(StorageBackend):
                     height,
                     orientation,
                     file_format,
-                    extraction_method,
-                    extraction_version,
-                    raw_exif,
-                    extracted_at
+                    plugin_name,
+                    engine_name,
+                    plugin_version,
+                    processed_at,
+                    artifact_hash,
+                    raw_exif
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (document_id) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (document_id, plugin_name, engine_name) DO UPDATE SET
                     timestamp_original = EXCLUDED.timestamp_original,
                     timestamp_digitized = EXCLUDED.timestamp_digitized,
                     timestamp_metadata = EXCLUDED.timestamp_metadata,
@@ -907,8 +936,12 @@ class PostgresBackend(StorageBackend):
                     height = EXCLUDED.height,
                     orientation = EXCLUDED.orientation,
                     file_format = EXCLUDED.file_format,
-                    raw_exif = EXCLUDED.raw_exif,
-                    extracted_at = EXCLUDED.extracted_at
+                    plugin_name = EXCLUDED.plugin_name,
+                    engine_name = EXCLUDED.engine_name,
+                    plugin_version = EXCLUDED.plugin_version,
+                    processed_at = EXCLUDED.processed_at,
+                    artifact_hash = EXCLUDED.artifact_hash,
+                    raw_exif = EXCLUDED.raw_exif
                 """,
                 (
                     document_id,
@@ -925,17 +958,19 @@ class PostgresBackend(StorageBackend):
                     metadata.get('height'),
                     metadata.get('orientation'),
                     metadata.get('file_format'),
-                    'exif',
-                    '1.0.0',
+                    plugin_name,
+                    engine_name,
+                    plugin_version,
+                    ts_processed,
+                    artifact_hash,
                     psycopg.types.json.Jsonb(metadata.get('raw_exif', {})) if metadata.get('raw_exif') else None,
-                    extracted_at
                 )
             )
             conn.commit()
             cur.close()
             conn.close()
-            
-            logger.info(f"Saved photo metadata for document {document_id}")
+
+            logger.info(f"Saved photo metadata for document {document_id} (plugin: {plugin_name}, engine: {engine_name})")
             return True
         except Exception as e:
             logger.error(f"Error saving photo metadata: {e}")
@@ -1255,6 +1290,38 @@ class PostgresBackend(StorageBackend):
             }
         except Exception as e:
             logger.error(f"Error getting document for photo: {e}")
+            return None
+    
+    def get_artifact_hash(self, document_id: int) -> Optional[str]:
+        """
+        Get the SHA256 hash of an artifact for provenance tracking.
+        
+        Operation Plugin Foundation: Added for provenance tracking.
+        Every observation should include the hash of its source artifact.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            SHA256 hash of the artifact, or None if not found
+        """
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            
+            cur.execute(
+                "SELECT sha256 FROM documents WHERE id = %s",
+                (document_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if row and row[0]:
+                return f"sha256:{row[0]}"
+            return None
+        except Exception as e:
+            logger.error(f"Error getting artifact hash: {e}")
             return None
     
     def get_content(self, document_id: int) -> dict:
@@ -3832,3 +3899,293 @@ class PostgresBackend(StorageBackend):
         except Exception as e:
             logger.error(f"Error getting trace photo detail: {e}")
             return None
+
+    # =============================================================================
+    # Object Detection Methods (Operation Object Detection)
+    # =============================================================================
+
+    def save_detections(
+        self,
+        artifact_id: int,
+        detections: list,
+        plugin_name: str = None,
+        engine_name: str = None,
+        plugin_version: str = None,
+        processed_at: datetime = None,
+        artifact_hash: str = None
+    ) -> int:
+        """Save object detection observations to the database.
+
+        Operation Object Detection: Stores detections with provenance tracking.
+
+        Args:
+            artifact_id: ID of the artifact/document
+            detections: List of detection dicts with label, confidence, bbox
+            plugin_name: Plugin name for provenance (e.g., 'vision.object-detection.yolo')
+            engine_name: Engine name for provenance (e.g., 'yolo')
+            plugin_version: Plugin version for provenance (e.g., 'v8n')
+            processed_at: Timestamp when processing occurred
+            artifact_hash: Hash of the artifact for reprocessing detection
+
+        Returns:
+            Number of detections saved
+        """
+        if not detections:
+            return 0
+
+        from datetime import timezone
+        if processed_at is None:
+            processed_at = datetime.now(timezone.utc)
+
+        conn = self._get_connection()
+        cur = conn.cursor()
+        saved_count = 0
+
+        try:
+            for detection in detections:
+                cur.execute(
+                    """
+                    INSERT INTO object_detections (
+                        artifact_id, plugin_name, engine_name, plugin_version,
+                        processed_at, artifact_hash,
+                        label, confidence,
+                        bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                        bbox_norm_x1, bbox_norm_y1, bbox_norm_x2, bbox_norm_y2,
+                        source
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s
+                    )
+                    """,
+                    (
+                        artifact_id,
+                        plugin_name or 'vision.object-detection.yolo',
+                        engine_name or 'yolo',
+                        plugin_version or 'v8n',
+                        processed_at,
+                        artifact_hash,
+                        detection['label'],
+                        detection['confidence'],
+                        detection['bbox_x1'],
+                        detection['bbox_y1'],
+                        detection['bbox_x2'],
+                        detection['bbox_y2'],
+                        detection.get('bbox_norm_x1'),
+                        detection.get('bbox_norm_y1'),
+                        detection.get('bbox_norm_x2'),
+                        detection.get('bbox_norm_y2'),
+                        'yolo'
+                    )
+                )
+                saved_count += 1
+
+            conn.commit()
+            logger.info(f"Saved {saved_count} object detections for artifact {artifact_id}")
+            return saved_count
+
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error saving object detections: {e}")
+            raise
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_detections(self, artifact_id: int) -> list:
+        """Get all object detections for an artifact.
+
+        Args:
+            artifact_id: ID of the artifact/document
+
+        Returns:
+            List of detection dicts
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                SELECT
+                    id, artifact_id, plugin_name, engine_name, plugin_version,
+                    processed_at, artifact_hash,
+                    label, confidence,
+                    bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                    bbox_norm_x1, bbox_norm_y1, bbox_norm_x2, bbox_norm_y2,
+                    source, created_at
+                FROM object_detections
+                WHERE artifact_id = %s AND deleted_at IS NULL
+                ORDER BY confidence DESC
+                """,
+                (artifact_id,)
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [
+                {
+                    'id': row[0],
+                    'artifact_id': row[1],
+                    'plugin_name': row[2],
+                    'engine_name': row[3],
+                    'plugin_version': row[4],
+                    'processed_at': row[5].isoformat() if row[5] else None,
+                    'artifact_hash': row[6],
+                    'label': row[7],
+                    'confidence': float(row[8]),
+                    'bbox_x1': row[9],
+                    'bbox_y1': row[10],
+                    'bbox_x2': row[11],
+                    'bbox_y2': row[12],
+                    'bbox_norm_x1': float(row[13]) if row[13] else None,
+                    'bbox_norm_y1': float(row[14]) if row[14] else None,
+                    'bbox_norm_x2': float(row[15]) if row[15] else None,
+                    'bbox_norm_y2': float(row[16]) if row[16] else None,
+                    'source': row[17],
+                    'created_at': row[18].isoformat() if row[18] else None,
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error getting detections: {e}")
+            return []
+
+    def search_detections_by_label(self, label: str, limit: int = 100) -> list:
+        """Search for artifacts by detected object label.
+
+        Operation Object Detection: Enables object=car style queries.
+
+        Args:
+            label: Object label to search for (e.g., 'car', 'person')
+            limit: Maximum number of results
+
+        Returns:
+            List of artifact IDs with that detection
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            # Search for unique labels (aggregated)
+            cur.execute(
+                """
+                SELECT DISTINCT ON (artifact_id)
+                    artifact_id,
+                    label,
+                    MAX(confidence) as max_confidence,
+                    COUNT(*) as detection_count
+                FROM object_detections
+                WHERE label ILIKE %s AND deleted_at IS NULL
+                GROUP BY artifact_id, label
+                ORDER BY artifact_id, MAX(confidence) DESC
+                LIMIT %s
+                """,
+                (f'%{label}%', limit)
+            )
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [
+                {
+                    'artifact_id': row[0],
+                    'label': row[1],
+                    'max_confidence': float(row[2]),
+                    'detection_count': row[3],
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error searching detections: {e}")
+            return []
+
+    def delete_detections(self, artifact_id: int) -> int:
+        """Soft delete all detections for an artifact (for reprocessing).
+
+        Args:
+            artifact_id: ID of the artifact
+
+        Returns:
+            Number of detections deleted
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                UPDATE object_detections
+                SET deleted_at = CURRENT_TIMESTAMP
+                WHERE artifact_id = %s AND deleted_at IS NULL
+                """,
+                (artifact_id,)
+            )
+            deleted_count = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            logger.info(f"Soft deleted {deleted_count} detections for artifact {artifact_id}")
+            return deleted_count
+
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            logger.error(f"Error deleting detections: {e}")
+            raise
+
+    def get_unique_labels(self, artifact_id: int = None) -> list:
+        """Get all unique object labels in the system or for an artifact.
+
+        Args:
+            artifact_id: Optional artifact ID to filter by
+
+        Returns:
+            List of unique label strings
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+
+        try:
+            if artifact_id:
+                cur.execute(
+                    """
+                    SELECT DISTINCT label
+                    FROM object_detections
+                    WHERE artifact_id = %s AND deleted_at IS NULL
+                    ORDER BY label
+                    """,
+                    (artifact_id,)
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT DISTINCT label
+                    FROM object_detections
+                    WHERE deleted_at IS NULL
+                    ORDER BY label
+                    """
+                )
+
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            return [row[0] for row in rows]
+
+        except Exception as e:
+            cur.close()
+            conn.close()
+            logger.error(f"Error getting unique labels: {e}")
+            return []

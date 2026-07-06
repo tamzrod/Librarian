@@ -4,6 +4,8 @@ Entity extraction handler for the worker.
 Phase 4: Implements the extract_entities job type.
 
 This extracts named entities from document content and stores them in the database.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import logging
@@ -16,10 +18,17 @@ logger = logging.getLogger(__name__)
 class EntityExtractor(BaseWorker):
     """
     Extracts named entities from document content.
-    
+
     This is a job handler that can be registered with the Worker.
     It handles the 'extract_entities' job type.
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
+
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'content.entity.spacy'  # Fully qualified namespace
+    ENGINE_NAME = 'spacy'                # Engine identifier
+    PLUGIN_VERSION = '1.0.0'           # Plugin version
     
     def __init__(self, backend):
         """

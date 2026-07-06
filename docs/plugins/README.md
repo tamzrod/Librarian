@@ -1,6 +1,30 @@
 # Plugin Architecture
 
+**Status**: Evolving  
+**Version**: 2.0  
+**Last Updated**: 2026-07-05
+
+---
+
 This directory contains documentation for the Librarian plugin system. Plugins extend the system's ability to analyze, extract, and enrich content from various file types.
+
+## Documentation Structure
+
+| Document | Description |
+|----------|-------------|
+| [README.md](./README.md) | Overview, execution flow, plugin inventory |
+| [plugin-states.md](./plugin-states.md) | Lifecycle states and UI behavior |
+| [dependency-management.md](./dependency-management.md) | Dependency philosophy and detection |
+| [palette-manager-roadmap.md](./palette-manager-roadmap.md) | Future plugin marketplace vision |
+| [plugin-development-guide.md](./plugin-development-guide.md) | How to create new plugins |
+
+## Quick Links
+
+- **Plugin Registry**: [`registry/plugin_registry.py`](../../registry/plugin_registry.py)
+- **Plugin Configuration**: [`config/plugins.yaml`](../../config/plugins.yaml)
+- **Worker System**: [`workers/worker.py`](../../workers/worker.py)
+- **Settings API**: [`api/routes/settings.py`](../../api/routes/settings.py)
+- **Settings UI**: [`dashboard/src/pages/Settings.tsx`](../../dashboard/src/pages/Settings.tsx)
 
 ---
 
@@ -187,6 +211,72 @@ Search Index
 | Face Detection | 📋 Planned | Detect faces in images |
 | Similar Image Search | 📋 Planned | Find visually similar images |
 | Duplicate Detection | 📋 Planned | Find duplicate files |
+
+---
+
+## Architecture Position
+
+Librarian is evolving toward a generalized evidence processing platform:
+
+| Inspiration | Key Feature | Librarian Analogy |
+|------------|-------------|-------------------|
+| Node-RED | Visual flow editor | Pipeline designer |
+| Home Assistant | One-click integrations | Plugin installer |
+| Apache NiFi | Data flow programming | Processing pipelines |
+| KNIME | Visual analytics | Evidence workflows |
+
+Plugins are the core execution model of Librarian, transforming raw artifacts into structured, queryable evidence.
+
+---
+
+## Evidence Processing Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Evidence Processing Flow                        │
+└─────────────────────────────────────────────────────────────────┘
+
+    Document Discovery
+            │
+            ▼
+    ┌───────────────────┐
+    │  Artifact         │
+    │  Ingestion        │
+    └────────┬──────────┘
+             │
+             ▼
+    ┌───────────────────┐
+    │  Job Scheduling   │
+    │  (Plugin Registry)│
+    └────────┬──────────┘
+             │
+             ▼
+    ┌───────────────────┐
+    │  Worker Pool      │
+    │  • Photo Meta     │
+    │  • Thumbnail      │
+    │  • Object Det.    │
+    │  • OCR            │
+    │  • Transcription  │
+    │  • Embeddings     │
+    └────────┬──────────┘
+             │
+             ▼
+    ┌───────────────────┐
+    │  Evidence Storage │
+    │  • Metadata       │
+    │  • Entities       │
+    │  • Relationships  │
+    │  • Embeddings     │
+    └────────┬──────────┘
+             │
+             ▼
+    ┌───────────────────┐
+    │  Evidence Graph   │
+    │                  │
+    │  Query Engine    │
+    └───────────────────┘
+```
 
 ---
 

@@ -4,6 +4,8 @@ Embedding generation handler for the worker.
 Phase 4: Implements the generate_embeddings job type.
 
 This generates vector embeddings for document content.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import logging
@@ -17,15 +19,24 @@ logger = logging.getLogger(__name__)
 class EmbeddingGenerator(BaseWorker):
     """
     Generates vector embeddings for document content.
-    
+
     This is a job handler that can be registered with the Worker.
     It handles the 'generate_embeddings' job type.
-    
+
     Supports:
     - OpenAI embeddings (text-embedding-ada-002)
     - Sentence transformers (local, open-source)
     - TF-IDF fallback (no API required)
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
+    Note: ENGINE_NAME is set dynamically based on the detected/selected model.
     """
+
+    # Operation Plugin Foundation: Plugin identity
+    # Base values - ENGINE_NAME is set dynamically based on model
+    PLUGIN_NAME = 'embeddings.vector.default'
+    ENGINE_NAME = 'unknown'
+    PLUGIN_VERSION = '1.0.0'
     
     def __init__(self, backend, model_name: str = None):
         """
@@ -40,26 +51,30 @@ class EmbeddingGenerator(BaseWorker):
         self._embedding_model = None
     
     def _detect_model(self) -> str:
-        """Detect the best available embedding model."""
+        """Detect the best available embedding model and set ENGINE_NAME."""
         import os
 
         # Check environment variable
         env_model = get_embedding_model()
         if env_model:
+            self.ENGINE_NAME = env_model
             return env_model
-        
+
         # Check for OpenAI
         if os.environ.get('OPENAI_API_KEY'):
+            self.ENGINE_NAME = 'openai-ada002'
             return 'openai'
-        
+
         # Check for sentence-transformers
         try:
             import sentence_transformers
+            self.ENGINE_NAME = 'sentence-transformers'
             return 'sentence-transformers'
         except ImportError:
             pass
 
         # Default to TF-IDF
+        self.ENGINE_NAME = 'tfidf'
         return 'tfidf'
     
     def process(self, job: dict) -> dict:

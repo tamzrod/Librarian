@@ -4,6 +4,8 @@ Content extraction handler for the worker.
 Phase 3A: Implements the extract_text job type.
 
 This extracts text content from documents and stores it in the database.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import os
@@ -19,13 +21,20 @@ logger = logging.getLogger(__name__)
 class ContentExtractor(BaseWorker):
     """
     Extracts text content from documents.
-    
+
     This is a job handler that can be registered with the Worker.
     It handles the 'extract_text' job type.
-    
+
     The actual text extraction is delegated to the appropriate parser
     based on file extension.
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
+
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'content.text.textract'  # Fully qualified namespace
+    ENGINE_NAME = 'textract'              # Engine identifier
+    PLUGIN_VERSION = '1.0.0'             # Plugin version
     
     def __init__(self, backend, library_root: str = None):
         """

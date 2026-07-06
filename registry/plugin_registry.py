@@ -2,10 +2,12 @@
 Plugin Registry for Job Scheduling.
 
 P13/P17: Plugin Registry - Controls which plugins generate jobs.
+Operation Plugin Foundation: Added plugin identity fields (namespace, type, engine, version)
 
 This module provides:
 - Plugin discovery (detects which plugins have handlers)
 - Persistent plugin configuration (from config/plugins.yaml)
+- Plugin identity (namespace, type, engine, version) for provenance tracking
 - Integration with job scheduling
 - Only installed plugins appear in the registry
 
@@ -15,106 +17,235 @@ Plugin Architecture:
 - Only enabled plugins generate jobs
 - Prevents queue pollution from unsupported job types
 - Clear separation between scheduling and execution
+
+Plugin Identity (Operation Plugin Foundation):
+- Every plugin has a namespace: category.type.engine (e.g., metadata.exif.pillow)
+- Every plugin has a type: exif, ocr, object-detection, etc.
+- Every plugin has an engine: pillow, tesseract, yolo, etc.
+- Every plugin has a version: 1.0.0, etc.
 """
 
 import logging
 from typing import Optional
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
 
+class PluginStatus(Enum):
+    """Lifecycle states for plugins."""
+    ENABLED = "enabled"           # Plugin is installed and enabled
+    DISABLED = "disabled"         # Plugin is installed but disabled by user
+    MISSING_DEPENDENCIES = "missing_dependencies"  # Plugin exists but dependencies not installed
+    ERROR = "error"               # Plugin encountered an error
+
+
 # Plugin definitions - metadata about each known plugin
 # These define what COULD exist, but only INSTALLED plugins appear in the registry
+#
+# Operation Plugin Foundation: Added identity fields:
+# - namespace: Fully qualified name (e.g., metadata.exif.pillow)
+# - type: Plugin type (e.g., exif, ocr)
+# - engine: Engine name (e.g., pillow-exif)
+# - version: Plugin version (e.g., 1.0.0)
 PLUGIN_DEFINITIONS = {
     'photo_metadata': {
         'job_type': 'extract_photo_metadata',
         'description': 'Extract EXIF metadata from images (GPS, camera info, timestamps)',
         'category': 'metadata',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'metadata.exif.pillow',
+        'type': 'exif',
+        'engine': 'pillow-exif',
+        'version': '1.0.0',
     },
     'thumbnail': {
         'job_type': 'generate_thumbnail',
         'description': 'Generate thumbnail images for preview',
         'category': 'metadata',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'metadata.thumbnail.pillow',
+        'type': 'thumbnail',
+        'engine': 'pillow-thumbnail',
+        'version': '1.0.0',
     },
     'ocr': {
         'job_type': 'run_ocr',
         'description': 'Optical character recognition',
         'category': 'vision',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'vision.ocr.tesseract',
+        'type': 'ocr',
+        'engine': 'tesseract',
+        'version': '1.0.0',
     },
     'object_detection': {
         'job_type': 'object_detection',
         'description': 'Detect objects in images',
         'category': 'vision',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'vision.object-detection.yolo',
+        'type': 'object-detection',
+        'engine': 'yolo',
+        'version': '1.0.0',
+        # Required packages for this plugin
+        'required_packages': ['ultralytics'],
     },
     'transcription': {
         'job_type': 'transcription',
         'description': 'Transcribe audio/video to text',
         'category': 'audio',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'audio.transcription.whisper',
+        'type': 'transcription',
+        'engine': 'whisper',
+        'version': '1.0.0',
     },
     'embeddings': {
         'job_type': 'generate_embeddings',
         'description': 'Generate vector embeddings',
         'category': 'embeddings',
+        # Operation Plugin Foundation: Identity fields
+        'namespace': 'embeddings.openai',
+        'type': 'embeddings',
+        'engine': 'openai-ada002',
+        'version': '1.0.0',
     },
 }
 
 
 class Plugin:
-    """Represents an installed plugin with its configuration."""
+    """
+    Represents an installed plugin with its configuration.
+    
+    Operation Plugin Foundation: Added identity fields (namespace, type, engine, version)
+    for provenance tracking.
+    
+    Operation Plugin Visibility Refactor: Added status, missing_dependencies, and error_message
+    for tracking plugin lifecycle state.
+    """
     
     def __init__(self, name: str, job_type: str, enabled: bool = False, 
-                 description: str = "", category: str = "general"):
+                 description: str = "", category: str = "general",
+                 namespace: str = None, type: str = None, 
+                 engine: str = None, version: str = None,
+                 status: PluginStatus = PluginStatus.ENABLED,
+                 missing_dependencies: list = None,
+                 error_message: str = None):
         self.name = name
         self.job_type = job_type
         self.enabled = enabled
         self.description = description
         self.category = category
+        # Operation Plugin Foundation: Identity fields
+        self.namespace = namespace or name  # Fully qualified name (e.g., metadata.exif.pillow)
+        self.type = type or category        # Plugin type (e.g., exif)
+        self.engine = engine               # Engine name (e.g., pillow-exif)
+        self.version = version or "1.0.0"  # Plugin version
+        # Operation Plugin Visibility Refactor: Lifecycle state
+        self.status = status
+        self.missing_dependencies = missing_dependencies or []
+        self.error_message = error_message
 
 
-def _discover_installed_plugins() -> set[str]:
+def _discover_all_plugins() -> dict:
     """
-    Discover which plugins have actual handler implementations.
-    
-    This checks for the existence of handler registrations for each plugin.
-    Only plugins with handlers are considered "installed".
-    
-    Currently detected:
-    - photo_metadata: extract_photo_metadata handler exists
-    - thumbnail: generate_thumbnail handler exists
+    Discover all plugins with their status and dependency information.
     
     Returns:
-        Set of plugin names that have handlers registered
+        Dict mapping plugin names to their status info:
+        {
+            'plugin_name': {
+                'status': PluginStatus,
+                'missing_dependencies': list,
+                'error_message': str
+            }
+        }
     """
     # Map job_types to plugin names
     job_type_to_plugin = {}
     for plugin_name, defn in PLUGIN_DEFINITIONS.items():
         job_type_to_plugin[defn['job_type']] = plugin_name
     
-    # Check for handlers by looking at worker registrations
-    # Only image-related plugins are currently considered "installed"
-    # because they have concrete handler implementations
+    # Handlers that are fully implemented
     registered_job_types = {
         'extract_photo_metadata',  # photo_metadata_extractor.py - implemented
         'generate_thumbnail',       # thumbnail_generator.py - implemented
-        # The following have handlers registered in run_worker() but are
-        # text/document extraction plugins, not image plugins:
-        # - extract_text
-        # - extract_entities
-        # - extract_events
-        # - extract_locations
-        # - generate_embeddings
+        'object_detection',         # object_detection_extractor.py - implemented
     }
     
-    # Find installed plugins
-    installed_plugins = set()
-    for job_type, plugin_name in job_type_to_plugin.items():
-        if job_type in registered_job_types:
-            installed_plugins.add(plugin_name)
+    # Discover status for all plugins in PLUGIN_DEFINITIONS
+    plugin_status = {}
     
-    return installed_plugins
+    for plugin_name, defn in PLUGIN_DEFINITIONS.items():
+        job_type = defn.get('job_type')
+        required_packages = defn.get('required_packages', [])
+        
+        if job_type not in registered_job_types:
+            # Plugin has no handler implementation
+            plugin_status[plugin_name] = {
+                'status': PluginStatus.DISABLED,
+                'missing_dependencies': [],
+                'error_message': 'Plugin handler not implemented'
+            }
+        elif required_packages:
+            # Check if required packages are installed
+            missing = _check_missing_packages(required_packages)
+            if missing:
+                plugin_status[plugin_name] = {
+                    'status': PluginStatus.MISSING_DEPENDENCIES,
+                    'missing_dependencies': missing,
+                    'error_message': f"Missing packages: {', '.join(missing)}"
+                }
+            else:
+                plugin_status[plugin_name] = {
+                    'status': PluginStatus.ENABLED,
+                    'missing_dependencies': [],
+                    'error_message': None
+                }
+        else:
+            # Plugin has handler and no special dependencies
+            plugin_status[plugin_name] = {
+                'status': PluginStatus.ENABLED,
+                'missing_dependencies': [],
+                'error_message': None
+            }
+    
+    return plugin_status
 
 
-# Discover installed plugins at module load time
+def _check_missing_packages(packages: list) -> list:
+    """
+    Check which packages from a list are not installed.
+    
+    Args:
+        packages: List of package names to check
+        
+    Returns:
+        List of package names that are not installed
+    """
+    import importlib
+    missing = []
+    for package in packages:
+        try:
+            importlib.import_module(package)
+        except ImportError:
+            missing.append(package)
+    return missing
+
+
+def _discover_installed_plugins() -> set[str]:
+    """
+    Legacy function for backward compatibility.
+    
+    Returns all plugin names that have handlers, regardless of dependency status.
+    """
+    all_plugins = _discover_all_plugins()
+    return set(all_plugins.keys())
+
+
+# Discover all plugins at module load time
+ALL_PLUGINS_STATUS = _discover_all_plugins()
 INSTALLED_PLUGINS = _discover_installed_plugins()
 logger.info(f"Discovered installed plugins: {INSTALLED_PLUGINS}")
 
@@ -160,9 +291,13 @@ class PluginRegistry:
             logger.warning("Plugin config manager not available, using defaults")
             self._config_manager = None
         
-        # Build plugin list from INSTALLED plugins only
-        for plugin_name in INSTALLED_PLUGINS:
+        # Build plugin list from ALL plugins (including those with missing dependencies)
+        for plugin_name in PLUGIN_DEFINITIONS:
             defn = PLUGIN_DEFINITIONS.get(plugin_name, {})
+            status_info = ALL_PLUGINS_STATUS.get(plugin_name, {})
+            status = status_info.get('status', PluginStatus.ENABLED)
+            missing_deps = status_info.get('missing_dependencies', [])
+            error_msg = status_info.get('error_message')
             
             # Get enabled state from configuration
             if self._config_manager:
@@ -171,17 +306,32 @@ class PluginRegistry:
                 # Default: only photo_metadata is enabled
                 enabled = (plugin_name == 'photo_metadata')
             
+            # Plugins with missing dependencies are not enabled even if configured
+            if status == PluginStatus.MISSING_DEPENDENCIES:
+                enabled = False
+            
+            # Operation Plugin Foundation: Pass identity fields
+            # Operation Plugin Visibility Refactor: Pass status fields
             plugin = Plugin(
                 name=plugin_name,
                 job_type=defn.get('job_type', ''),
                 enabled=enabled,
                 description=defn.get('description', ''),
                 category=defn.get('category', 'general'),
+                # Identity fields
+                namespace=defn.get('namespace'),
+                type=defn.get('type'),
+                engine=defn.get('engine'),
+                version=defn.get('version'),
+                # Status fields
+                status=status,
+                missing_dependencies=missing_deps,
+                error_message=error_msg,
             )
             self._plugins[plugin_name] = plugin
         
         self._initialized = True
-        logger.info(f"Plugin registry initialized with {len(self._plugins)} installed plugins")
+        logger.info(f"Plugin registry initialized with {len(self._plugins)} plugins")
     
     def reload_config(self) -> None:
         """Reload configuration from disk."""
@@ -265,7 +415,7 @@ class PluginRegistry:
         return True
     
     def get_installed_plugins(self) -> list[dict]:
-        """Get list of installed plugins with their status.
+        """Get list of all plugins with their status.
         
         Returns:
             List of dicts with plugin info:
@@ -276,7 +426,14 @@ class PluginRegistry:
                     'enabled': True,
                     'job_type': 'extract_photo_metadata',
                     'description': '...',
-                    'category': 'metadata'
+                    'category': 'metadata',
+                    'namespace': 'metadata.exif.pillow',
+                    'type': 'exif',
+                    'engine': 'pillow-exif',
+                    'version': '1.0.0',
+                    'status': 'enabled',
+                    'missing_dependencies': [],
+                    'error_message': None
                 },
                 ...
             ]
@@ -289,6 +446,13 @@ class PluginRegistry:
                 'job_type': p.job_type,
                 'description': p.description,
                 'category': p.category,
+                'namespace': p.namespace,
+                'type': p.type,
+                'engine': p.engine,
+                'version': p.version,
+                'status': p.status.value if p.status else 'enabled',
+                'missing_dependencies': p.missing_dependencies,
+                'error_message': p.error_message,
             }
             for p in self._plugins.values()
         ]
@@ -363,6 +527,8 @@ class PluginRegistry:
         plugin = self._plugins.get(plugin_name)
         if not plugin:
             return None
+        # Operation Plugin Foundation: Include identity fields
+        # Operation Plugin Visibility Refactor: Include status fields
         return {
             'name': plugin.name,
             'job_type': plugin.job_type,
@@ -370,6 +536,15 @@ class PluginRegistry:
             'description': plugin.description,
             'category': plugin.category,
             'installed': True,
+            # Identity fields (Operation Plugin Foundation)
+            'namespace': plugin.namespace,
+            'type': plugin.type,
+            'engine': plugin.engine,
+            'version': plugin.version,
+            # Status fields (Operation Plugin Visibility Refactor)
+            'status': plugin.status.value if plugin.status else 'enabled',
+            'missing_dependencies': plugin.missing_dependencies,
+            'error_message': plugin.error_message,
         }
     
     def validate_against_handlers(self, registered_handlers: set) -> dict:

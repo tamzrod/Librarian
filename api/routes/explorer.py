@@ -7,7 +7,7 @@ Models a familiar file-browser experience similar to VSCode, Finder, or Windows 
 import os
 from typing import Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -66,6 +66,17 @@ class ProcessingStatus(BaseModel):
     label: str = Field(description="Human-readable label")
 
 
+class DetectedObject(BaseModel):
+    """Detected object in an image."""
+    label: str = Field(description="Object label (e.g., 'person', 'car', 'dog')")
+    confidence: float = Field(description="Detection confidence (0-1)")
+    # Bounding box in pixel coordinates
+    bbox_x1: int = Field(description="Bounding box left edge (pixels)")
+    bbox_y1: int = Field(description="Bounding box top edge (pixels)")
+    bbox_x2: int = Field(description="Bounding box right edge (pixels)")
+    bbox_y2: int = Field(description="Bounding box bottom edge (pixels)")
+
+
 class DocumentDetail(BaseModel):
     """Detailed document information for metadata panel."""
     id: int = Field(description="Document ID")
@@ -96,6 +107,8 @@ class DocumentDetail(BaseModel):
     camera_make: Optional[str] = Field(default=None, description="Camera manufacturer")
     camera_model: Optional[str] = Field(default=None, description="Camera model")
     date_taken: Optional[str] = Field(default=None, description="When photo was taken (ISO 8601)")
+    # Object detection (Operation Object Detection)
+    detected_objects: list[DetectedObject] = Field(default_factory=list, description="Detected objects in the image")
 
 
 class DocumentDetailResponse(BaseModel):
@@ -607,6 +620,23 @@ async def get_document_details(
                         if ts_original:
                             date_taken = ts_original.isoformat() + 'Z' if hasattr(ts_original, 'isoformat') else str(ts_original)
                 
+                # Get object detections for images
+                detected_objects = []
+                if artifact_type == 'image' and hasattr(backend, 'get_detections'):
+                    try:
+                        detections = backend.get_detections(doc_id)
+                        for det in detections:
+                            detected_objects.append(DetectedObject(
+                                label=det['label'],
+                                confidence=det['confidence'],
+                                bbox_x1=det['bbox_x1'],
+                                bbox_y1=det['bbox_y1'],
+                                bbox_x2=det['bbox_x2'],
+                                bbox_y2=det['bbox_y2']
+                            ))
+                    except Exception:
+                        pass  # Ignore detection errors
+                
                 document = DocumentDetail(
                     id=doc_id,
                     name=filename,
@@ -628,7 +658,8 @@ async def get_document_details(
                     altitude=altitude,
                     camera_make=camera_make,
                     camera_model=camera_model,
-                    date_taken=date_taken
+                    date_taken=date_taken,
+                    detected_objects=detected_objects
                 )
             
             cur.close()
@@ -917,4 +948,80 @@ async def get_raw_document(
         headers={
             'Content-Disposition': f'inline; filename="{filename}"',
         }
+    )
+
+
+# ============================================================================
+# Object Detection Search (Operation Object Detection)
+# ============================================================================
+
+class ObjectSearchResponse(BaseModel):
+    """Response for object search."""
+    label: str = Field(description="Object label searched")
+    artifacts: list[dict] = Field(description="Artifacts with this object detected")
+    total: int = Field(description="Total number of matches")
+
+
+@router.get(
+    "/objects/search",
+    response_model=ObjectSearchResponse,
+    summary="Search artifacts by detected object"
+)
+async def search_objects(
+    object: str = Query(..., description="Object label to search (e.g., 'car', 'person')"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum results"),
+    backend: StorageBackend = Depends(get_storage_backend)
+) -> ObjectSearchResponse:
+    """
+    Search for artifacts by detected object label.
+
+    Operation Object Detection: Enables object=car style queries.
+
+    Returns artifacts that have the specified object detected in them,
+    ordered by detection confidence.
+    """
+    if not hasattr(backend, 'search_detections_by_label'):
+        return ObjectSearchResponse(
+            label=object,
+            artifacts=[],
+            total=0
+        )
+
+    # Search for artifacts with this object
+    results = backend.search_detections_by_label(object, limit=limit)
+
+    # Get artifact info for each result
+    artifacts = []
+    if backend and hasattr(backend, '_get_connection'):
+        try:
+            conn = backend._get_connection()
+            cur = conn.cursor()
+
+            for result in results:
+                artifact_id = result['artifact_id']
+                cur.execute("""
+                    SELECT id, path, extension, thumbnail_path
+                    FROM documents
+                    WHERE id = %s
+                """, (artifact_id,))
+                row = cur.fetchone()
+                if row:
+                    artifacts.append({
+                        'artifact_id': row[0],
+                        'path': row[1],
+                        'extension': row[2],
+                        'thumbnail_path': row[3],
+                        'max_confidence': result['max_confidence'],
+                        'detection_count': result['detection_count']
+                    })
+
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+    return ObjectSearchResponse(
+        label=object,
+        artifacts=artifacts,
+        total=len(artifacts)
     )

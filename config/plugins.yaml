@@ -6,3 +6,7 @@ thumbnail:
   enabled: true
   category: metadata
   description: Generate thumbnail images for preview
+object_detection:
+  enabled: true
+  category: vision
+  description: Detect objects in images using YOLOv8n

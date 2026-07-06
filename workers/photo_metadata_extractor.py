@@ -6,6 +6,8 @@ Phase 1A: Evidence Timeline - Photo Metadata Extraction
 This module handles the 'extract_photo_metadata' job type.
 It extracts deterministic EXIF metadata from image files.
 
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
+
 DO NOT IMPLEMENT:
 - OCR
 - Face recognition
@@ -35,10 +37,17 @@ class PhotoMetadataExtractor(BaseWorker):
     
     Phase 1A: Only extracts EXIF metadata present in the image file.
     No AI inference, no OCR, no object detection.
+    
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
     
     # Supported image extensions for Phase 1A
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif'}
+    
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'metadata.exif.pillow'  # Fully qualified namespace
+    ENGINE_NAME = 'pillow-exif'           # Engine identifier
+    PLUGIN_VERSION = '1.0.0'              # Plugin version
     
     def __init__(self, backend, library_root: str = None):
         """
@@ -100,12 +109,23 @@ class PhotoMetadataExtractor(BaseWorker):
             
             # Extract metadata
             metadata = self._extract_metadata(full_path)
-            
+
             if metadata is None:
                 raise ValueError(f"Failed to extract metadata from {full_path}")
-            
-            # Save metadata to database
-            success = self.backend.save_photo_metadata(document_id, metadata)
+
+            # Get provenance for Operation Plugin Foundation
+            provenance = self.get_provenance(document_id)
+
+            # Save metadata to database with provenance
+            success = self.backend.save_photo_metadata(
+                document_id,
+                metadata,
+                plugin_name=provenance['plugin_name'],
+                engine_name=provenance['engine_name'],
+                plugin_version=provenance['plugin_version'],
+                processed_at=provenance['processed_at'],
+                artifact_hash=provenance['artifact_hash']
+            )
             
             if not success:
                 raise RuntimeError(f"Failed to save photo metadata for document {document_id}")

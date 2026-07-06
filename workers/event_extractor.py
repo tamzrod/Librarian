@@ -4,6 +4,8 @@ Event extraction handler for the worker.
 Phase 4: Implements the extract_events job type.
 
 This extracts date/time references and events from document content.
+
+Operation Plugin Foundation: Added plugin identity fields for provenance tracking.
 """
 
 import logging
@@ -17,10 +19,17 @@ logger = logging.getLogger(__name__)
 class EventExtractor(BaseWorker):
     """
     Extracts events and date/time references from document content.
-    
+
     This is a job handler that can be registered with the Worker.
     It handles the 'extract_events' job type.
+
+    Operation Plugin Foundation: Added plugin identity fields for provenance.
     """
+
+    # Operation Plugin Foundation: Plugin identity
+    PLUGIN_NAME = 'content.event.heuristic'  # Fully qualified namespace
+    ENGINE_NAME = 'heuristic-parser'       # Engine identifier
+    PLUGIN_VERSION = '1.0.0'             # Plugin version
     
     def __init__(self, backend):
         """
