@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, Query, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, Response
 import uuid
 
 from api.routes import questions, collections, pipeline, operations, timeline, explorer, trace, settings
@@ -218,7 +218,7 @@ def _queue_thumbnail_regeneration(document_id: int):
             logger.info(f"Created thumbnail regeneration job {job_ids[0]} for document {document_id}")
 
 
-def _get_thumbnail_placeholder() -> FileResponse:
+def _get_thumbnail_placeholder() -> Response:
     """
     Return a 1x1 pixel placeholder JPEG image.
 
@@ -227,7 +227,6 @@ def _get_thumbnail_placeholder() -> FileResponse:
     """
     # 1x1 pixel gray JPEG (valid JPEG format)
     # This is a minimal valid JPEG file
-    import io
     PLACEHOLDER_JPEG = (
         b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00'
         b'\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n'
@@ -241,10 +240,9 @@ def _get_thumbnail_placeholder() -> FileResponse:
         b'\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xd2\xcf '
         b'\xff\xd9'
     )
-    return FileResponse(
-        io.BytesIO(PLACEHOLDER_JPEG),
-        media_type="image/jpeg",
-        filename="placeholder.jpg"
+    return Response(
+        content=PLACEHOLDER_JPEG,
+        media_type="image/jpeg"
     )
 
 
