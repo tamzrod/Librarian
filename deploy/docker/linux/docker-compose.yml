@@ -34,6 +34,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
+      - LIBRARIAN_DATA_ROOT=/librarian-data
       # Plugin dependency and cache paths
       - PLUGIN_DEPENDENCIES_ROOT=/plugin-dependencies
       - PLUGIN_CACHE_ROOT=/plugin-cache
@@ -46,6 +47,8 @@ services:
       - "${API_HOST_PORT:-${API_PORT:-8001}}:8000"
     volumes:
       - ${LIBRARY_PATH:-./volumes/library}:/library:ro
+      # Mount writable volume for derived artifacts (thumbnails, embeddings, etc.)
+      - librarian_data:/librarian-data:rw
       # Plugin dependencies (models, language packs, etc.) - persistent
       - plugin_dependencies:/plugin-dependencies:rw
       # Plugin cache (pip, wheels, huggingface, torch, etc.) - persistent
@@ -89,6 +92,9 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  # Derived artifacts volume - persists thumbnails, embeddings, caches
+  librarian_data:
     driver: local
   # Plugin dependency storage - persists models, language packs, external assets
   plugin_dependencies:
