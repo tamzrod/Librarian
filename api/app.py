@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, Query, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 import uuid
 
 from api.routes import questions, collections, pipeline, operations, timeline, explorer, trace, settings
