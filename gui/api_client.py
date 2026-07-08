@@ -19,7 +19,7 @@ class LibrarianAPIClient:
         Initialize API client.
 
         Args:
-            base_url: Base URL for API. Defaults to LIBRARIAN_API_URL or http://localhost:8000
+            base_url: Base URL for API. Defaults to LIBRARIAN_API_URL or http://localhost:8001
         """
         self.base_url = base_url or get_api_url()
         self.session = requests.Session()

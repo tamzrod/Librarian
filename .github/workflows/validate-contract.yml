@@ -139,7 +139,7 @@ jobs:
       - name: Generate types and build with metadata
         working-directory: dashboard
         env:
-          VITE_API_URL: http://localhost:8000
+          VITE_API_URL: http://localhost:8001
           VITE_BUILD_SHA: ${{ github.sha }}
           VITE_BUILD_TIME: ${{ github.event.head_commit.timestamp }}
           VITE_DASHBOARD_VERSION: ${{ github.event.repository.version || '1.0.0' }}

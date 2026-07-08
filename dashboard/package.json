@@ -9,8 +9,8 @@
     "build:production": "tsc && vite build --mode production",
     "build:staging": "tsc && vite build --mode staging",
     "preview": "vite preview",
-    "generate-types": "openapi-typescript http://localhost:8000/api/openapi.json -o src/types/api.d.ts",
-    "validate-contract": "openapi-typescript http://localhost:8000/api/openapi.json -o src/types/api.d.ts && npm run build"
+    "generate-types": "openapi-typescript http://localhost:8001/api/openapi.json -o src/types/api.d.ts",
+    "validate-contract": "openapi-typescript http://localhost:8001/api/openapi.json -o src/types/api.d.ts && npm run build"
   },
   "dependencies": {
     "react": "^18.2.0",

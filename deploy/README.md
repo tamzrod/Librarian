@@ -160,7 +160,7 @@ Librarian **automatically and recursively** discovers all files and subfolders u
 
 ### Librarian API
 
-- **Internal**: `librarian-api:8000`
+- **Internal**: `librarian-api:8001`
 - **Host Port**: 8001 (via `API_HOST_PORT`)
 - **Library**: Mounted read-only at `/library`
 - **Database**: Connects to PostgreSQL via `postgres:5432`
@@ -168,10 +168,10 @@ Librarian **automatically and recursively** discovers all files and subfolders u
 
 ### Librarian Dashboard
 
-- **Internal**: `librarian-dashboard:3000`
+- **Internal**: `librarian-dashboard:3100`
 - **Host Port**: 3100 (via `DASHBOARD_HOST_PORT`)
 - **Purpose**: Operational dashboard for system observability
-- **API**: Connects to `librarian-api:8000` via Docker network
+- **API**: Connects to `librarian-api:8001` via Docker network
 - **Access**: http://localhost:3100
 
 ### Librarian GUI (Optional - Legacy)
@@ -189,8 +189,8 @@ Uncomment the `nginx` section in `docker-compose.yml` and configure `nginx/nginx
 | `POSTGRES_DB` | librarian | Database name (internal) |
 | `POSTGRES_USER` | librarian | Database user (internal) |
 | `POSTGRES_PASSWORD` | librarian | Database password (internal) |
-| `API_HOST_PORT` | 8001 | API host port (internal: 8000) |
-| `DASHBOARD_HOST_PORT` | 3100 | Dashboard host port (internal: 3000) |
+| `API_HOST_PORT` | 8001 | API host port (internal: 8001) |
+| `DASHBOARD_HOST_PORT` | 3100 | Dashboard host port (internal: 3100) |
 | `LIBRARY_PATH` | ./volumes/library | Host path to library |
 | `LIBRARIAN_LIBRARY_ROOT` | /library | Runtime library root inside API and worker containers |
 

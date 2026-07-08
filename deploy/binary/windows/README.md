@@ -90,9 +90,9 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Status**: http://localhost:8000/api/v1/status
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+- **Status**: http://localhost:8001/api/v1/status
 
 ## Database Configuration
 
@@ -127,8 +127,8 @@ docker exec librarian-postgres pg_dump -U librarian librarian > backup.sql
 ### Port Already in Use
 
 ```powershell
-# Find process using port 8000
-netstat -ano | findstr :8000
+# Find process using port 8001
+netstat -ano | findstr :8001
 
 # Kill process
 taskkill /PID <pid> /F

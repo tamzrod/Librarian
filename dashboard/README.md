@@ -17,9 +17,9 @@ The Dashboard is a separate React application that consumes the Librarian API. I
 ```
 Browser
    ↓
-Dashboard (:3000)
+Dashboard (:3100)
    ↓ REST
-Librarian API (:8000)
+Librarian API (:8001)
    ↓
 PostgreSQL (:5432)
 ```
@@ -44,7 +44,7 @@ PostgreSQL (:5432)
 ### Prerequisites
 
 - Node.js 18+
-- Librarian API running on port 8000
+- Librarian API running on port 8001
 
 ### Installation
 
@@ -67,7 +67,7 @@ The dashboard will be available at http://localhost:3100
 Create a `.env.local` file:
 
 ```bash
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8001
 ```
 
 ### Type Generation
@@ -149,7 +149,7 @@ Operators can verify the running dashboard version by:
 ```bash
 cd ../dashboard
 docker build -t librarian-dashboard:dev \
-  --build-arg API_URL=http://localhost:8000 \
+  --build-arg API_URL=http://localhost:8001 \
   --build-arg VITE_BUILD_SHA=$(git rev-parse --short HEAD) \
   --build-arg VITE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --build-arg VITE_DASHBOARD_VERSION=dev \
@@ -167,13 +167,13 @@ cd ../deploy
 docker compose up -d librarian-dashboard
 ```
 
-The dashboard will be available at http://localhost:3000
+The dashboard will be available at http://localhost:3100
 
 ### Docker Build Arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `API_URL` | Backend API URL | `http://localhost:8000` |
+| `API_URL` | Backend API URL | `http://localhost:8001` |
 | `VITE_BUILD_SHA` | Git commit hash | `unknown` |
 | `VITE_BUILD_TIME` | Build timestamp | (empty) |
 | `VITE_DASHBOARD_VERSION` | Dashboard version | `dev` |

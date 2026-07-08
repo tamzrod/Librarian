@@ -50,11 +50,11 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_ENVIRONMENT': JSON.stringify(environment),
     },
     server: {
-      port: 3000,
+      port: 3100,
       host: true,
       proxy: {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
+          target: env.VITE_API_URL || 'http://localhost:8001',
           changeOrigin: true,
         },
       },

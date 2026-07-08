@@ -50,7 +50,7 @@ Or create custom container with:
 **Port Mappings**:
 | Container Port | Host Port |
 |----------------|-----------|
-| 8000 | 8000 |
+| 8001 | 8001 |
 
 **Volume Mappings**:
 | Container Path | Host Path | Mode |
@@ -105,7 +105,7 @@ Create `.env`:
 POSTGRES_DB=librarian
 POSTGRES_USER=librarian
 POSTGRES_PASSWORD=your_secure_password
-API_HOST_PORT=8000
+API_HOST_PORT=8001
 LIBRARY_PATH=/mnt/user/documents
 ```
 
@@ -129,8 +129,8 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **Local**: http://localhost:8000/docs
-- **Network**: http://your-unraid-ip:8000/docs
+- **Local**: http://localhost:8001/docs
+- **Network**: http://your-unraid-ip:8001/docs
 
 ## Common Commands
 

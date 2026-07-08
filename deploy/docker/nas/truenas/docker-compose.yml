@@ -32,14 +32,14 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-librarian}:${POSTGRES_PASSWORD:-librarian}@postgres:5432/${POSTGRES_DB:-librarian}
       - LIBRARIAN_LIBRARY_ROOT=/library
     ports:
-      - "${API_HOST_PORT:-${API_PORT:-8000}}:8000"
+      - "${API_HOST_PORT:-${API_PORT:-8001}}:8001"
     volumes:
       - ${LIBRARY_PATH:-/mnt/tank/documents}:/library:ro
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

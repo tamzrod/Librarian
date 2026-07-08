@@ -42,7 +42,7 @@ Example `.env` configuration:
 ```env
 LIBRARY_PATH=/Users/yourname/Documents
 POSTGRES_PASSWORD=your_secure_password
-API_HOST_PORT=8000
+API_HOST_PORT=8001
 ```
 
 ### 4. Start Services
@@ -55,7 +55,7 @@ docker compose up -d
 
 ```bash
 docker compose ps
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ## Library Configuration
@@ -83,11 +83,11 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Status**: http://localhost:8000/api/v1/status
-- **Stats**: http://localhost:8000/api/v1/stats
-- **Timeline**: http://localhost:8000/api/v1/timeline
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+- **Status**: http://localhost:8001/api/v1/status
+- **Stats**: http://localhost:8001/api/v1/stats
+- **Timeline**: http://localhost:8001/api/v1/timeline
 
 ## Common Commands
 

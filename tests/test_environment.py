@@ -26,11 +26,11 @@ def test_get_library_root_supports_deprecated_alias(monkeypatch, caplog):
 
 def test_get_api_url_supports_deprecated_alias(monkeypatch, caplog):
     monkeypatch.delenv("LIBRARIAN_API_URL", raising=False)
-    monkeypatch.setenv("API_URL", "http://legacy:8000")
+    monkeypatch.setenv("API_URL", "http://legacy:8001")
 
     caplog.set_level(logging.WARNING)
 
-    assert environment.get_api_url() == "http://legacy:8000"
+    assert environment.get_api_url() == "http://legacy:8001"
     assert "API_URL is deprecated; use LIBRARIAN_API_URL instead." in caplog.text
 
 

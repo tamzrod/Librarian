@@ -99,9 +99,9 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Status**: http://localhost:8000/api/v1/status
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+- **Status**: http://localhost:8001/api/v1/status
 
 ## Database Configuration
 
@@ -170,7 +170,7 @@ pg_dump -U librarian librarian > ~/Documents/librarian_backup_$(date +%Y%m%d).sq
 
 ```bash
 # Find process
-lsof -i :8000
+lsof -i :8001
 
 # Kill process
 kill <pid>

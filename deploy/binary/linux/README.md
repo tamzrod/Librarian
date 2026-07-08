@@ -93,9 +93,9 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Status**: http://localhost:8000/api/v1/status
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+- **Status**: http://localhost:8001/api/v1/status
 
 ## Database Configuration
 
@@ -157,7 +157,7 @@ pg_dump -U librarian librarian > backup_$(date +%Y%m%d).sql
 
 ```bash
 # Find process
-sudo lsof -i :8000
+sudo lsof -i :8001
 
 # Kill process
 sudo kill <pid>
@@ -188,6 +188,6 @@ Librarian/
 
 1. Use strong database passwords
 2. Run as dedicated user: `sudo useradd -r librarian`
-3. Configure firewall: `sudo ufw allow 8000`
+3. Configure firewall: `sudo ufw allow 8001`
 4. Consider TLS for production
 5. Restrict library permissions
