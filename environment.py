@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIBRARY_ROOT = "/library"
 DEFAULT_LIBRARIAN_DATA_ROOT = "/librarian-data"
-DEFAULT_API_URL = "http://localhost:8000"
+DEFAULT_API_URL = "http://localhost:8001"
 
 # Plugin dependency and cache paths
 DEFAULT_PLUGIN_DEPENDENCIES_ROOT = "/plugin-dependencies"

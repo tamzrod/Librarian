@@ -395,7 +395,7 @@ class LibrarianApiClient {
   getThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
     // thumbnailPath is like "thumbnails/docId_filename_thumb.jpg" (from database)
-    // Nginx proxy handles /thumbnails/ -> http://api:8000/thumbnails/
+    // Nginx proxy handles /thumbnails/ -> http://api:8001/thumbnails/
     // If path already starts with thumbnails/, use as-is
     const cleanPath = thumbnailPath.replace(/^thumbnails\//, '')
     // Handle base URL (which may be "/" or empty for relative URLs)
@@ -495,7 +495,7 @@ class LibrarianApiClient {
   getTraceThumbnailUrl(thumbnailPath: string | null | undefined): string | null {
     if (!thumbnailPath) return null
     // thumbnailPath is like "thumbnails/docId_filename_thumb.jpg" (from database)
-    // Nginx proxy handles /thumbnails/ -> http://api:8000/thumbnails/
+    // Nginx proxy handles /thumbnails/ -> http://api:8001/thumbnails/
     // If path already starts with thumbnails/, strip the prefix
     const cleanPath = thumbnailPath.replace(/^thumbnails\//, '')
     // Handle base URL (which may be "/" or empty for relative URLs)

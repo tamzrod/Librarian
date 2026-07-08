@@ -16,7 +16,7 @@ COPY . .
 
 # Generate API types from OpenAPI schema
 # This ensures the dashboard is always in sync with the API
-ARG API_URL=http://localhost:8000
+ARG API_URL=http://localhost:8001
 ENV VITE_API_URL=$API_URL
 
 # Build metadata arguments
@@ -49,10 +49,10 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3100
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+  CMD curl -f http://localhost:3100 || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

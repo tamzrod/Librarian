@@ -105,7 +105,7 @@ Standard ecosystem variables keep their upstream names (`DATABASE_URL`, `POSTGRE
 |----------|---------|-------|
 | `LIBRARIAN_LIBRARY_ROOT` | `/library` | Canonical runtime library root. Deprecated alias: `LIBRARY_ROOT`. |
 | `DATABASE_URL` | unset | PostgreSQL connection string for the API and worker. |
-| `LIBRARIAN_API_URL` | `http://localhost:8000` | Canonical API URL for the legacy Python GUI. Deprecated alias: `API_URL`. |
+| `LIBRARIAN_API_URL` | `http://localhost:8001` | Canonical API URL for the legacy Python GUI. Deprecated alias: `API_URL`. |
 | `WORKER_ID` | unset | Optional worker identifier. |
 | `EMBEDDING_MODEL` | auto-detected | Optional embedding backend override. |
 | `OPENAI_API_KEY` | unset | Optional key for OpenAI embeddings. |

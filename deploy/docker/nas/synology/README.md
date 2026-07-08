@@ -55,7 +55,7 @@ nano .env
 Configure:
 ```env
 POSTGRES_PASSWORD=your_secure_password
-API_HOST_PORT=8000
+API_HOST_PORT=8001
 LIBRARY_PATH=/volume1/Documents
 ```
 
@@ -94,8 +94,8 @@ Click **Next** → **Done**
 
 Find the API port in Container Manager or connect via SSH:
 
-- **Local**: http://localhost:8000/docs
-- **Network**: http://your-nas-ip:8000/docs
+- **Local**: http://localhost:8001/docs
+- **Network**: http://your-nas-ip:8001/docs
 
 ## Accessing the GUI (Optional)
 

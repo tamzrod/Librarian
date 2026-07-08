@@ -9,7 +9,7 @@ Librarian is designed for simple, reliable deployment via Docker Compose.
 │                    Docker Compose                           │
 │  ┌─────────────────┐  ┌─────────────────────────────────┐ │
 │  │  Librarian API  │  │         PostgreSQL               │ │
-│  │    (Port 8000)   │  │                                 │ │
+│  │    (Port 8001)   │  │                                 │ │
 │  └────────┬────────┘  └─────────────────────────────────┘ │
 │           │                                                   │
 │           │ /library (read-only volume)                      │
@@ -25,7 +25,7 @@ Librarian is designed for simple, reliable deployment via Docker Compose.
 
 - Library root: Docker volume mapping (`/path/to/host:/library:ro`)
 - Database: Environment variable (`DATABASE_URL`)
-- API: Exposed on port 8000
+- API: Exposed on port 8001
 
 ### Single Instance Design
 
@@ -103,7 +103,7 @@ services:
   librarian:
     image: librarian/engine:latest
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       - /home/user/documents:/library:ro
     environment:

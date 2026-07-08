@@ -42,7 +42,7 @@ services:
       - TRANSFORMERS_CACHE=C:/plugin-cache/transformers
       - PIP_CACHE_DIR=C:/plugin-cache/pip
     ports:
-      - "${API_HOST_PORT:-${API_PORT:-8000}}:8000"
+      - "${API_HOST_PORT:-${API_PORT:-8001}}:8001"
     volumes:
       - ${LIBRARY_PATH:-C:/Users/${USERNAME}/Documents}:C:/library:ro
       # Plugin dependencies (models, language packs, etc.) - persistent

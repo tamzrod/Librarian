@@ -84,7 +84,7 @@ The dashboard is a **separate application** that consumes the API:
 | Aspect | Backend | Dashboard |
 |--------|---------|-----------|
 | Technology | Python/FastAPI | React/Vite/TypeScript |
-| Port | 8000 | 3000 |
+| Port | 8001 | 3100 |
 | Database Access | Direct | Via API only |
 | Purpose | Data processing | Observability |
 
@@ -112,8 +112,8 @@ docker compose up -d
 
 **Network Configuration:**
 - PostgreSQL: Internal-only (`postgres:5432`) - NOT exposed to host
-- API: `librarian-api:8000` (internal), host:8001
-- Dashboard: `librarian-dashboard:3000` (internal), host:3100
+- API: `librarian-api:8001` (internal), host:8001
+- Dashboard: `librarian-dashboard:3100` (internal), host:3100
 
 **Access URLs:**
 - Dashboard: http://localhost:3100

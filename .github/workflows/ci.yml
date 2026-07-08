@@ -93,20 +93,20 @@ jobs:
         run: |
           timeout 10 bash -c '
             DATABASE_URL=postgresql://librarian:librarian@localhost:5432/librarian \
-            uvicorn api.app:app --host 127.0.0.1 --port 8000 &
+            uvicorn api.app:app --host 127.0.0.1 --port 8001 &
             PID=$!
             sleep 5
-            curl -sf http://127.0.0.1:8000/health
+            curl -sf http://127.0.0.1:8001/health
             kill $PID 2>/dev/null
           ' || { echo "Startup test failed"; exit 1; }
       
       - name: Verify health endpoint
         run: |
           DATABASE_URL=postgresql://librarian:librarian@localhost:5432/librarian \
-          uvicorn api.app:app --host 127.0.0.1 --port 8000 &
+          uvicorn api.app:app --host 127.0.0.1 --port 8001 &
           PID=$!
           sleep 5
-          RESPONSE=$(curl -sf http://127.0.0.1:8000/health)
+          RESPONSE=$(curl -sf http://127.0.0.1:8001/health)
           kill $PID 2>/dev/null
           echo "Health response: $RESPONSE"
           echo "$RESPONSE" | grep -q "healthy" && echo "Health check passed" || { echo "Health check failed"; exit 1; }

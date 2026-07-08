@@ -7,7 +7,7 @@ import sys
 
 def test_ask_question():
     """Test the POST /api/v1/collections/{id}/questions endpoint."""
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8001"
     
     # Test 1: Ask a question
     print("Test 1: Ask a question")

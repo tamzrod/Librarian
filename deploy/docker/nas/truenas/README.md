@@ -65,7 +65,7 @@ environment:
 volumes:
   - /mnt/tank/documents:/library:ro
 ports:
-  - "8000:8000"
+  - "8001:8001"
 ```
 
 ## Installation via TrueNAS CORE (Jails)
@@ -140,8 +140,8 @@ Librarian **automatically and recursively** discovers all files under the librar
 
 ## Accessing the API
 
-- **Local**: http://localhost:8000/docs
-- **Network**: http://your-truenas-ip:8000/docs
+- **Local**: http://localhost:8001/docs
+- **Network**: http://your-truenas-ip:8001/docs
 
 ## Common Commands
 
