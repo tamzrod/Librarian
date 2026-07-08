@@ -5,6 +5,7 @@ import QueueMonitor from './pages/QueueMonitor'
 import ActivityFeed from './pages/ActivityFeed'
 import ExtractionViewer from './pages/ExtractionViewer'
 import ArtifactExplorer from './pages/ArtifactExplorer'
+import DataExplorer from './pages/DataExplorer'
 import TimelineView from './pages/TimelineView'
 import MapView from './pages/MapView'
 import EntitiesView from './pages/EntitiesView'
@@ -18,6 +19,7 @@ function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/explorer" replace />} />
         <Route path="explorer" element={<ArtifactExplorer />} />
+        <Route path="data-explorer" element={<DataExplorer />} />
         <Route path="trace" element={<TraceView />} />
         <Route path="timeline" element={<TimelineView />} />
         <Route path="map" element={<MapView />} />

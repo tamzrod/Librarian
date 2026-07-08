@@ -1,0 +1,684 @@
+/**
+ * Data Explorer Styles
+ * 
+ * Three-pane layout:
+ * - Left: Navigation (Collections, Folders, Virtual Collections, Saved Views)
+ * - Center: Artifact browser (Grid/List view)
+ * - Right: Inspector (descriptor-driven metadata display)
+ * 
+ * Design principles:
+ * - Resizable panels
+ * - Descriptor-driven rendering (no hardcoded artifact types)
+ * - Read-only inspection (no editing UI)
+ */
+
+.data-explorer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+.explorer-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ============================================================================
+   Left Panel - Navigation
+   ============================================================================ */
+
+.explorer-left-pane {
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-width: 500px;
+  flex-shrink: 0;
+}
+
+.navigation-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.nav-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+}
+
+.nav-search-input {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.nav-search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.nav-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.nav-search-clear {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px;
+  line-height: 1;
+}
+
+.nav-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.nav-search-results {
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.nav-search-info {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-search-item {
+  padding-left: 24px !important;
+}
+
+.nav-search-more {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+}
+
+.nav-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  gap: 8px;
+}
+
+.nav-item:hover {
+  background: var(--bg-hover);
+}
+
+.nav-item.selected {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+}
+
+.nav-expand-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.nav-expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.nav-expand-icon-spacer {
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.nav-item-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.nav-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.nav-item-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.nav-children {
+  margin-left: 0;
+}
+
+.nav-loading,
+.nav-error {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nav-error {
+  color: var(--accent-error);
+}
+
+/* ============================================================================
+   Resize Handles
+   ============================================================================ */
+
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--accent-primary);
+}
+
+.resize-handle-left {
+  order: -1;
+}
+
+.resize-handle-right {
+  order: 1;
+}
+
+/* ============================================================================
+   Center Panel - Artifact Browser
+   ============================================================================ */
+
+.explorer-center-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 400px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  gap: 16px;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.breadcrumb-sep {
+  margin: 0 4px;
+  color: var(--text-muted);
+}
+
+.breadcrumb-part {
+  color: var(--text-primary);
+}
+
+.view-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.filter-input {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 180px;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.filter-input::placeholder {
+  color: var(--text-muted);
+}
+
+.view-switcher {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.view-btn {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.view-btn:hover {
+  background: var(--bg-hover);
+}
+
+.view-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.view-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.view-loading,
+.view-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.view-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.item-count {
+  font-weight: 500;
+}
+
+.selected-info {
+  color: var(--text-secondary);
+}
+
+/* ============================================================================
+   Grid View
+   ============================================================================ */
+
+.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.grid-item {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 2px solid transparent;
+}
+
+.grid-item:hover {
+  border-color: var(--border-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.grid-item.selected {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+}
+
+.grid-item-thumbnail {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.grid-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grid-item-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 32px;
+}
+
+.grid-item-icon.hidden {
+  display: none;
+}
+
+.grid-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+.grid-item-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* ============================================================================
+   List View
+   ============================================================================ */
+
+.list-view {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.list-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 100px 140px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.list-header-cell {
+  cursor: pointer;
+  user-select: none;
+}
+
+.list-header-cell:hover {
+  color: var(--text-primary);
+}
+
+.list-body {
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+}
+
+.list-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 100px 140px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.list-row:hover {
+  background: var(--bg-hover);
+}
+
+.list-row.selected {
+  background: var(--bg-active);
+}
+
+.list-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.list-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.list-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-cell.type {
+  color: var(--text-secondary);
+}
+
+.list-cell.size,
+.list-cell.modified {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ============================================================================
+   Right Panel - Inspector
+   ============================================================================ */
+
+.explorer-right-pane {
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+  max-width: 600px;
+  flex-shrink: 0;
+}
+
+.explorer-right-pane .pane-content.inspector {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.inspector-empty,
+.inspector-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  gap: 8px;
+}
+
+.inspector-empty-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.inspector-empty-text,
+.inspector-loading-text {
+  font-size: 14px;
+}
+
+.inspector-content {
+  padding: 0;
+}
+
+.inspector-section {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.inspector-section:last-child {
+  border-bottom: none;
+}
+
+.inspector-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.inspector-section-icon {
+  font-size: 14px;
+}
+
+.inspector-section-title {
+  flex: 1;
+}
+
+.inspector-section-content {
+  padding: 8px 0;
+}
+
+.inspector-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 16px;
+  gap: 16px;
+}
+
+.inspector-field-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  max-width: 120px;
+}
+
+.inspector-field-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+/* ============================================================================
+   Pane Headers (shared)
+   ============================================================================ */
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pane-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.pane-action {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.pane-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.pane-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============================================================================
+   Responsive Adjustments
+   ============================================================================ */
+
+@media (max-width: 1200px) {
+  .explorer-container {
+    flex-direction: column;
+  }
+
+  .explorer-left-pane {
+    width: 100% !important;
+    max-width: none;
+    height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .resize-handle-left,
+  .resize-handle-right {
+    display: none;
+  }
+
+  .explorer-right-pane {
+    width: 100% !important;
+    max-width: none;
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+  }
+}

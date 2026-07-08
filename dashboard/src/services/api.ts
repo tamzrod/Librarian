@@ -29,6 +29,13 @@ import type {
   PluginListResponse,
   PluginUpdateResponse,
 } from '../types/api'
+import type {
+  DataExplorerNavigationResponse,
+  DataExplorerArtifactsResponse,
+  DataExplorerArtifactDetailResponse,
+  DataExplorerStatisticsResponse,
+  DataExplorerArtifact,
+} from '../types/dataExplorer'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -569,6 +576,84 @@ class LibrarianApiClient {
     } catch (error) {
       handleApiError(error)
     }
+  }
+
+  // =========================================================================
+  // Data Explorer API (Operational Inspection Tool)
+  // =========================================================================
+
+  /**
+   * Get navigation structure for the Data Explorer.
+   * Returns descriptors for Collections, Folders, Virtual Collections, and Saved Views.
+   * Navigation is descriptor-driven - frontend renders generically.
+   * 
+   * @param parentId - If provided, returns children of that item (lazy loading)
+   */
+  async getDataExplorerNavigation(parentId?: string): Promise<DataExplorerNavigationResponse> {
+    const params: Record<string, unknown> = {}
+    if (parentId) {
+      params.parent_id = parentId
+    }
+    return this.get<DataExplorerNavigationResponse>('/api/v1/data-explorer/navigation', params)
+  }
+
+  /**
+   * Get artifacts for a navigation item.
+   * @param navigationId - The navigation item ID
+   * @param navigationType - The navigation item type (collection, folder, virtual_collection, saved_view)
+   */
+  async getDataExplorerArtifacts(
+    navigationId: string,
+    navigationType: string
+  ): Promise<DataExplorerArtifactsResponse> {
+    return this.get<DataExplorerArtifactsResponse>('/api/v1/data-explorer/artifacts', {
+      navigation_id: navigationId,
+      navigation_type: navigationType,
+    })
+  }
+
+  /**
+   * Get detailed artifact information for the inspector.
+   * Descriptor-driven - returns sections/fields defined by backend.
+   * @param artifactId - The artifact ID
+   */
+  async getDataExplorerArtifactDetail(artifactId: number): Promise<DataExplorerArtifactDetailResponse> {
+    return this.get<DataExplorerArtifactDetailResponse>(`/api/v1/data-explorer/artifacts/${artifactId}`)
+  }
+
+  /**
+   * Get system statistics for Data Explorer.
+   */
+  async getDataExplorerStatistics(): Promise<DataExplorerStatisticsResponse> {
+    return this.get<DataExplorerStatisticsResponse>('/api/v1/data-explorer/statistics')
+  }
+
+  /**
+   * Search artifacts across the library.
+   * @param query - Search query string
+   * @param options - Search options (type filter, size range, limit)
+   */
+  async searchDataExplorerArtifacts(
+    query: string,
+    options: {
+      type?: string
+      minSize?: number
+      maxSize?: number
+      limit?: number
+    } = {}
+  ): Promise<{
+    artifacts: DataExplorerArtifact[]
+    total: number
+    query: string
+    filters_applied: Record<string, unknown>
+  }> {
+    const params: Record<string, unknown> = { q: query }
+    if (options.type) params.type_filter = options.type
+    if (options.minSize !== undefined) params.min_size = options.minSize
+    if (options.maxSize !== undefined) params.max_size = options.maxSize
+    if (options.limit !== undefined) params.limit = options.limit
+    
+    return this.get('/api/v1/data-explorer/search', params)
   }
 }
 
